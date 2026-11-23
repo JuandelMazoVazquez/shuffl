@@ -1,0 +1,9 @@
+.env
+.env.*
+!.env.example
+node_modules/
+test-results/
+playwright-report/
+salida/
+datos/
+.claude/settings.local.json
