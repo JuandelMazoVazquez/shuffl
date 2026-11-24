@@ -1,7 +1,7 @@
 import {
   LIKED_ID, shuffle, uniqueByUri, capPlaylist, normalizeEntries, normalizePlaylist, sortTracks, SORT_KEYS,
   filterByAdded, findDuplicates, removeIndexes, buildBackup, toCsv, validateBackup, MAX_BACKUP_BYTES, MAX_BACKUP_PLAYLISTS,
-  EXPLICIT_MODES, emptyFilters, hasFilters, filterTracks, sanitizeFilters,
+  EXPLICIT_MODES, emptyFilters, hasFilters, filterTracks, sanitizeFilters, organizePlaylists, parsePlaylistRef,
 } from './core.js';
 import { sanitizeMix, sanitizeMixes, upsertMix, removeMix, newMixId, mixSources } from './mixes.js';
 import { SpotifyApi, ApiError } from './api.js';
@@ -146,7 +146,7 @@ const likedEntry = (prev) => ({
 
 async function loadPlaylists() {
   const raw = await S.api.getMyPlaylists();
-  S.playlists = [likedEntry(S.playlists.find((p) => p.isLiked)), ...raw.filter(Boolean).map((p) => normalizePlaylist(p, S.me.id))];
+  S.playlists = organizePlaylists([likedEntry(S.playlists.find((p) => p.isLiked)), ...raw.filter(Boolean).map((p) => normalizePlaylist(p, S.me.id))]);
   S.loaded = true;
   S.sourceCache.clear();
   S.pickers.forEach((p) => p.update());
@@ -287,11 +287,20 @@ function createPicker({ multi, disabledReason, onChange }) {
     type: 'search', class: 'search', placeholder: t('search'), 'aria-label': t('search'),
     oninput: () => {
       const q = search.value.trim().toLowerCase();
-      list.querySelectorAll('li').forEach((li) => { li.hidden = q !== '' && !li.dataset.name.includes(q); });
+      list.querySelectorAll('li').forEach((li) => { li.hidden = q !== '' && !(li.dataset.name ?? '').includes(q); });
     },
   });
 
+  function followedRow(pl) {
+    const cover = pl.image.startsWith('https://') ? h('img', { class: 'cover', src: pl.image, alt: '', loading: 'lazy' }) : h('span', { class: 'cover', 'aria-hidden': 'true' }, '♪');
+    return h('li', { 'data-name': pl.name.toLowerCase(), class: 'followed' },
+      h('button', { class: 'row', type: 'button', onclick: () => showFollowedHelp(pl) }, cover,
+        h('span', { class: 'row-text' }, h('span', { class: 'row-name' }, pl.name),
+          h('span', { class: 'row-meta' }, [t('cannotRead'), pl.hasCopy !== undefined ? t('hasCopyShort') : ''].filter(Boolean).join(' · ')))));
+  }
+
   function row(pl) {
+    if (!pl.isLiked && !pl.readable) return followedRow(pl);
     const reason = disabledReason?.(pl);
     const input = h('input', { type: multi ? 'checkbox' : 'radio', name: group, value: pl.id, disabled: !!reason, onchange: () => {
       if (multi) { if (input.checked) selected.add(pl.id); else selected.delete(pl.id); } else { selected.clear(); selected.add(pl.id); }
@@ -302,7 +311,8 @@ function createPicker({ multi, disabledReason, onChange }) {
     const cover = pl.isLiked
       ? h('span', { class: 'cover liked', 'aria-hidden': 'true' }, '♥')
       : pl.image.startsWith('https://') ? h('img', { class: 'cover', src: pl.image, alt: '', loading: 'lazy' }) : h('span', { class: 'cover', 'aria-hidden': 'true' }, '♪');
-    const meta = reason || (pl.total != null ? t('songs', { n: fmt(pl.total) }) : '');
+    const songs = pl.total != null ? t('songs', { n: fmt(pl.total) }) : '';
+    const meta = reason || (pl.copyOf !== undefined ? [t('yourCopyOf', { name: pl.copyOf }), songs].filter(Boolean).join(' · ') : songs);
     return h('li', { 'data-name': pl.name.toLowerCase(), class: reason ? 'disabled' : '' },
       h('label', { class: 'row' }, input, cover,
         h('span', { class: 'row-text' }, h('span', { class: 'row-name' }, pl.name), h('span', { class: 'row-meta' }, meta))));
@@ -326,7 +336,13 @@ function createPicker({ multi, disabledReason, onChange }) {
         return;
       }
       list.classList.remove('skeleton');
-      list.replaceChildren(...S.playlists.map(row));
+      let headed = false;
+      list.replaceChildren(...S.playlists.flatMap((pl) => {
+        const followed = !pl.isLiked && !pl.readable;
+        const head = followed && !headed ? [h('li', { class: 'picker-group' }, t('followedGroup'))] : [];
+        if (followed) headed = true;
+        return [...head, row(pl)];
+      }));
       search.dispatchEvent(new Event('input'));
       if (!silent) onChange?.(picker.getSelected());
     },
@@ -339,6 +355,30 @@ function createPicker({ multi, disabledReason, onChange }) {
 function baseReason(pl) {
   if (pl.isLiked) return pl.error ? t('likedUnavailable') : '';
   return pl.readable ? '' : t('notReadable');
+}
+
+// ---------- Playlists de otras personas ----------
+
+/** Explica por qué no se puede leer y cómo hacerse una copia propia en Spotify. */
+function showFollowedHelp(pl) {
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  const close = () => { document.removeEventListener('keydown', onKey); sheet.remove(); };
+  const cover = pl.image?.startsWith('https://') ? h('img', { class: 'cover', src: pl.image, alt: '', loading: 'lazy' }) : null;
+  const sheet = h('div', { class: 'sheet-backdrop', onclick: (e) => { if (e.target === sheet) close(); } },
+    h('div', { class: 'sheet', id: 'followed-help', role: 'dialog', 'aria-modal': 'true', 'aria-label': pl.name },
+      h('div', { class: 'row' }, cover, h('span', { class: 'row-text' }, h('strong', {}, pl.name), pl.owner ? h('span', { class: 'row-meta' }, pl.owner) : null)),
+      h('p', {}, t('followedWhy')),
+      pl.hasCopy !== undefined ? h('p', { class: 'note', id: 'followed-has-copy' }, t('followedHasCopy', { name: pl.hasCopy })) : null,
+      h('h2', {}, t('copyGuideTitle')),
+      h('p', {}, h('strong', {}, `${t('onPhone')}: `), t('copyPhone')),
+      h('p', {}, h('strong', {}, `${t('onComputer')}: `), t('copyComputer')),
+      h('p', { class: 'muted' }, t('copyThenRefresh')),
+      h('div', { class: 'actions' },
+        h('a', { class: 'btn primary', href: spotifyUrl(pl.id), target: '_blank', rel: 'noopener', id: 'followed-open' }, t('openInSpotify')),
+        h('button', { class: 'btn', type: 'button', id: 'followed-close', onclick: close }, t('close')))));
+  document.addEventListener('keydown', onKey);
+  document.body.append(sheet);
+  sheet.querySelector('#followed-close').focus();
 }
 
 // ---------- Reproducir ahora ----------
@@ -568,9 +608,40 @@ function shufflePanel() {
     status.say(t('mixSaved', { name: mix.name }));
   }
 
+  // Enlace de una playlist pública o de otra persona: solo metadatos y la guía de copia
+  const linkIn = h('input', { type: 'text', class: 'text', id: 'link-input', placeholder: t('linkPlaceholder'), 'aria-label': t('linkTitle'), autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
+  const linkMsg = h('p', { class: 'muted', id: 'link-msg', role: 'status' });
+  async function checkLink() {
+    linkMsg.textContent = '';
+    const id = parsePlaylistRef(linkIn.value);
+    if (!id) { linkMsg.textContent = t('linkInvalid'); return; }
+    const known = S.playlists.find((p) => p.id === id);
+    if (known?.readable) { linkMsg.textContent = t('linkOwn', { name: known.name }); return; }
+    let meta = null;
+    await task(status, async () => {
+      try {
+        meta = await S.api.getPlaylistMeta(id);
+      } catch (e) {
+        if (!(e instanceof ApiError) || ![403, 404].includes(e.status)) throw e;
+        linkMsg.textContent = t('linkNotFound');
+      }
+    });
+    if (!meta) return;
+    if (meta.owner?.id === S.me.id || meta.collaborative) { linkMsg.textContent = t('linkOwn', { name: meta.name }); return; }
+    const images = meta.images ?? [];
+    showFollowedHelp({
+      id, name: meta.name ?? '', owner: meta.owner?.display_name ?? meta.owner?.id ?? '',
+      image: images.length ? images[images.length - 1].url : '',
+      hasCopy: S.playlists.find((p) => p.copyOf !== undefined && p.copyOf === meta.name)?.name,
+    });
+  }
+  const linkBox = h('details', { class: 'more', id: 'link-box' },
+    h('summary', {}, t('linkTitle')), h('p', { class: 'muted small' }, t('linkLead')), linkIn,
+    h('button', { class: 'btn', type: 'button', id: 'link-check', onclick: () => checkLink() }, t('linkCheck')), linkMsg);
+
   const form = h('div', {},
     h('p', { class: 'lead' }, t('shuffleLead')),
-    h('h2', {}, t('source')), libBtn, picker.el, selInfo,
+    h('h2', {}, t('source')), libBtn, picker.el, selInfo, linkBox,
     h('label', { class: 'check' }, dedupe, h('span', {}, t('dedupeOpt'))),
     filtersBox,
     h('h2', {}, t('destination')), destBox, go,

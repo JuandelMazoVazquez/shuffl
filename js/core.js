@@ -115,6 +115,32 @@ export function normalizePlaylist(p, meId) {
   };
 }
 
+const nameKey = (s) => String(s ?? '').normalize('NFKC').trim().toLowerCase();
+
+/**
+ * Ordena (propias y colaborativas primero, luego las que solo se siguen) y marca con `copyOf` las propias
+ * que tienen el mismo nombre que una seguida («Tu copia de…»). Devuelve una lista nueva.
+ */
+export function organizePlaylists(playlists) {
+  const followed = playlists.filter((p) => !p.isLiked && !p.readable);
+  const byName = new Map(followed.map((p) => [nameKey(p.name), p.name]));
+  const readable = playlists.filter((p) => p.isLiked || p.readable).map((p) => {
+    const match = !p.isLiked && p.owned ? byName.get(nameKey(p.name)) : undefined;
+    return match === undefined ? p : { ...p, copyOf: match };
+  });
+  const withCopy = new Map(readable.filter((p) => p.copyOf !== undefined).map((p) => [nameKey(p.copyOf), p.name]));
+  return [...readable, ...followed.map((p) => (withCopy.has(nameKey(p.name)) ? { ...p, hasCopy: withCopy.get(nameKey(p.name)) } : p))];
+}
+
+/** Id de playlist a partir de un enlace de Spotify, un URI `spotify:playlist:` o un id suelto. Null si no es válido. */
+export function parsePlaylistRef(text) {
+  const s = String(text ?? '').trim();
+  const id = /^spotify:playlist:([A-Za-z0-9]{22})$/.exec(s)?.[1]
+    ?? /^https:\/\/open\.spotify\.com\/(?:intl-[a-z]{2,3}(?:-[A-Za-z]{2,4})?\/)?playlist\/([A-Za-z0-9]{22})(?:[/?#].*)?$/.exec(s)?.[1]
+    ?? /^([A-Za-z0-9]{22})$/.exec(s)?.[1];
+  return id ?? null;
+}
+
 // ---------- Fechas de lanzamiento ----------
 
 /** Devuelve { year, month, day, precision, key } o null. Los huecos cuentan como 1 para ordenar. */
