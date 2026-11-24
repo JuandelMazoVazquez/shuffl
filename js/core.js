@@ -213,6 +213,42 @@ export function sortTracks(tracks, key) {
     .map(([t]) => t);
 }
 
+/** Criterios que se pueden encadenar (orden combinado). Cada uno compara solo su propio dato. */
+export const MULTI_KEYS = [
+  'artist', 'album', 'album-chrono', 'title', 'track-number', 'release-asc', 'release-desc',
+  'duration-asc', 'duration-desc', 'added-asc', 'added-desc',
+];
+export const MAX_SORT_CRITERIA = 3;
+
+const cmpDate = (dir) => (a, b) => cmpMissingLast(a || null, b || null, (x, y) => (x < y ? -dir : x > y ? dir : 0));
+const pure = {
+  artist: (a, b) => collator.compare(a.artists[0] ?? '', b.artists[0] ?? ''),
+  album: (a, b) => collator.compare(a.album, b.album),
+  'album-chrono': (a, b) => cmpMissingLast(releaseKey(a), releaseKey(b), cmpNum) || collator.compare(a.album, b.album) || collator.compare(a.albumId, b.albumId),
+  title: (a, b) => collator.compare(a.name, b.name),
+  'track-number': (a, b) => cmpNum(a.discNumber, b.discNumber) || cmpNum(a.trackNumber, b.trackNumber),
+  'release-asc': (a, b) => cmpMissingLast(releaseKey(a), releaseKey(b), cmpNum),
+  'release-desc': (a, b) => cmpMissingLast(releaseKey(a), releaseKey(b), (x, y) => y - x),
+  'duration-asc': (a, b) => cmpNum(a.durationMs, b.durationMs),
+  'duration-desc': (a, b) => cmpNum(b.durationMs, a.durationMs),
+  'added-asc': (a, b) => cmpDate(1)(a.addedAt, b.addedAt),
+  'added-desc': (a, b) => cmpDate(-1)(a.addedAt, b.addedAt),
+};
+
+/**
+ * Orden combinado: hasta 3 criterios encadenados (por ejemplo artista → álbum cronológico → nº de pista).
+ * Estable: el índice original desempata. Devuelve una copia.
+ */
+export function sortTracksBy(tracks, keys) {
+  if (!Array.isArray(keys) || keys.length < 1 || keys.length > MAX_SORT_CRITERIA) throw new RangeError('entre 1 y 3 criterios');
+  if (keys.some((k) => !MULTI_KEYS.includes(k)) || new Set(keys).size !== keys.length) throw new RangeError('criterios no válidos o repetidos');
+  const cmps = keys.map((k) => pure[k]);
+  return tracks
+    .map((t, i) => [t, i])
+    .sort((x, y) => { for (const c of cmps) { const r = c(x[0], y[0]); if (r) return r; } return x[1] - y[1]; })
+    .map(([t]) => t);
+}
+
 /** Filtra por fecha en que se añadió (YYYY-MM-DD, ambos extremos incluidos y opcionales). */
 export function filterByAdded(tracks, from, to) {
   if (!from && !to) return tracks.slice();
@@ -392,6 +428,35 @@ const csvCell = (v) => {
   if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",;\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
+
+/** Álbum guardado (`{ added_at, album }` o álbum suelto) con su UPC. Null si no sirve. */
+export function normalizeAlbum(entry) {
+  const a = entry?.album ?? entry;
+  if (!a || typeof a.uri !== 'string' || typeof a.name !== 'string') return null;
+  return {
+    id: a.id ?? a.uri.split(':').pop(),
+    uri: a.uri,
+    name: a.name,
+    artists: (a.artists ?? []).map((x) => x?.name).filter(Boolean),
+    releaseDate: a.release_date ?? '',
+    totalTracks: a.total_tracks ?? 0,
+    upc: a.external_ids?.upc ?? '',
+    addedAt: entry?.added_at ?? '',
+  };
+}
+
+export function normalizeFollowedArtist(a) {
+  if (!a || typeof a.uri !== 'string' || typeof a.name !== 'string') return null;
+  return { id: a.id ?? a.uri.split(':').pop(), uri: a.uri, name: a.name };
+}
+
+export function toLibraryCsv(albums, artists) {
+  const head = ['type', 'uri', 'name', 'artists', 'releaseDate', 'totalTracks', 'upc', 'addedAt'];
+  const rows = [head.join(',')];
+  for (const a of albums) rows.push(['album', a.uri, a.name, a.artists, a.releaseDate, a.totalTracks, a.upc, a.addedAt].map(csvCell).join(','));
+  for (const a of artists) rows.push(['artist', a.uri, a.name, '', '', '', '', ''].map(csvCell).join(','));
+  return rows.join('\r\n') + '\r\n';
+}
 
 export function toCsv(playlists) {
   const head = ['playlist', 'uri', 'name', 'artists', 'album', 'releaseDate', 'durationMs', 'isrc', 'addedAt'];

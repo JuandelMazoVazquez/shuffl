@@ -6,6 +6,9 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). E
 
 ### Añadido
 
+- **Orden combinado**: hasta 3 criterios encadenados (por ejemplo artista → álbum cronológico → nº de pista), con orden estable; nuevos criterios «Álbum (cronológico)» y «Nº de pista».
+- **Copia ampliada**: álbumes guardados (con UPC) y artistas seguidos en el JSON, y un CSV propio de biblioteca. Baraja no los restaura en tu biblioteca (solo respaldo).
+- **Asistente de alta del Client ID**: pasos guiados con «Hecho», enlace al dashboard, Redirect URI copiable dentro del paso 3 y ayuda para errores típicos (Invalid redirect URI, 403 por User Management o Premium, QUOTA_EXCEEDED, Client ID erróneo). En Ajustes, «Comprobar conexión» diagnostica sesión, lectura de playlists y permisos.
 - **Instantáneas**: «📸 Top 4 semanas», «📸 Top 6 meses», «📸 Top siempre» (`GET /me/top/tracks`, 50) y «📸 Últimas escuchas» (`GET /me/player/recently-played`, 50, sin repetidas), creando la playlist o actualizando la misma (con Deshacer), con opción de barajar.
 - **Me gusta sin playlist**: canciones de Tus me gusta que no están en ninguna de tus playlists (sin contar las que genera Baraja); crea una playlist con ellas, barajada si se quiere.
 - **Dividir playlist**: en N partes, por década de lanzamiento, por artista principal (con mínimo configurable) o por año de añadida, con vista previa y nombres editables. La original no se toca.
