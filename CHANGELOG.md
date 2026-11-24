@@ -6,6 +6,7 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). E
 
 ### Añadido
 
+- **Compartir** el enlace de la playlist creada: hoja de compartir del sistema (Web Share) o, si no existe, copiar el enlace.
 - **Orden combinado**: hasta 3 criterios encadenados (por ejemplo artista → álbum cronológico → nº de pista), con orden estable; nuevos criterios «Álbum (cronológico)» y «Nº de pista».
 - **Copia ampliada**: álbumes guardados (con UPC) y artistas seguidos en el JSON, y un CSV propio de biblioteca. Baraja no los restaura en tu biblioteca (solo respaldo).
 - **Asistente de alta del Client ID**: pasos guiados con «Hecho», enlace al dashboard, Redirect URI copiable dentro del paso 3 y ayuda para errores típicos (Invalid redirect URI, 403 por User Management o Premium, QUOTA_EXCEEDED, Client ID erróneo). En Ajustes, «Comprobar conexión» diagnostica sesión, lectura de playlists y permisos.
