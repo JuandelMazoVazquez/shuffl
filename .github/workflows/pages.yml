@@ -1,7 +1,10 @@
 name: Pages
 
+# Despliega solo cuando el CI de main termina en verde (o a mano).
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -16,17 +19,22 @@ concurrency:
 
 jobs:
   deploy:
-    if: ${{ !github.event.repository.private || github.event_name == 'workflow_dispatch' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') && (!github.event.repository.private || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - name: Preparar sitio
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Preparar sitio con la versión del commit
         run: |
           mkdir _site
           cp -r index.html manifest.webmanifest sw.js css js icons _site/
+          build="$(git rev-parse --short=8 HEAD)"
+          sed -i "s/__BUILD__/${build}/" _site/sw.js
+          grep -q "const VERSION = '${build}'" _site/sw.js
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

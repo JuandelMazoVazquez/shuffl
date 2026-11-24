@@ -4,8 +4,14 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). E
 
 ## [Sin publicar]
 
+### Añadido
+
+- Auto-actualización: banner «Nueva versión disponible · Actualizar». La caché usa el hash del commit; sin `skipWaiting` automático; se busca versión nueva al volver a primer plano y cada hora; las cachés viejas se borran.
+- Pages despliega solo desde `main` y solo si el CI pasa.
+
 ### Corregido
 
+- Test e2e intermitente «barajar dos playlists combinadas»: la causa era una carrera del test, que daba por terminado el nuevo barajado al ver el texto «Listo» del resultado anterior mientras solo había llegado el primer bloque de 100 canciones. Ahora espera a que termine la tarea (`body.busy`). 100 repeticiones seguidas en verde con 4 workers.
 - En la pestaña Copia aparecía el texto «null» bajo «Copia lista» cuando no había elementos omitidos. Las pantallas de resultado ya no pueden mostrar «null» ni «false».
 
 ## [1.0.0] - 2026-11-23

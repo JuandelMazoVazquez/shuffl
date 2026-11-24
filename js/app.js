@@ -7,6 +7,7 @@ import * as auth from './auth.js';
 import { KEYS, getItem, setItem, removeItem } from './storage.js';
 import { t, setLang, getLang, LANGS } from './i18n.js';
 import { REPO_URL } from './config.js';
+import { registerUpdates } from './update.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 const BARAJA_NAME = '🔀 Baraja';
@@ -837,7 +838,12 @@ async function boot() {
   }
 }
 
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').catch((e) => console.warn('Service worker no registrado', e.message));
+function showUpdateBanner(apply) {
+  if (document.getElementById('update-banner')) return;
+  document.body.append(h('div', { id: 'update-banner', class: 'update-banner', role: 'status' },
+    h('span', {}, t('updateAvailable')),
+    h('button', { class: 'btn primary', type: 'button', onclick: apply }, t('update'))));
 }
+
+registerUpdates({ onUpdate: showUpdateBanner }).catch((e) => console.warn('Service worker no registrado', e.message));
 boot();

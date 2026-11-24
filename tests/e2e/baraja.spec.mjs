@@ -25,6 +25,8 @@ async function login(page) {
   await expect(page.locator('#panel-shuffle label.row', { hasText: 'Rock' })).toBeVisible();
 }
 
+/** La app marca `body.busy` de forma síncrona al empezar una tarea; esperar a que se quite es esperar a que termine. */
+const idle = (page) => expect(page.locator('body')).not.toHaveClass(/busy/);
 const pick = (page, panel, name) => page.locator(`#panel-${panel} label.row`, { hasText: name }).click();
 const names = (list) => list.tracks.map((t) => t.name);
 
@@ -79,8 +81,9 @@ test('barajar dos playlists combinadas en «🔀 Baraja», volver a barajar y de
 
   const first = names(baraja).join();
   await page.getByRole('button', { name: 'Volver a barajar' }).click();
-  await expect(page.getByText('Listo: 180 canciones barajadas')).toBeVisible();
-  await expect.poll(() => names(baraja).join()).not.toBe(first);
+  await idle(page);
+  expect(baraja.tracks).toHaveLength(180);
+  expect(names(baraja).join()).not.toBe(first);
   expect(new Set(baraja.tracks.map((t) => t.uri)).size).toBe(180);
   expect([...state.lists.values()].filter((l) => l.name === '🔀 Baraja')).toHaveLength(1);
 
@@ -90,6 +93,7 @@ test('barajar dos playlists combinadas en «🔀 Baraja», volver a barajar y de
 
   await page.getByRole('button', { name: 'Volver', exact: true }).click();
   await page.locator('#panel-shuffle .btn.primary.big').click();
+  await idle(page);
   await expect(page.getByText('Listo: 180 canciones barajadas')).toBeVisible();
   expect([...state.lists.values()].filter((l) => l.name === '🔀 Baraja')).toHaveLength(1);
 });

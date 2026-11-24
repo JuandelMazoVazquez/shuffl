@@ -37,6 +37,15 @@ a { color: var(--accent); }
 .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 16px; }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 
+.update-banner {
+  position: fixed; z-index: 20; left: 1rem; right: 1rem;
+  bottom: calc(var(--tab-h) + env(safe-area-inset-bottom) + .75rem);
+  display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+  max-width: 38rem; margin: 0 auto; padding: .6rem .75rem .6rem 1rem;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .35);
+}
+
 .top {
   display: flex; align-items: center; justify-content: space-between;
   padding: .6rem 1rem; position: sticky; top: 0; z-index: 5;
