@@ -153,6 +153,26 @@ test('las mezclas viajan en la copia de seguridad: se restauran y se limpian las
   await expect(page.locator('[data-mix]', { hasText: 'Gym' })).toBeVisible();
 });
 
+test('restaurar no pisa una mezcla local con el mismo id', async ({ page }) => {
+  await login(page);
+  await page.evaluate(() => localStorage.setItem('baraja.mixes', JSON.stringify([
+    { id: 'a1', name: 'Editada', ids: ['pl_rock'], names: ['Rock'], dedupe: true, mode: 'reuse', filters: {} },
+  ])));
+  await page.locator('#tab-backup').click();
+  const backup = {
+    app: 'baraja', version: 1, playlists: [],
+    mixes: [
+      { id: 'a1', name: 'Antigua', ids: ['pl_rock'], names: ['Rock'] },
+      { id: 'a2', name: 'Nueva', ids: ['pl_chill'], names: ['Chill'] },
+    ],
+  };
+  await page.locator('#restore-file').setInputFiles({ name: 'b.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(backup)) });
+  await page.getByRole('button', { name: 'Restaurar' }).click();
+  await expect(page.getByText('Mezclas restauradas: 1. 1 ya existían y no se han tocado.')).toBeVisible();
+  const names = (await page.evaluate(() => JSON.parse(localStorage.getItem('baraja.mixes')))).map((m) => m.name);
+  expect(names).toEqual(['Editada', 'Nueva']);
+});
+
 test('el JSON exportado incluye las mezclas guardadas', async ({ page }) => {
   await login(page);
   await page.evaluate(() => localStorage.setItem('baraja.mixes', JSON.stringify([

@@ -4,6 +4,8 @@ import { sanitizeFilters } from './core.js';
 export const MAX_MIXES = 50;
 export const MIX_MODES = ['reuse', 'new', 'self'];
 const MAX_IDS = 500;
+/** Ids de playlist: solo letras, números, «_» y «-». Evita `..`, `/` o `%` que alterarían la ruta de la API. */
+const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 const str = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '');
 
@@ -14,7 +16,7 @@ export function sanitizeMix(raw) {
   const name = str(raw.name, 60).trim();
   if (!id || !name) return null;
   const library = raw.library === true;
-  const ids = Array.isArray(raw.ids) ? raw.ids.filter((x) => typeof x === 'string' && x && x.length <= 64).slice(0, MAX_IDS) : [];
+  const ids = Array.isArray(raw.ids) ? raw.ids.filter((x) => typeof x === 'string' && ID_RE.test(x)).slice(0, MAX_IDS) : [];
   if (!library && ids.length === 0) return null;
   const names = Array.isArray(raw.names) ? raw.names.map((x) => str(x, 100)).slice(0, MAX_IDS) : [];
   return {

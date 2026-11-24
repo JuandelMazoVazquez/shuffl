@@ -35,6 +35,22 @@ test('instantáneas: Top 4 semanas pide limit 50, crea «📸 Top 4 semanas» y 
   expect(undo.uris).toHaveLength(30);
 });
 
+test('actualizar una instantánea no pisa el Deshacer de otra playlist', async ({ page }) => {
+  await login(page);
+  await open(page, 'snap');
+  await page.locator('#snap-go').click();
+  await expect(page.getByText('«📸 Top 4 semanas» lista: 30 canciones.')).toBeVisible();
+  await idle(page);
+  await page.evaluate(() => localStorage.setItem('baraja.undo', JSON.stringify({ playlistId: 'pl_rock', name: 'Rock', uris: ['spotify:track:x'], pending: false, after: 1, date: new Date().toISOString() })));
+  await page.getByRole('button', { name: 'Volver', exact: true }).first().click();
+  await page.locator('#snap-go').click();
+  await expect(page.getByText('«📸 Top 4 semanas» lista: 30 canciones.')).toBeVisible();
+  await idle(page);
+  const undo = await page.evaluate(() => JSON.parse(localStorage.getItem('baraja.undo')));
+  expect(undo.playlistId).toBe('pl_rock');
+  expect(undo.uris).toEqual(['spotify:track:x']);
+});
+
 test('instantáneas: 6 meses, siempre y últimas escuchas (sin repetidas) con opción de barajar', async ({ page }) => {
   await login(page);
   await open(page, 'snap');

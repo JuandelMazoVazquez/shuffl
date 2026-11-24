@@ -57,6 +57,12 @@ test('sanitizeMix valida y recorta', () => {
   assert.equal(weird.dedupe, true);
 });
 
+test('sanitizeMix descarta ids que alterarían la ruta de la API', () => {
+  const m = sanitizeMix({ id: 'm', name: 'x', ids: ['..', '../x', 'a/b', 'a%2e', 'a b', 'a?b', 'ok_1-2', '37i9dQZF1DXcBWIGoYBM5M', '__liked__'] });
+  assert.deepEqual(m.ids, ['ok_1-2', '37i9dQZF1DXcBWIGoYBM5M', '__liked__']);
+  assert.equal(sanitizeMix({ id: 'm', name: 'x', ids: ['..'] }), null);
+});
+
 test('sanitizeMixes quita repetidas y respeta el tope', () => {
   const raw = Array.from({ length: MAX_MIXES + 10 }, (_, i) => ({ id: `m${i}`, name: `n${i}`, ids: ['a'] }));
   assert.equal(sanitizeMixes([...raw, raw[0]]).length, MAX_MIXES);

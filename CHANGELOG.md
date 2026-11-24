@@ -2,7 +2,14 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). El proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 
-## [Sin publicar]
+## [1.1.0] - 2026-11-24
+
+### Seguridad
+
+- Pages solo despliega el CI verde de un push a `main` de este repo (no de forks ni de PR) y nunca un commit más viejo que `main`.
+- Las mezclas guardadas se validan al leerlas y al restaurarlas (ids sin caracteres que alteren la ruta de la API, tope de 50). Restaurar no pisa mezclas locales con el mismo id.
+- Actualizar una instantánea no pisa el Deshacer de otra playlist. El botón «Actualizar» espera si hay una tarea en curso.
+- Reglas de endpoints del proyecto actualizadas a los de Development Mode que usa la app.
 
 ### Añadido
 
@@ -59,4 +66,5 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). E
 - Máximo 10.000 canciones por playlist.
 - Spotify limita las apps en Development Mode a 5 usuarios y exige Premium al dueño.
 
+[1.1.0]: https://github.com/JuandelMazoVazquez/new-spoti/releases/tag/v1.1.0
 [1.0.0]: https://github.com/JuandelMazoVazquez/new-spoti/releases/tag/v1.0.0

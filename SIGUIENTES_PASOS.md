@@ -1,34 +1,24 @@
 # Siguientes pasos
 
-## 1. Qué hay hecho
-- Baraja v1.0.0 completa: barajar (varias playlists + Tus me gusta, destino «🔀 Baraja», nueva o la propia con Deshacer), ordenar (con atajo para copiar Tus me gusta y filtro por fecha), duplicados (exacto/inteligente), copia JSON/CSV y restaurar, Deshacer, es/en, PWA.
-- Investigación en `INVESTIGACION.md`; decisiones en `DECISIONES.md`; ideas futuras en `ROADMAP.md`.
-- 42 tests unitarios y 17 e2e en verde. Capturas en `docs/capturas/`.
-- Repo privado `new-spoti` con la rama `feat/v1-baraja` (sin merge: ver `docs/bandeja.md`).
+## 1. Qué hay hecho (v1.1.0)
+- Todo lo de la v1.0 más: Reproducir ahora, portada propia de «🔀 Baraja», pantalla «Tenerla siempre a mano», logo e iconos nuevos, rediseño con Inicio, mezclas guardadas, filtros, toda la biblioteca, playlists de otras personas con guía, instantáneas, Me gusta sin playlist, dividir, orden combinado, copia ampliada, asistente de alta y compartir. Detalle en `CHANGELOG.md`; decisiones en `DECISIONES.md`.
+- Tests: unitarios y e2e con Spotify simulado en verde; CI y despliegue automático a Pages tras el CI de `main`.
+- Tres rondas de seguridad en la v1.0 y una más sobre la v1.1.
 
-**Pendiente / no verificado**
-- Probado a mano por el dueño contra la API real: barajar una y varias playlists, Tus me gusta, ordenar y duplicados. Copia de seguridad y restaurar no se han probado contra la API real.
-- Tres rondas de revisión de seguridad hechas (la tercera el 2026-11-24).
-- Conocido y menor: si falla a mitad una restauración, queda una playlist «(restaurada)» incompleta; el refresh del token entre pestañas simultáneas puede mostrar sesión caducada hasta recargar.
-- Las cifras de votos de `INVESTIGACION.md` son de resúmenes de búsqueda; Reddit, App Store y Google Play no se pudieron leer.
+## 2. Qué probar con Spotify real
+1. **Reconexión**: al abrir la app con una sesión antigua debe salir «Baraja tiene funciones nuevas: vuelve a conectar» y, tras pulsar, pedir los permisos nuevos.
+2. **▶ Reproducir ahora** (necesita Premium): con Spotify abierto en el móvil, comprobar que apaga el aleatorio y empieza por la primera canción; sin dispositivo activo, la ayuda y el enlace.
+3. **Portada**: tras barajar a «🔀 Baraja», mirar si Spotify muestra la portada (puede tardar un poco). Si falla, el aviso lo dirá; se desactiva en Ajustes.
+4. **Instantáneas** (`/me/top/tracks`, `/me/player/recently-played`) y **copia ampliada** (`/me/albums`, `/me/following` con paginación por cursor): comprobar que devuelven lo esperado en tu cuenta.
+5. **Enlace pegado** de una playlist de otra persona: solo debe mostrar nombre y autor.
+6. **Me gusta sin playlist** y **Dividir** con tu biblioteca real (el primero lee todas tus playlists y tarda).
+7. Color de fondo según la portada: depende de que el CDN de imágenes de Spotify permita leerla (CORS); si no, simplemente no hay degradado.
 
-## 2. Probar en el PC hoy
-1. developer.spotify.com/dashboard → Create app → marca «Web API» → Redirect URI `http://127.0.0.1:5173/` → guarda.
-2. En Settings copia el Client ID; en User Management añade tu email (hace falta Premium en la cuenta dueña).
-3. `npm run dev` y abre `http://127.0.0.1:5173` (no `localhost`). Pega el Client ID y conecta.
-4. Prueba primero con una playlist pequeña tuya.
+## 3. iPhone
+- Para ver el icono nuevo hay que quitar la app de la pantalla de inicio y volver a añadirla (la app lo avisa una vez).
+- Cuando haya versión nueva saldrá el banner «Nueva versión disponible · Actualizar».
 
-## 3. Probar en el iPhone (necesita HTTPS)
-1. `gh repo edit JuandelMazoVazquez/new-spoti --visibility public --accept-visibility-change-consequences`
-2. Ajustes del repo → Pages → origen «GitHub Actions» (el workflow `pages.yml` despliega).
-3. En Spotify añade la Redirect URI `https://juandelmazovazquez.github.io/new-spoti/`.
-4. En Safari abre esa URL → Compartir → Añadir a pantalla de inicio.
-
-## 4. Antes de hacerlo público
-- Revisar README y capturas (las de Playwright usan datos falsos).
-- Comprobar que no hay Client ID ni datos personales en el código (`js/config.js` está vacío).
-- El nombre en `LICENSE` es "Juan del Mazo"; cámbialo si prefieres otro.
-- Mergear `feat/v1-baraja` a `main`.
-
-## 5. Ideas para la v2
-Ver `ROADMAP.md`: dividir playlists, Tus me gusta sin playlist, intersección/diferencia, instantáneas con historial, plantillas de ordenación.
+## 4. Pendiente
+- **Logo oficial de Spotify**: no está incluido; las referencias son enlaces de texto («LISTEN ON SPOTIFY», «Abrir en Spotify»). Si quieres cumplir al pie de la letra las normas de marca donde salen carátulas, añade el recurso oficial sin modificar (mínimo 21 px el icono).
+- Menores conocidos: una restauración que falla a mitad deja una playlist «(restaurada)» incompleta; el refresh del token entre pestañas simultáneas puede mostrar sesión caducada hasta recargar; el test de Escape/animaciones usa esperas cortas solo para las capturas del README.
+- Ideas futuras en `ROADMAP.md`.
