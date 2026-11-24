@@ -44,7 +44,7 @@ export function makeTrack(i, o = {}) {
   return {
     id: `t${String(i).padStart(21, '0')}`, uri: `spotify:track:t${String(i).padStart(21, '0')}`, type: 'track', name: o.name ?? `Canción ${String(i).padStart(3, '0')}`,
     artists: [{ name: o.artist ?? `Artista ${i % 7}` }], duration_ms: 120000 + i * 1000,
-    disc_number: 1, track_number: (i % 12) + 1, external_ids: o.isrc ? { isrc: o.isrc } : {},
+    explicit: o.explicit ?? i % 5 === 0, disc_number: 1, track_number: (i % 12) + 1, external_ids: o.isrc ? { isrc: o.isrc } : {},
     album: { id: `al${i % 9}`, name: `Álbum ${i % 9}`, release_date: o.release ?? `${1990 + (i % 30)}-0${1 + (i % 9)}-01`, release_date_precision: 'day', images: [] },
   };
 }

@@ -25,9 +25,30 @@ test('randomInt: validación de argumentos', () => {
   assert.equal(randomInt(1), 0);
 });
 
-test('randomInt: distribución uniforme (chi-cuadrado)', () => {
+/** PRNG determinista (mulberry32) con la forma de crypto.getRandomValues: los tests estadísticos nunca fallan al azar. */
+function seeded(seed) {
+  let a = seed >>> 0;
+  return (buf) => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    buf[0] = (t ^ (t >>> 14)) >>> 0;
+  };
+}
+const seededShuffle = (items, rng) => shuffle(items, (n) => randomInt(n, rng));
+
+test('randomInt con crypto real: siempre dentro del rango', () => {
+  for (let i = 0; i < 2000; i++) {
+    const v = randomInt(7);
+    assert.ok(Number.isInteger(v) && v >= 0 && v < 7);
+  }
+});
+
+test('randomInt: distribución uniforme (chi-cuadrado, semilla fija)', () => {
+  const rng = seeded(20260124);
   const N = 120000, max = 6, counts = new Array(max).fill(0);
-  for (let i = 0; i < N; i++) counts[randomInt(max)]++;
+  for (let i = 0; i < N; i++) counts[randomInt(max, rng)]++;
   const exp = N / max;
   const chi = counts.reduce((s, c) => s + (c - exp) ** 2 / exp, 0);
   assert.ok(chi < 25, `chi=${chi} (df=5, p<0.0002)`);
@@ -36,7 +57,7 @@ test('randomInt: distribución uniforme (chi-cuadrado)', () => {
 test('shuffle: no pierde ni duplica elementos ni muta la entrada', () => {
   const input = Array.from({ length: 500 }, (_, i) => i);
   const copy = input.slice();
-  const out = shuffle(input);
+  const out = seededShuffle(input, seeded(1));
   assert.deepEqual(input, copy);
   assert.deepEqual([...out].sort((a, b) => a - b), input);
   assert.notDeepEqual(out, input);
@@ -47,10 +68,11 @@ test('shuffle: casos límite', () => {
   assert.deepEqual(shuffle([7]), [7]);
 });
 
-test('shuffle: cada elemento es equiprobable en cada posición (chi-cuadrado)', () => {
+test('shuffle: cada elemento es equiprobable en cada posición (chi-cuadrado, semilla fija)', () => {
+  const rng = seeded(7);
   const n = 5, runs = 100000;
   const pos = Array.from({ length: n }, () => new Array(n).fill(0));
-  for (let r = 0; r < runs; r++) shuffle([0, 1, 2, 3, 4]).forEach((el, p) => pos[p][el]++);
+  for (let r = 0; r < runs; r++) seededShuffle([0, 1, 2, 3, 4], rng).forEach((el, p) => pos[p][el]++);
   const exp = runs / n;
   for (let p = 0; p < n; p++) {
     const chi = pos[p].reduce((s, c) => s + (c - exp) ** 2 / exp, 0);
@@ -58,10 +80,11 @@ test('shuffle: cada elemento es equiprobable en cada posición (chi-cuadrado)', 
   }
 });
 
-test('shuffle: las 24 permutaciones de 4 elementos son equiprobables', () => {
+test('shuffle: las 24 permutaciones de 4 elementos son equiprobables (semilla fija)', () => {
+  const rng = seeded(99);
   const runs = 120000, freq = new Map();
   for (let r = 0; r < runs; r++) {
-    const k = shuffle([0, 1, 2, 3]).join('');
+    const k = seededShuffle([0, 1, 2, 3], rng).join('');
     freq.set(k, (freq.get(k) ?? 0) + 1);
   }
   assert.equal(freq.size, 24);

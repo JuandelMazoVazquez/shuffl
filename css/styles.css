@@ -136,7 +136,8 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
 .more { margin-top: .8rem; }
 .more summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--muted); }
 .dates { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
-.dates label { display: flex; flex-direction: column; gap: .2rem; font-size: .85rem; color: var(--muted); }
+.dates label, .field-wide { display: flex; flex-direction: column; gap: .2rem; font-size: .85rem; color: var(--muted); }
+.field-wide { margin-top: .6rem; }
 
 .status { margin-top: 1rem; min-height: 1.5rem; }
 .live { color: var(--muted); margin: 0; }

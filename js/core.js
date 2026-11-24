@@ -79,6 +79,7 @@ export function normalizeEntry(entry) {
       durationMs: it.duration_ms ?? 0,
       isrc: it.external_ids?.isrc ?? '',
       addedAt: entry.added_at ?? '',
+      explicit: !!it.explicit,
       discNumber: it.disc_number ?? 1,
       trackNumber: it.track_number ?? 0,
       isLocal: false,
@@ -196,6 +197,49 @@ export function filterByAdded(tracks, from, to) {
   });
 }
 
+// ---------- Filtros previos al barajado ----------
+
+export const EXPLICIT_MODES = ['any', 'only', 'none'];
+export const emptyFilters = () => ({ yearFrom: '', yearTo: '', addedFrom: '', addedTo: '', minMin: '', maxMin: '', explicit: 'any' });
+
+const num = (v) => (v === '' || v == null || !Number.isFinite(Number(v)) ? null : Number(v));
+
+export function hasFilters(f) {
+  return !!f && (['yearFrom', 'yearTo', 'addedFrom', 'addedTo', 'minMin', 'maxMin'].some((k) => String(f[k] ?? '') !== '') || (f.explicit ?? 'any') !== 'any');
+}
+
+/** Filtros que elige el usuario; se aplican antes de barajar, que luego es uniforme sobre lo que queda. */
+export function filterTracks(tracks, f) {
+  if (!hasFilters(f)) return tracks.slice();
+  const [yFrom, yTo, mMin, mMax] = [num(f.yearFrom), num(f.yearTo), num(f.minMin), num(f.maxMin)];
+  return tracks.filter((t) => {
+    if (yFrom !== null || yTo !== null) {
+      const year = parseReleaseDate(t.releaseDate, t.releaseDatePrecision)?.year;
+      if (year == null || (yFrom !== null && year < yFrom) || (yTo !== null && year > yTo)) return false;
+    }
+    if (f.addedFrom || f.addedTo) {
+      const d = t.addedAt?.slice(0, 10);
+      if (!d || (f.addedFrom && d < f.addedFrom) || (f.addedTo && d > f.addedTo)) return false;
+    }
+    if (mMin !== null && t.durationMs < mMin * 60000) return false;
+    if (mMax !== null && t.durationMs > mMax * 60000) return false;
+    if (f.explicit === 'only' && !t.explicit) return false;
+    if (f.explicit === 'none' && t.explicit) return false;
+    return true;
+  });
+}
+
+/** Limpia filtros venidos de fuera (almacenamiento o copia): solo valores con el formato esperado. */
+export function sanitizeFilters(raw) {
+  const f = emptyFilters();
+  if (!raw || typeof raw !== 'object') return f;
+  for (const k of ['yearFrom', 'yearTo']) if (/^\d{4}$/.test(String(raw[k] ?? ''))) f[k] = String(raw[k]);
+  for (const k of ['addedFrom', 'addedTo']) if (/^\d{4}-\d{2}-\d{2}$/.test(String(raw[k] ?? ''))) f[k] = String(raw[k]);
+  for (const k of ['minMin', 'maxMin']) if (/^\d{1,4}(\.\d{1,2})?$/.test(String(raw[k] ?? ''))) f[k] = String(raw[k]);
+  if (EXPLICIT_MODES.includes(raw.explicit)) f.explicit = raw.explicit;
+  return f;
+}
+
 // ---------- Duplicados ----------
 
 const KEEP_RE = /\b(live|en vivo|acoustic|ac[uú]stic[oa]|unplugged)\b/i;
@@ -253,12 +297,14 @@ const slim = (t) => ({
   releaseDate: t.releaseDate, durationMs: t.durationMs, isrc: t.isrc, addedAt: t.addedAt,
 });
 
-export function buildBackup(playlists, now = new Date()) {
+/** `extra` añade secciones opcionales (mezclas guardadas, álbumes, artistas). */
+export function buildBackup(playlists, now = new Date(), extra = {}) {
   return {
     app: 'baraja',
     version: 1,
     exportedAt: now.toISOString(),
     playlists: playlists.map((p) => ({ id: p.id, name: p.name, isLiked: !!p.isLiked, tracks: p.tracks.map(slim) })),
+    ...extra,
   };
 }
 

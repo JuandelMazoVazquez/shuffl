@@ -17,6 +17,7 @@ export async function registerUpdates({ onUpdate, url = 'sw.js' } = {}) {
   });
 
   const reg = await navigator.serviceWorker.register(url);
+  if (!reg) return null;
   const offer = (worker) => onUpdate?.(() => {
     wanted = true;
     worker.postMessage({ type: 'SKIP_WAITING' });
