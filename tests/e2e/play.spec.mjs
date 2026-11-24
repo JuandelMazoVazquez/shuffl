@@ -50,6 +50,7 @@ test('Reproducir ahora con dispositivos inactivos deja elegir en una hoja inferi
 
   state.playerCalls.length = 0;
   await page.locator('#play-now').click();
+  await expect(page.getByRole('dialog', { name: 'Elige dónde reproducir' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(state.playerCalls).toEqual([]);

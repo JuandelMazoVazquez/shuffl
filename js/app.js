@@ -2,7 +2,7 @@ import {
   LIKED_ID, shuffle, uniqueByUri, capPlaylist, normalizeEntries, normalizePlaylist, sortTracks, SORT_KEYS,
   filterByAdded, findDuplicates, removeIndexes, buildBackup, toCsv, validateBackup, MAX_BACKUP_BYTES, MAX_BACKUP_PLAYLISTS,
   EXPLICIT_MODES, emptyFilters, hasFilters, filterTracks, sanitizeFilters, organizePlaylists, parsePlaylistRef,
-  SPLIT_MODES, MAX_SPLIT_PARTS, splitTracks,
+  SPLIT_MODES, MAX_SPLIT_PARTS, splitTracks, MULTI_KEYS, sortTracksBy, normalizeAlbum, normalizeFollowedArtist, toLibraryCsv,
 } from './core.js';
 import { sanitizeMix, sanitizeMixes, upsertMix, removeMix, newMixId, mixSources } from './mixes.js';
 import { SpotifyApi, ApiError } from './api.js';
@@ -775,6 +775,18 @@ function sortPanel() {
   const status = createStatus();
   const result = h('div', { class: 'result', hidden: true });
   const sortSel = h('select', { id: 'sort-key', 'aria-label': t('sortBy') }, SORT_KEYS.map((k) => h('option', { value: k }, t(`sort_${k}`))));
+  const thenSelect = (id) => h('select', { id, 'aria-label': t('thenBy') }, h('option', { value: '' }, t('thenNone')), MULTI_KEYS.map((k) => h('option', { value: k }, t(`sort_${k}`))));
+  const then1 = thenSelect('sort-then1');
+  const then2 = thenSelect('sort-then2');
+  const criteria = () => [sortSel.value, then1.value, then2.value].filter(Boolean);
+  const criteriaLabel = () => criteria().map((k) => t(`sort_${k}`).toLowerCase()).join(' → ');
+  const syncCriteria = () => {
+    const multi = MULTI_KEYS.includes(sortSel.value);
+    then1.disabled = !multi;
+    if (!multi) then1.value = '';
+    then2.disabled = !multi || !then1.value;
+    if (then2.disabled) then2.value = '';
+  };
   const from = h('input', { type: 'date', id: 'sort-from', 'aria-label': t('addedFrom') });
   const to = h('input', { type: 'date', id: 'sort-to', 'aria-label': t('addedTo') });
   const nameIn = h('input', { type: 'text', id: 'sort-name', class: 'text', maxlength: '100', 'aria-label': t('newName') });
@@ -786,7 +798,7 @@ function sortPanel() {
   const suggest = () => {
     if (touched) return;
     const sel = picker.getSelected()[0];
-    nameIn.value = sel ? `${sel.name} (${t(`sort_${sortSel.value}`).toLowerCase()})` : '';
+    nameIn.value = sel ? `${sel.name} (${criteriaLabel()})`.slice(0, 100) : '';
   };
   const refresh = () => {
     const sel = picker.getSelected();
@@ -798,7 +810,8 @@ function sortPanel() {
   };
   const picker = createPicker({ multi: false, disabledReason: baseReason, onChange: refresh });
   [from, to].forEach((el) => el.addEventListener('change', refresh));
-  sortSel.addEventListener('change', suggest);
+  for (const el of [sortSel, then1, then2]) el.addEventListener('change', () => { syncCriteria(); suggest(); });
+  syncCriteria();
   nameIn.addEventListener('input', () => { touched = true; });
 
   const likedShortcut = h('button', { class: 'btn shortcut', type: 'button', onclick: () => copyLiked() }, t('copyLikedShortcut'));
@@ -806,6 +819,8 @@ function sortPanel() {
     h('p', { class: 'lead' }, t('sortLead')), likedShortcut,
     h('h2', {}, t('source')), picker.el,
     h('h2', {}, t('sortBy')), sortSel,
+    h('label', { class: 'field-wide' }, t('thenBy'), then1),
+    h('label', { class: 'field-wide' }, t('thenBy'), then2),
     h('details', { class: 'more' }, h('summary', {}, t('dateFilter')),
       h('div', { class: 'dates' }, h('label', {}, t('addedFrom'), from), h('label', {}, t('addedTo'), to))),
     h('h2', {}, t('destination')),
@@ -828,7 +843,10 @@ function sortPanel() {
       const overwrite = rOver.checked;
       const { tracks, skipped } = await readSources([sel], status);
       if (overwrite && !confirmOverwrite(sel.name, skippedCount(skipped))) { status.clear(); return; }
-      const sorted = sortTracks(filterByAdded(tracks, from.value, to.value), sortSel.value);
+      const keys = criteria();
+      if (new Set(keys).size !== keys.length) throw new UserError(t('sortDup'));
+      const filtered = filterByAdded(tracks, from.value, to.value);
+      const sorted = keys.length === 1 ? sortTracks(filtered, keys[0]) : sortTracksBy(filtered, keys);
       if (!sorted.length) throw new UserError(t('errEmpty'));
       let playlistId;
       if (overwrite) {
@@ -1175,7 +1193,11 @@ function backupPanel() {
   const status = createStatus();
   const out = h('div', { class: 'result', hidden: true });
   const exportBtn = h('button', { class: 'btn primary big', type: 'button', disabled: true, onclick: () => prepare() }, t('exportBtn'));
-  const picker = createPicker({ multi: true, disabledReason: baseReason, onChange: (sel) => { exportBtn.disabled = sel.length === 0; } });
+  const incAlbums = h('input', { type: 'checkbox', id: 'inc-albums', checked: true });
+  const incArtists = h('input', { type: 'checkbox', id: 'inc-artists', checked: true });
+  const refreshExport = () => { exportBtn.disabled = picker.getSelected().length === 0 && !incAlbums.checked && !incArtists.checked; };
+  const picker = createPicker({ multi: true, disabledReason: baseReason, onChange: refreshExport });
+  [incAlbums, incArtists].forEach((el) => el.addEventListener('change', refreshExport));
   const restoreBox = h('div', { class: 'restore', hidden: true });
   const fileIn = h('input', { type: 'file', id: 'restore-file', accept: '.json,application/json', 'aria-label': t('restoreChoose'), onchange: () => loadRestore() });
 
@@ -1190,19 +1212,33 @@ function backupPanel() {
         skippedTotal += skippedCount(skipped);
         lists.push({ id: pl.id, name: pl.name, isLiked: pl.isLiked, tracks });
       }
+      let albums = [];
+      let artists = [];
+      if (incAlbums.checked) {
+        status.say(t('backupReadingAlbums'));
+        albums = (await S.api.getSavedAlbums()).map(normalizeAlbum).filter(Boolean);
+      }
+      if (incArtists.checked) {
+        status.say(t('backupReadingArtists'));
+        artists = (await S.api.getFollowedArtists()).map(normalizeFollowedArtist).filter(Boolean);
+      }
       const stamp = new Date().toISOString().slice(0, 10);
       const mixes = getMixes();
-      const jsonBlob = new Blob([JSON.stringify(buildBackup(lists, new Date(), mixes.length ? { mixes } : {}))], { type: 'application/json' });
+      const extra = { ...(mixes.length ? { mixes } : {}), ...(incAlbums.checked ? { albums } : {}), ...(incArtists.checked ? { artists } : {}) };
+      const jsonBlob = new Blob([JSON.stringify(buildBackup(lists, new Date(), extra))], { type: 'application/json' });
       if (jsonBlob.size > MAX_BACKUP_BYTES) throw new UserError(t('errBackupLimit'));
       const csvBlob = new Blob(['﻿', toCsv(lists)], { type: 'text/csv' });
+      const libraryBlob = new Blob(['﻿', toLibraryCsv(albums, artists)], { type: 'text/csv' });
       const total = lists.reduce((n, p) => n + p.tracks.length, 0);
       status.clear();
       setKids(out,
         h('h2', { class: 'result-title' }, t('backupReady', { n: fmt(total), p: fmt(lists.length) })),
+        albums.length || artists.length ? h('p', { class: 'note', id: 'backup-extra' }, t('backupExtra', { a: fmt(albums.length), b: fmt(artists.length) })) : null,
         skippedTotal ? h('p', { class: 'note' }, t('skipped', { n: fmt(skippedTotal) })) : null,
         h('div', { class: 'actions' },
           h('button', { class: 'btn primary', type: 'button', id: 'save-json', onclick: () => saveFile(jsonBlob, `baraja-${stamp}.json`, status) }, t('saveJson')),
-          h('button', { class: 'btn', type: 'button', id: 'save-csv', onclick: () => saveFile(csvBlob, `baraja-${stamp}.csv`, status) }, t('saveCsv'))));
+          lists.length ? h('button', { class: 'btn', type: 'button', id: 'save-csv', onclick: () => saveFile(csvBlob, `baraja-${stamp}.csv`, status) }, t('saveCsv')) : null,
+          albums.length || artists.length ? h('button', { class: 'btn', type: 'button', id: 'save-library-csv', onclick: () => saveFile(libraryBlob, `baraja-biblioteca-${stamp}.csv`, status) }, t('saveLibraryCsv')) : null));
       out.hidden = false;
     });
   }
@@ -1215,13 +1251,13 @@ function backupPanel() {
     try {
       if (file.size > MAX_BACKUP_BYTES) throw new UserError(t('errBackupSize'));
       const parsed = JSON.parse(await file.text());
-      showRestore(validateBackup(parsed), sanitizeMixes(parsed.mixes));
+      showRestore(validateBackup(parsed), sanitizeMixes(parsed.mixes), [parsed.albums, parsed.artists].map((x) => (Array.isArray(x) ? x.length : 0)));
     } catch (e) {
       status.fail(e instanceof UserError ? e : e instanceof SyntaxError ? new UserError(t('restoreBad_notBackup')) : new UserError(t(`restoreBad_${typeof e.code === 'string' ? e.code : 'notBackup'}`)));
     }
   }
 
-  function showRestore(playlists, mixes = []) {
+  function showRestore(playlists, mixes = [], [albumCount, artistCount] = [0, 0]) {
     const boxes = playlists.map((p) => {
       const box = h('input', { type: 'checkbox' });
       box.checked = true;
@@ -1237,6 +1273,7 @@ function backupPanel() {
       h('ul', { class: 'restore-list' },
         boxes.map(({ p, box }) => h('li', {}, h('label', { class: 'check' }, box, h('span', {}, `${p.name} · ${t('songs', { n: fmt(p.tracks.length) })}`)))),
         mixes.length ? h('li', {}, h('label', { class: 'check' }, mixBox, h('span', {}, t('restoreMixes', { n: fmt(mixes.length) })))) : null),
+      albumCount || artistCount ? h('p', { class: 'note', id: 'restore-library-note' }, t('restoreLibraryNote', { a: fmt(albumCount), b: fmt(artistCount) })) : null,
       go);
     restoreBox.hidden = false;
 
@@ -1273,7 +1310,10 @@ function backupPanel() {
 
   return h('section', { class: 'panel', id: 'panel-backup', hidden: true },
     h('p', { class: 'lead' }, t('backupLead')),
-    h('h2', {}, t('source')), picker.el, exportBtn, out,
+    h('h2', {}, t('source')), picker.el,
+    h('label', { class: 'check' }, incAlbums, h('span', {}, t('incAlbums'))),
+    h('label', { class: 'check' }, incArtists, h('span', {}, t('incArtists'))),
+    exportBtn, out,
     h('h2', {}, t('restoreTitle')), h('p', { class: 'muted' }, t('restoreLead')), fileIn, restoreBox,
     status.el);
 }
@@ -1298,6 +1338,19 @@ function settingsPanel() {
     THEMES.map((k) => { const o = h('option', { value: k }, t(`theme_${k}`)); if (k === currentTheme()) o.selected = true; return o; }));
   const coverToggle = h('input', { type: 'checkbox', id: 'cover-toggle', onchange: () => setItem(KEYS.cover, coverToggle.checked) });
   coverToggle.checked = coverEnabled();
+  const diagList = h('ul', { class: 'diag', id: 'diag-results' });
+  async function diagnose() {
+    const rows = [];
+    const check = async (label, fn) => {
+      try { rows.push({ label, ok: true, detail: await fn() }); } catch (e) { rows.push({ label, ok: false, detail: errorMessage(e) }); }
+    };
+    await check(t('diagAccount'), async () => { const me = await S.api.getMe(); return me.display_name || me.id; });
+    await check(t('diagPlaylists'), async () => { await S.api.request('GET', '/me/playlists?limit=1'); return ''; });
+    const missing = auth.missingScopes(getItem(KEYS.tokens));
+    rows.push({ label: t('diagScopes'), ok: missing.length === 0, detail: missing.join(', ') });
+    setKids(diagList, rows.map((r) => h('li', { class: r.ok ? 'ok' : 'bad' }, `${r.ok ? '✓' : '✗'} ${r.label}${r.detail ? ` — ${r.detail}` : ''}`)));
+  }
+  const diagBtn = h('button', { class: 'btn', type: 'button', id: 'run-diag', onclick: () => task(status, diagnose) }, t('diagRun'));
   const undoInfo = h('p', { class: 'muted' });
   const undoBtn = h('button', { class: 'btn', type: 'button', onclick: () => task(status, async () => {
     if (await applyUndo(status)) status.say(t('undone'));
@@ -1314,6 +1367,7 @@ function settingsPanel() {
     h('button', { class: 'btn', type: 'button', onclick: () => { auth.setClientId(idIn.value); status.say(t('saved')); } }, t('save')),
     h('h2', {}, t('redirectUri')), copyBox(auth.redirectUri()),
     h('h2', {}, t('language')), langSel,
+    h('h2', {}, t('diagRun')), h('p', { class: 'muted' }, t('diagLead')), diagBtn, diagList,
     h('h2', {}, t('themeTitle')), themeSel,
     h('h2', {}, t('coverTitle')),
     h('label', { class: 'check' }, coverToggle, h('span', {}, t('coverToggle'))),
@@ -1464,14 +1518,27 @@ function renderSetup(problem) {
   const langSel = h('select', { 'aria-label': t('language'), onchange: () => { setLang(langSel.value); renderSetup(problem); } },
     LANGS.map(([code, label]) => { const o = h('option', { value: code }, label); if (code === getLang()) o.selected = true; return o; }));
   const steps = ['step1', 'step2', 'step3', 'step4', 'step5'];
+  const actions = {
+    step1: h('a', { class: 'btn', href: 'https://developer.spotify.com/dashboard', target: '_blank', rel: 'noopener', id: 'open-dashboard' }, t('openDashboard')),
+    step3: copyBox(auth.redirectUri()),
+    step4: idIn,
+  };
+  const stepItem = (s, i) => {
+    const li = h('li', { class: 'step' });
+    const box = h('input', { type: 'checkbox', 'aria-label': t('stepDone', { n: i + 1 }), onchange: () => li.classList.toggle('done', box.checked) });
+    li.append(h('label', { class: 'check step-head' }, box, h('span', {}, t(s))));
+    if (actions[s]) li.append(actions[s]);
+    return li;
+  };
   setKids(root,h('main', { class: 'setup' },
     h('div', { class: 'brand' }, h('img', { src: 'icons/icon.svg', alt: '', width: '72', height: '72' }), h('h1', {}, 'Baraja')),
     h('p', { class: 'lead' }, t('welcome')),
     h('h2', {}, t('guideTitle')),
-    h('ol', { class: 'steps' }, steps.map((s) => h('li', {}, t(s)))),
-    h('p', { class: 'muted' }, t('redirectUri')), copyBox(auth.redirectUri()),
+    h('ol', { class: 'steps' }, steps.map(stepItem)),
     h('p', { class: 'muted' }, t('premiumNote')),
-    h('h2', {}, t('clientId')), idIn, err, connect,
+    err, connect,
+    h('details', { class: 'more', id: 'setup-diagnosis' }, h('summary', {}, t('diagTitle')),
+      h('ul', { class: 'diag' }, ['diagRedirect', 'diagUserMgmt', 'diagPremium', 'diagQuota', 'diagClientId'].map((k) => h('li', {}, t(k))))),
     h('p', { class: 'muted small' }, t('notAffiliated')),
     langSel));
 }

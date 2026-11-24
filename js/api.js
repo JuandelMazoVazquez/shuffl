@@ -147,6 +147,25 @@ export class SpotifyApi {
     });
   }
 
+  getSavedAlbums(onProgress) {
+    return this.paginate('/me/albums', onProgress);
+  }
+
+  /** Artistas seguidos: la paginación es por cursor (`after`), no por offset. */
+  async getFollowedArtists() {
+    const out = [];
+    let after = '';
+    for (let page = 0; page < 200; page++) {
+      const data = await this.request('GET', `/me/following?type=artist&limit=50${after ? `&after=${encodeURIComponent(after)}` : ''}`);
+      const items = data?.artists?.items;
+      if (!Array.isArray(items)) throw new ApiError(0, 'incomplete');
+      out.push(...items);
+      after = data.artists.cursors?.after ?? '';
+      if (!after || items.length === 0) return out;
+    }
+    throw new ApiError(0, 'incomplete');
+  }
+
   /** `range`: short_term (4 semanas), medium_term (6 meses) o long_term (siempre). */
   async getTopTracks(range) {
     const data = await this.request('GET', `/me/top/tracks?limit=50&time_range=${encodeURIComponent(range)}`);
