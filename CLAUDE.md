@@ -13,6 +13,7 @@ PWA estática (HTML + CSS + JS vanilla con ES modules, sin build ni dependencias
 - Solo estos endpoints: /me, /me/playlists, /playlists/{id}/items, /me/tracks, POST /me/playlists. Nada de browse, recomendaciones, audio-features ni peticiones por lotes.
 - Nunca `innerHTML` con datos de Spotify; sin tokens en logs; el service worker no toca otros orígenes.
 - Antes de sobrescribir una playlist: guardar Deshacer (`saveUndo`) y no escribir si la lectura fue incompleta.
-- Al cambiar archivos de la app, subir `CACHE` en `sw.js`.
+- La versión de la caché la inyecta el despliegue (`__BUILD__` en `sw.js`, hash del commit): no se sube a mano. Si añades un archivo a la app, inclúyelo en `SHELL` de `sw.js` y en la copia de `pages.yml`.
+- Pages despliega solo desde main y solo si el CI pasa.
 - No se usa "Spotify" en el nombre ni el logo de la app.
 - Push, merge y hacer público el repo: solo con OK del usuario (ver docs/bandeja.md).

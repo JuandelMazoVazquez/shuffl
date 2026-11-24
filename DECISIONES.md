@@ -24,7 +24,9 @@ Trabajo hecho sin supervisión el 2026-11-23. Todo lo reversible lo decidí yo; 
 - **Cero dependencias de runtime**; única devDependency, `@playwright/test` (pedida en el enunciado).
 - **`node --test "tests/unit/*.test.js"`**: en Node 24, `node --test carpeta/` no funciona.
 - **Playlists leídas con `limit=50`** (el máximo actual de `/items`) y escrituras de 100 en 100.
-- **Service worker**: cache-first para recursos propios, network-first para la navegación, caché versionada (`baraja-v4`; hay que subirla al cambiar archivos, ver CONTRIBUTING). Nunca toca otros orígenes.
+- **Service worker**: cache-first para recursos propios, network-first para la navegación, caché versionada con el hash del commit inyectado en el despliegue (`baraja-<hash>`), sin `skipWaiting` automático: la versión nueva espera a que el usuario pulse «Actualizar» (mensaje `SKIP_WAITING` y una sola recarga en `controllerchange`). Comprueba actualizaciones al volver a primer plano y cada hora. Nunca toca otros orígenes. En desarrollo (`dev`) no intercepta.
+- **Despliegue**: Pages se lanza con `workflow_run` cuando el CI de `main` termina en verde, para no desplegar con tests rotos; `workflow_dispatch` sigue disponible.
+- **Test intermitente de barajar**: era una carrera del propio test (comprobaba con el texto «Listo» del resultado anterior, aún visible, mientras la escritura iba por el primer bloque de 100). Ahora espera a que `body.busy` se quite.
 - **Tests e2e con el service worker bloqueado** para que no interfiera con `page.route`.
 - **Licencia MIT a nombre de "Juan del Mazo"** (nombre del perfil de GitHub).
 - **Iconos** generados con `scripts/make-icons.mjs` (Chromium de Playwright renderiza el SVG a PNG).

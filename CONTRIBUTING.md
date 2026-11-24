@@ -25,7 +25,7 @@ Toda lógica nueva lleva test unitario.
 
 ## Service worker
 
-Si cambias cualquier archivo de la app, sube la versión de `CACHE` en `sw.js` (`baraja-v1` pasa a `baraja-v2`). Sin eso, los clientes con la versión anterior en caché no reciben los cambios. Si añades un archivo a la app, inclúyelo también en `SHELL`.
+La versión de la caché no se toca a mano: el workflow de Pages sustituye `__BUILD__` en `sw.js` por el hash del commit, y los clientes ven el banner «Nueva versión disponible». En desarrollo la versión es `dev` y el service worker no intercepta nada. Si añades un archivo a la app, inclúyelo en `SHELL` de `sw.js`.
 
 ## Ramas y commits
 
