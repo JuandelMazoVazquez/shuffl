@@ -1,7 +1,9 @@
 import {
   LIKED_ID, shuffle, uniqueByUri, capPlaylist, normalizeEntries, normalizePlaylist, sortTracks, SORT_KEYS,
   filterByAdded, findDuplicates, removeIndexes, buildBackup, toCsv, validateBackup, MAX_BACKUP_BYTES, MAX_BACKUP_PLAYLISTS,
+  EXPLICIT_MODES, emptyFilters, hasFilters, filterTracks, sanitizeFilters,
 } from './core.js';
+import { sanitizeMix, sanitizeMixes, upsertMix, removeMix, newMixId, mixSources } from './mixes.js';
 import { SpotifyApi, ApiError } from './api.js';
 import * as auth from './auth.js';
 import { KEYS, getItem, setItem, removeItem } from './storage.js';
@@ -14,7 +16,7 @@ import { imageDominantColor, rgbCss } from './color.js';
 const SVGNS = 'http://www.w3.org/2000/svg';
 const BARAJA_NAME = '🔀 Baraja';
 const root = document.getElementById('app');
-const S = { api: null, me: null, playlists: [], loaded: false, busy: false, tab: 'home', pickers: [] };
+const S = { api: null, me: null, playlists: [], sourceCache: new Map(), loaded: false, busy: false, tab: 'home', pickers: [] };
 let pickerSeq = 0;
 
 // ---------- DOM ----------
@@ -52,6 +54,8 @@ function icon(...paths) {
 }
 
 const ICONS = {
+  edit: ['M12 20h9', 'M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z'],
+  trash: ['M3 6h18', 'M8 6V4h8v2', 'M19 6l-1 14H6L5 6'],
   home: ['M3 11 12 3l9 8', 'M5 9.5V21h14V9.5'],
   shuffle: ['M16 3h5v5', 'M4 20 21 3', 'M21 16v5h-5', 'M15 15l6 6', 'M4 4l5 5'],
   sort: ['m21 16-4 4-4-4', 'M17 20V4', 'm3 8 4-4 4 4', 'M7 4v16'],
@@ -144,7 +148,29 @@ async function loadPlaylists() {
   const raw = await S.api.getMyPlaylists();
   S.playlists = [likedEntry(S.playlists.find((p) => p.isLiked)), ...raw.filter(Boolean).map((p) => normalizePlaylist(p, S.me.id))];
   S.loaded = true;
+  S.sourceCache.clear();
   S.pickers.forEach((p) => p.update());
+}
+
+const getMixes = () => sanitizeMixes(getItem(KEYS.mixes, []));
+const setMixes = (list) => setItem(KEYS.mixes, list);
+
+/** Hoja inferior con un campo de texto. Devuelve el texto o null si se cancela. */
+function askName({ title, value = '' }) {
+  return new Promise((resolve) => {
+    const input = h('input', { type: 'text', class: 'text', id: 'ask-name', maxlength: '60', value, 'aria-label': title });
+    const onKey = (e) => { if (e.key === 'Escape') close(null); if (e.key === 'Enter') close(input.value.trim() || null); };
+    const close = (v) => { document.removeEventListener('keydown', onKey); sheet.remove(); resolve(v); };
+    const sheet = h('div', { class: 'sheet-backdrop', onclick: (e) => { if (e.target === sheet) close(null); } },
+      h('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
+        h('h2', {}, title), input,
+        h('button', { class: 'btn primary', type: 'button', id: 'ask-ok', onclick: () => close(input.value.trim() || null) }, t('save')),
+        h('button', { class: 'btn', type: 'button', onclick: () => close(null) }, t('cancel'))));
+    document.addEventListener('keydown', onKey);
+    document.body.append(sheet);
+    input.focus();
+    input.select();
+  });
 }
 
 let tintToken = 0;
@@ -423,35 +449,158 @@ function shufflePanel() {
   const destBox = h('div', { class: 'choices' },
     mkRadio('reuse', t('destReuse'), t('destReuseHint')), mkRadio('new', t('destNew'), t('destNewHint')), mkRadio('self', t('destSelf'), t('destSelfHint')));
   radios.reuse.checked = true;
-  const go = h('button', { class: 'btn primary big', type: 'button', disabled: true, onclick: () => run() }, t('shuffleBtn'));
+  const go = h('button', { class: 'btn primary big', type: 'button', id: 'shuffle-go', disabled: true, onclick: () => run() }, t('shuffleBtn'));
+
+  // Filtros (se aplican antes de barajar; el barajado sigue siendo uniforme sobre lo que queda)
+  const fields = {};
+  const field = (key, label, props) => {
+    fields[key] = h('input', { class: 'text', id: `f-${key}`, ...props });
+    fields[key].addEventListener('input', onFilterChange);
+    return h('label', {}, label, fields[key]);
+  };
+  fields.explicit = h('select', { id: 'f-explicit', onchange: () => onFilterChange() },
+    EXPLICIT_MODES.map((k) => h('option', { value: k }, t(`explicit_${k}`))));
+  const countEl = h('p', { class: 'muted', id: 'filter-count', role: 'status', 'aria-live': 'polite' });
+  const filtersBox = h('details', { class: 'more', id: 'filters-box', ontoggle: () => { if (filtersBox.open) refreshCount(); } },
+    h('summary', {}, t('filters')),
+    h('div', { class: 'dates' },
+      field('yearFrom', t('yearFrom'), { type: 'number', inputmode: 'numeric', min: '1900', max: '2100' }),
+      field('yearTo', t('yearTo'), { type: 'number', inputmode: 'numeric', min: '1900', max: '2100' }),
+      field('addedFrom', t('addedFrom'), { type: 'date' }),
+      field('addedTo', t('addedTo'), { type: 'date' }),
+      field('minMin', t('minMinutes'), { type: 'number', inputmode: 'decimal', min: '0', step: '0.5' }),
+      field('maxMin', t('maxMinutes'), { type: 'number', inputmode: 'decimal', min: '0', step: '0.5' })),
+    h('label', { class: 'field-wide' }, t('explicitLabel'), fields.explicit),
+    countEl);
+  const readFilters = () => sanitizeFilters(Object.fromEntries(Object.entries(fields).map(([k, el]) => [k, el.value])));
+  const setFilters = (f) => { for (const [k, el] of Object.entries(fields)) el.value = f[k] ?? ''; };
+
+  // Origen: toda la biblioteca, resumen y contador
+  let libraryMode = false;
+  let programmatic = false;
+  const libraryIds = () => S.playlists.filter((p) => !baseReason(p) && p.id !== getItem(KEYS.barajaId)).map((p) => p.id);
+  const selInfo = h('p', { class: 'muted', id: 'selection-info', role: 'status' });
+  const libBtn = h('button', { class: 'btn shortcut', type: 'button', id: 'select-library', onclick: () => {
+    libraryMode = true;
+    programmatic = true;
+    picker.setSelected(libraryIds());
+    programmatic = false;
+    syncSelection(picker.getSelected());
+  } }, t('selectLibrary'));
+
+  let countTimer = null;
+  let countToken = 0;
+  function onFilterChange() {
+    syncDestination();
+    clearTimeout(countTimer);
+    countTimer = setTimeout(refreshCount, 250);
+  }
+  async function refreshCount() {
+    const token = ++countToken;
+    const sel = picker.getSelected();
+    if (!filtersBox.open || !sel.length) { countEl.textContent = ''; return; }
+    countEl.textContent = t('counting');
+    try {
+      const tracks = [];
+      for (const pl of sel) {
+        const key = `${pl.id}:${pl.total}`;
+        if (!S.sourceCache.has(key)) S.sourceCache.set(key, readSource(pl).then((r) => r.tracks));
+        tracks.push(...await S.sourceCache.get(key));
+      }
+      if (token !== countToken) return;
+      const base = dedupe.checked ? uniqueByUri(tracks) : tracks;
+      countEl.textContent = t('filterCount', { n: fmt(filterTracks(base, readFilters()).length), m: fmt(base.length) });
+    } catch (e) {
+      S.sourceCache.clear();
+      if (token === countToken) countEl.textContent = t('countFailed');
+    }
+  }
+  function syncDestination() {
+    const sel = picker.getSelected();
+    const selfOk = !libraryMode && sel.length === 1 && sel[0].owned && !sel[0].isLiked && !hasFilters(readFilters());
+    radios.self.disabled = !selfOk;
+    if (!selfOk && radios.self.checked) radios.reuse.checked = true;
+  }
+  function syncSelection(sel) {
+    go.disabled = sel.length === 0;
+    saveMixBtn.disabled = sel.length === 0;
+    const songs = sel.reduce((n, p) => n + (p.total ?? 0), 0);
+    const unreadable = S.playlists.filter((p) => !p.isLiked && !p.readable).length;
+    setKids(selInfo, sel.length ? t('selectionSummary', { p: fmt(sel.length), m: fmt(songs) }) : '',
+      libraryMode && unreadable ? ` ${t('librarySkipped', { n: fmt(unreadable) })}` : '');
+    syncDestination();
+    refreshCount();
+  }
 
   const picker = createPicker({
     multi: true,
     disabledReason: baseReason,
     onChange(sel) {
-      go.disabled = sel.length === 0;
-      const selfOk = sel.length === 1 && sel[0].owned && !sel[0].isLiked;
-      radios.self.disabled = !selfOk;
-      if (!selfOk && radios.self.checked) radios.reuse.checked = true;
+      if (!programmatic) libraryMode = false;
+      syncSelection(sel);
     },
   });
+  dedupe.addEventListener('change', refreshCount);
+
+  // Mezclas guardadas
+  let editingId = null;
+  const saveMixBtn = h('button', { class: 'btn', type: 'button', id: 'save-mix', disabled: true, onclick: () => saveMix() }, t('saveMix'));
+  const cancelEditBtn = h('button', { class: 'btn', type: 'button', id: 'cancel-edit-mix', hidden: true, onclick: () => setEditing(null) }, t('cancelEdit'));
+  function setEditing(mix) {
+    editingId = mix?.id ?? null;
+    saveMixBtn.textContent = mix ? t('mixUpdate', { name: mix.name }) : t('saveMix');
+    cancelEditBtn.hidden = !mix;
+  }
+  const currentConfig = () => {
+    const sel = picker.getSelected();
+    return { library: libraryMode, ids: sel.map((p) => p.id), names: sel.map((p) => p.name), filters: readFilters(), dedupe: dedupe.checked, mode: dest() };
+  };
+  async function saveMix() {
+    const cfg = currentConfig();
+    const existing = getMixes().find((m) => m.id === editingId);
+    const name = await askName({ title: t('mixName'), value: existing?.name ?? (libraryMode ? t('libraryName') : cfg.names.join(' + ')).slice(0, 60) });
+    if (!name) return;
+    const mix = sanitizeMix({ ...cfg, id: editingId ?? newMixId(), name });
+    const { list, ok } = upsertMix(getMixes(), mix);
+    if (!ok) { status.fail(new UserError(t('errMixLimit'))); return; }
+    setMixes(list);
+    setEditing(null);
+    status.say(t('mixSaved', { name: mix.name }));
+  }
 
   const form = h('div', {},
     h('p', { class: 'lead' }, t('shuffleLead')),
-    h('h2', {}, t('source')), picker.el,
+    h('h2', {}, t('source')), libBtn, picker.el, selInfo,
     h('label', { class: 'check' }, dedupe, h('span', {}, t('dedupeOpt'))),
-    h('h2', {}, t('destination')), destBox, go);
+    filtersBox,
+    h('h2', {}, t('destination')), destBox, go,
+    h('div', { class: 'actions' }, saveMixBtn, cancelEditBtn));
 
   let last = null;
 
-  S.runMix = (mix) => {
+  /** Carga una mezcla en el formulario. Devuelve si todas sus playlists siguen disponibles. */
+  function applyMix(mix) {
     S.show('shuffle');
     result.hidden = true;
     form.hidden = false;
-    if (picker.setSelected(mix.ids) !== mix.ids.length) { status.fail(new UserError(t('mixMissing'))); return; }
-    dedupe.checked = mix.dedupe;
+    const ids = mix.library ? libraryIds() : mix.ids;
+    programmatic = true;
+    const n = picker.setSelected(ids);
+    programmatic = false;
+    libraryMode = !!mix.library;
+    setFilters(mix.filters ?? emptyFilters());
+    if (hasFilters(mix.filters)) filtersBox.open = true;
+    dedupe.checked = mix.dedupe !== false;
+    syncSelection(picker.getSelected());
     if (radios[mix.mode] && !radios[mix.mode].disabled) radios[mix.mode].checked = true;
-    run();
+    return mix.library ? n > 0 : n === ids.length;
+  }
+  S.runMix = (mix) => {
+    if (applyMix(mix)) run(); else status.fail(new UserError(t('mixMissing')));
+  };
+  S.editMix = (mix) => {
+    if (!applyMix(mix)) status.fail(new UserError(t('mixMissing')));
+    setEditing(mix);
   };
 
   const dest = () => Object.values(radios).find((r) => r.checked).value;
@@ -493,6 +642,7 @@ function shufflePanel() {
     last = info;
     const notes = [...skipNotes(info.skipped), ...(info.coverNotes ?? [])];
     if (info.dedupRemoved) notes.push(t('dedupRemoved', { n: fmt(info.dedupRemoved) }));
+    if (info.filteredOut) notes.push(t('filteredOut', { n: fmt(info.filteredOut) }));
     if (info.truncated) notes.push(t('truncated', { n: fmt(info.truncated) }));
     renderResult(result, status, {
       titleFn: (n) => t('shuffledDone', { n: fmt(n) }), count: info.order.length,
@@ -511,16 +661,21 @@ function shufflePanel() {
       const mode = dest();
       const { tracks, skipped } = await readSources(sel, status);
       if (mode === 'self' && !confirmOverwrite(sel[0].name, skippedCount(skipped))) { status.clear(); return; }
-      const base = dedupe.checked ? uniqueByUri(tracks) : tracks;
-      if (!base.length) throw new UserError(t('errEmpty'));
+      const filters = readFilters();
+      const unique = dedupe.checked ? uniqueByUri(tracks) : tracks;
+      const base = filterTracks(unique, filters);
+      if (!base.length) throw new UserError(hasFilters(filters) ? t('errFiltersEmpty') : t('errEmpty'));
       const { tracks: order, truncated } = capPlaylist(shuffle(base));
       const playlistId = await resolveTarget(mode, sel, tracks);
       await overwritePlaylist(playlistId, order.map((x) => x.uri), status);
       const coverNotes = await uploadCover(mode, playlistId);
-      setItem(KEYS.lastMix, { ids: sel.map((p) => p.id), names: sel.map((p) => p.name), dedupe: dedupe.checked, mode });
+      setItem(KEYS.lastMix, currentConfig());
       await loadPlaylists();
       status.clear();
-      showResult({ base, order, skipped, truncated, dedupRemoved: tracks.length - base.length, playlistId, mode, coverNotes });
+      showResult({
+        base, order, skipped, truncated, dedupRemoved: tracks.length - unique.length, filteredOut: unique.length - base.length,
+        playlistId, mode, coverNotes,
+      });
     });
   }
 
@@ -778,7 +933,8 @@ function backupPanel() {
         lists.push({ id: pl.id, name: pl.name, isLiked: pl.isLiked, tracks });
       }
       const stamp = new Date().toISOString().slice(0, 10);
-      const jsonBlob = new Blob([JSON.stringify(buildBackup(lists))], { type: 'application/json' });
+      const mixes = getMixes();
+      const jsonBlob = new Blob([JSON.stringify(buildBackup(lists, new Date(), mixes.length ? { mixes } : {}))], { type: 'application/json' });
       if (jsonBlob.size > MAX_BACKUP_BYTES) throw new UserError(t('errBackupLimit'));
       const csvBlob = new Blob(['﻿', toCsv(lists)], { type: 'text/csv' });
       const total = lists.reduce((n, p) => n + p.tracks.length, 0);
@@ -800,30 +956,46 @@ function backupPanel() {
     if (!file) return;
     try {
       if (file.size > MAX_BACKUP_BYTES) throw new UserError(t('errBackupSize'));
-      const playlists = validateBackup(JSON.parse(await file.text()));
-      showRestore(playlists);
+      const parsed = JSON.parse(await file.text());
+      showRestore(validateBackup(parsed), sanitizeMixes(parsed.mixes));
     } catch (e) {
       status.fail(e instanceof UserError ? e : e instanceof SyntaxError ? new UserError(t('restoreBad_notBackup')) : new UserError(t(`restoreBad_${typeof e.code === 'string' ? e.code : 'notBackup'}`)));
     }
   }
 
-  function showRestore(playlists) {
+  function showRestore(playlists, mixes = []) {
     const boxes = playlists.map((p) => {
       const box = h('input', { type: 'checkbox' });
       box.checked = true;
       return { p, box };
     });
+    const mixBox = h('input', { type: 'checkbox', id: 'restore-mixes' });
+    mixBox.checked = true;
     const go = h('button', { class: 'btn primary', type: 'button', onclick: () => restore() }, t('restoreBtn'));
-    const upd = () => { go.disabled = !boxes.some((b) => b.box.checked); };
-    boxes.forEach((b) => b.box.addEventListener('change', upd));
+    const upd = () => { go.disabled = !boxes.some((b) => b.box.checked) && !(mixes.length && mixBox.checked); };
+    [...boxes.map((b) => b.box), mixBox].forEach((box) => box.addEventListener('change', upd));
+    upd();
     setKids(restoreBox,
-      h('ul', { class: 'restore-list' }, boxes.map(({ p, box }) => h('li', {}, h('label', { class: 'check' }, box, h('span', {}, `${p.name} · ${t('songs', { n: fmt(p.tracks.length) })}`))))),
+      h('ul', { class: 'restore-list' },
+        boxes.map(({ p, box }) => h('li', {}, h('label', { class: 'check' }, box, h('span', {}, `${p.name} · ${t('songs', { n: fmt(p.tracks.length) })}`)))),
+        mixes.length ? h('li', {}, h('label', { class: 'check' }, mixBox, h('span', {}, t('restoreMixes', { n: fmt(mixes.length) })))) : null),
       go);
     restoreBox.hidden = false;
 
     function restore() {
       task(status, async () => {
         let n = 0;
+        let mixCount = 0;
+        if (mixes.length && mixBox.checked) {
+          let list = getMixes();
+          for (const m of mixes) {
+            const r = upsertMix(list, m);
+            if (r.ok) { list = r.list; mixCount++; }
+          }
+          setMixes(list);
+          mixBox.checked = false;
+          mixBox.disabled = true;
+        }
         for (const { p, box } of boxes) {
           if (!box.checked) continue;
           const id = (await S.api.createPlaylist(`${p.name} (${t('restoredSuffix')})`, t('barajaDesc'))).id;
@@ -834,7 +1006,7 @@ function backupPanel() {
         }
         await loadPlaylists();
         status.clear();
-        status.say(t('restoredDone', { n: fmt(n) }));
+        status.say(t('restoredDone', { n: fmt(n) }) + (mixCount ? ` ${t('restoredMixes2', { n: fmt(mixCount) })}` : ''));
         restoreBox.hidden = true;
         fileIn.value = '';
       });
@@ -933,18 +1105,40 @@ function logoNotice() {
 const TABS = [['home', 'tabHome'], ['shuffle', 'tabShuffle'], ['sort', 'tabSort'], ['dups', 'tabDups'], ['backup', 'tabBackup']];
 const TAB_ORDER = TABS.map(([key]) => key);
 
+/** «Rock + Chill · filtros · sin repetidas» para las tarjetas de mezcla. */
+function mixSummary(mix) {
+  const parts = [mixSources(mix, t('libraryName'))];
+  if (hasFilters(mix.filters)) parts.push(t('withFilters'));
+  return parts.join(' · ');
+}
+
 function homePanel() {
   const slot = h('div', { class: 'cards' });
   const panel = h('section', { class: 'panel', id: 'panel-home', hidden: true }, h('p', { class: 'lead' }, t('homeLead')), slot);
   const card = (key, title, sub) => h('button', { class: 'card', type: 'button', id: `card-${key}`, onclick: () => S.show(key) },
     h('span', { class: 'card-icon' }, icon(...ICONS[key])),
     h('span', {}, h('span', { class: 'card-title' }, title), h('span', { class: 'card-sub' }, sub)));
+  const mixRow = (mix) => h('div', { class: 'mix-row' },
+    h('button', { class: 'card', type: 'button', 'data-mix': mix.id, onclick: () => S.runMix(mix) },
+      h('span', { class: 'card-icon' }, icon(...ICONS.shuffle)),
+      h('span', {}, h('span', { class: 'card-title' }, mix.name), h('span', { class: 'card-sub' }, mixSummary(mix)))),
+    h('button', { class: 'icon-btn', type: 'button', 'aria-label': t('editMix', { name: mix.name }), onclick: () => S.editMix(mix) }, icon(...ICONS.edit)),
+    h('button', { class: 'icon-btn', type: 'button', 'aria-label': t('deleteMix', { name: mix.name }), onclick: () => {
+      if (!confirm(t('confirmDeleteMix', { name: mix.name }))) return;
+      setMixes(removeMix(getMixes(), mix.id));
+      panel.refresh();
+    } }, icon(...ICONS.trash)));
   panel.refresh = () => {
-    const mix = getItem(KEYS.lastMix);
+    const raw = getItem(KEYS.lastMix);
+    const mix = raw && sanitizeMix({ ...raw, id: 'last', name: 'last' });
+    const mixes = getMixes();
     setKids(slot,
       mix ? h('button', { class: 'card hero', type: 'button', id: 'card-last-mix', onclick: () => S.runMix(mix) },
         h('span', { class: 'card-icon' }, icon(...ICONS.shuffle)),
-        h('span', {}, h('span', { class: 'card-title' }, t('lastMix')), h('span', { class: 'card-sub' }, mix.names.join(' + ')))) : null,
+        h('span', {}, h('span', { class: 'card-title' }, t('lastMix')), h('span', { class: 'card-sub' }, mixSources(mix, t('libraryName'))))) : null,
+      mixes.length ? h('h2', {}, t('savedMixes')) : null,
+      mixes.map(mixRow),
+      h('h2', {}, t('shortcuts')),
       card('shuffle', t('tabShuffle'), t('cardShuffleSub')),
       card('sort', t('tabSort'), t('cardSortSub')),
       card('dups', t('tabDups'), t('cardDupsSub')),

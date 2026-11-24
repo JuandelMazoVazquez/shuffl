@@ -6,6 +6,10 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). E
 
 ### Añadido
 
+- **Filtros antes de barajar**: años de lanzamiento, fecha de añadida, duración y explícitas, con contador en vivo («N de M canciones pasan los filtros»). Se filtra primero y luego se baraja de forma uniforme lo que queda. Con filtros activos no se permite sobrescribir la propia playlist (perdería las canciones filtradas).
+- **Barajar toda mi biblioteca**: todas las playlists propias y colaborativas más Tus me gusta, con resumen «N playlists · M canciones». Las de otras personas se saltan y se avisa; «🔀 Baraja» no se incluye a sí misma.
+- **Mezclas guardadas**: fuentes, filtros y destino con nombre, desde Inicio con un toque; se pueden editar y borrar. Una mezcla de biblioteca incluye las playlists nuevas. Viajan en la copia de seguridad (JSON) y se restauran.
+- Los tests estadísticos del barajado usan semilla fija: ya no pueden fallar al azar.
 - Rediseño con la paleta Baraja (fondo `#0F0E17`, superficies `#1A1927`, coral, ámbar, índigo y crema) en oscuro por defecto, claro y «como el sistema» (contraste AA comprobado por test).
 - Inicio con tarjetas: «Volver a barajar mi última mezcla» y atajos. Degradado de fondo con el color dominante de la portada seleccionada.
 - Animación de naipes mezclándose durante el barajado (la barra sigue el progreso real), resultado en cascada con contador animado, esqueletos de carga, microinteracciones, deslizar para cambiar de pestaña y tirar para refrescar. Respeta `prefers-reduced-motion`.
