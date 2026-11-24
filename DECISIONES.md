@@ -24,7 +24,7 @@ Trabajo hecho sin supervisión el 2026-11-23. Todo lo reversible lo decidí yo; 
 - **Cero dependencias de runtime**; única devDependency, `@playwright/test` (pedida en el enunciado).
 - **`node --test "tests/unit/*.test.js"`**: en Node 24, `node --test carpeta/` no funciona.
 - **Playlists leídas con `limit=50`** (el máximo actual de `/items`) y escrituras de 100 en 100.
-- **Service worker**: cache-first para recursos propios, network-first para la navegación, caché versionada (`baraja-v3`; hay que subirla al cambiar archivos, ver CONTRIBUTING). Nunca toca otros orígenes.
+- **Service worker**: cache-first para recursos propios, network-first para la navegación, caché versionada (`baraja-v4`; hay que subirla al cambiar archivos, ver CONTRIBUTING). Nunca toca otros orígenes.
 - **Tests e2e con el service worker bloqueado** para que no interfiera con `page.route`.
 - **Licencia MIT a nombre de "Juan del Mazo"** (nombre del perfil de GitHub).
 - **Iconos** generados con `scripts/make-icons.mjs` (Chromium de Playwright renderiza el SVG a PNG).

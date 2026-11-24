@@ -1,5 +1,5 @@
 // Cache-first solo para los archivos de la app. Nunca toca otros orígenes (api/accounts de Spotify).
-const CACHE = 'baraja-v3';
+const CACHE = 'baraja-v4';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/styles.css',
   'js/app.js', 'js/api.js', 'js/auth.js', 'js/config.js', 'js/core.js', 'js/i18n.js', 'js/storage.js',
