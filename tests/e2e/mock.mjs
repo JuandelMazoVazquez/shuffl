@@ -44,7 +44,7 @@ export function createState() {
     ['pl_top', { id: 'pl_top', name: 'Top 50 Global', owner: owner('spotify'), tracks: range(2000, 2050) }],
   ]);
   const devices = [{ id: 'dev-phone', name: 'iPhone de prueba', type: 'Smartphone', is_active: true }];
-  return { catalog, lists, liked, created: 0, writes: [], tokens: 0, authorizeParams: null, devices, playerCalls: [] };
+  return { catalog, lists, liked, created: 0, writes: [], tokens: 0, authorizeParams: null, devices, playerCalls: [], images: [] };
 }
 
 const json = (route, body, status = 200) =>
@@ -87,7 +87,8 @@ export async function mockSpotify(page, state) {
     const url = new URL(req.url());
     const path = url.pathname.replace('/v1', '');
     const method = req.method();
-    const body = req.postData() ? JSON.parse(req.postData()) : null;
+    const isJson = (req.headers()['content-type'] ?? '').includes('json');
+    const body = req.postData() && isJson ? JSON.parse(req.postData()) : null;
 
     if (method === 'GET' && path === '/me/player/devices') return json(route, { devices: state.devices });
     if (method === 'PUT' && (path === '/me/player/shuffle' || path === '/me/player/play')) {
@@ -101,8 +102,14 @@ export async function mockSpotify(page, state) {
     if (method === 'POST' && path === '/me/playlists') {
       const id = `new${++state.created}`;
       state.lists.set(id, { id, name: body.name, owner: { id: 'me' }, tracks: [] });
-      state.writes.push({ op: 'create', id, name: body.name, public: body.public });
+      state.writes.push({ op: 'create', id, name: body.name, public: body.public, description: body.description });
       return json(route, { id, name: body.name }, 201);
+    }
+    const img = /^\/playlists\/([^/]+)\/images$/.exec(path);
+    if (img && method === 'PUT') {
+      if (state.failImage) return json(route, { error: { status: 403, message: 'Forbidden' } }, 403);
+      state.images.push({ id: img[1], contentType: req.headers()['content-type'], body: req.postData() });
+      return route.fulfill({ status: 202, headers: CORS });
     }
     const m = /^\/playlists\/([^/]+)\/items$/.exec(path);
     if (m) {

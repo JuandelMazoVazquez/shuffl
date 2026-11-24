@@ -38,4 +38,5 @@ export const KEYS = {
   undo: 'baraja.undo',
   barajaId: 'baraja.playlistId',
   logoNotice: 'baraja.logoNotice',
+  cover: 'baraja.cover',
 };

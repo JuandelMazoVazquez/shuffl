@@ -8,6 +8,9 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). E
 
 - Botón «▶ Reproducir ahora» en los resultados: apaga el aleatorio de Spotify y reproduce la playlist desde la primera canción en el dispositivo activo (hoja para elegir dispositivo; ayuda y enlace «LISTEN ON SPOTIFY» si no hay ninguno). Requiere Premium.
 - Nuevos permisos de Spotify (reproducción, portada, tops, últimas escuchas y artistas seguidos). Quien ya tenía sesión verá «Baraja tiene funciones nuevas: vuelve a conectar con Spotify».
+- Portada propia para «🔀 Baraja» y para las playlists nuevas que crea el barajado: logo sobre un color de la paleta y la fecha y hora de la baraja, JPEG de 640×640 por debajo de 256 KB. Si falla, la baraja no falla (aviso discreto). Se puede desactivar en Ajustes. No se sube al barajar la propia playlist de otro modo.
+- Descripción fija de «🔀 Baraja» en español e inglés.
+- Pantalla «Tenerla siempre a mano»: cómo fijar la playlist (hasta 20 pines), por qué conviene sobrescribir siempre la misma y qué decide Spotify en Inicio.
 - `QUOTA_EXCEEDED` de Spotify: se explica y no se reintenta.
 - Logo nuevo («abanico de tres naipes», índigo, ámbar, coral y crema) y todos los iconos (SVG, favicon.ico, apple-touch-icon, 192, 512 y maskable). **En iPhone, para ver el icono nuevo hay que quitar la app de la pantalla de inicio y volver a añadirla.**
 - Aviso de no afiliación ampliado («Spotify es una marca de Spotify AB») y apartado «Acerca de» en Ajustes.

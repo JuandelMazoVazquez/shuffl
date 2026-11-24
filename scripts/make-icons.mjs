@@ -28,7 +28,7 @@ const artwork = () => `
   ${arrow([208, 311], [304, 199])}`;
 
 /** `shift`/`scale` solo para la variante maskable (dibujo dentro del 80 % central). */
-const svg = ({ shift = 0, scale = 1 } = {}) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+const svg = ({ shift = 0, scale = 1 } = {}) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <rect width="512" height="512" fill="${INDIGO}"/>
   <g transform="translate(256 256) scale(${scale}) translate(-256 ${-256 + shift})">${artwork()}
   </g>
