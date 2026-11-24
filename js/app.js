@@ -385,6 +385,22 @@ function showFollowedHelp(pl) {
   sheet.querySelector('#followed-close').focus();
 }
 
+/** Comparte el enlace de la playlist: hoja de compartir del sistema, o copiar el enlace, o mostrarlo para copiarlo a mano. */
+async function shareLink(playlistId, info) {
+  const url = spotifyUrl(playlistId);
+  try {
+    if (navigator.share) {
+      await navigator.share({ title: 'Baraja', url });
+    } else {
+      await navigator.clipboard.writeText(url);
+      setKids(info, h('p', { id: 'share-done' }, t('linkCopied')));
+    }
+  } catch (e) {
+    if (e?.name === 'AbortError') return;
+    setKids(info, copyBox(url));
+  }
+}
+
 // ---------- Reproducir ahora ----------
 
 function chooseDevice(devices) {
@@ -450,6 +466,7 @@ function renderResult(container, status, o) {
       h('button', { class: 'btn primary', type: 'button', id: 'play-now', onclick: () => playNow(o.playlistId, info, status) }, t('playNow')),
       info,
       h('a', { class: 'btn', href: spotifyUrl(o.playlistId), target: '_blank', rel: 'noopener' }, t('openInSpotify')),
+      h('button', { class: 'btn', type: 'button', id: 'share-link', onclick: () => shareLink(o.playlistId, info) }, t('share')),
       ...(o.extra ?? []),
       undoBtn,
       h('button', { class: 'btn', type: 'button', onclick: o.onBack }, t('back'))),
