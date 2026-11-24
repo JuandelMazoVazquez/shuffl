@@ -6,7 +6,7 @@ const CACHE = `baraja-${VERSION}`;
 const DEV = VERSION === 'dev';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/styles.css',
-  'js/app.js', 'js/api.js', 'js/auth.js', 'js/config.js', 'js/core.js', 'js/i18n.js', 'js/storage.js', 'js/update.js',
+  'js/app.js', 'js/api.js', 'js/auth.js', 'js/config.js', 'js/core.js', 'js/i18n.js', 'js/storage.js', 'js/update.js', 'js/cover.js', 'js/color.js',
   'icons/icon.svg', 'icons/favicon.svg', 'icons/favicon.ico', 'icons/icon-maskable-512.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
 ];
 

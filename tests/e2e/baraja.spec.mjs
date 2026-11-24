@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { CLIENT_ID } from './mock.mjs';
-import { installMock, login, idle, pick, names } from './helpers.mjs';
+import { installMock, login, idle, pick, names, shot } from './helpers.mjs';
 
 const SHOTS = 'docs/capturas';
 mkdirSync(SHOTS, { recursive: true });
@@ -16,7 +16,7 @@ test('pantalla inicial, guía y login completo con PKCE', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Baraja' })).toBeVisible();
   await expect(page.locator('.copybox input')).toHaveValue('http://127.0.0.1:5173/');
-  await page.screenshot({ path: `${SHOTS}/01-bienvenida.png`, fullPage: true });
+  await shot(page, `${SHOTS}/01-bienvenida.png`, { fullPage: true });
 
   await page.locator('#client-id').fill('mal');
   await page.locator('#connect').click();
@@ -31,7 +31,7 @@ test('pantalla inicial, guía y login completo con PKCE', async ({ page }) => {
   expect(page.url()).toBe('http://127.0.0.1:5173/');
   await expect(page.locator('#panel-shuffle label.row', { hasText: 'Top 50 Global' })).toContainText('Spotify solo permite leer');
   await expect(page.locator('#panel-shuffle input[type=checkbox]:disabled')).toHaveCount(1);
-  await page.screenshot({ path: `${SHOTS}/02-barajar.png` });
+  await shot(page, `${SHOTS}/02-barajar.png`);
 });
 
 test('state incorrecto en el callback cierra el intento sin iniciar sesión', async ({ page }) => {
@@ -50,7 +50,7 @@ test('barajar dos playlists combinadas en «🔀 Baraja», volver a barajar y de
   await page.locator('#panel-shuffle .btn.primary.big').click();
   await expect(page.getByText('Listo: 180 canciones barajadas')).toBeVisible();
   await expect(page.getByText('20 repetidas quitadas.')).toBeVisible();
-  await page.screenshot({ path: `${SHOTS}/03-resultado-barajar.png` });
+  await shot(page, `${SHOTS}/03-resultado-barajar.png`);
 
   const baraja = [...state.lists.values()].find((l) => l.name === '🔀 Baraja');
   expect(baraja).toBeTruthy();
@@ -118,7 +118,7 @@ test('barajar la propia playlist pide confirmación y se puede deshacer', async 
 test('ordenar «Tus me gusta» por título a una playlist nueva y atajo de copia', async ({ page }) => {
   await login(page);
   await page.locator('#tab-sort').click();
-  await page.screenshot({ path: `${SHOTS}/04-ordenar.png` });
+  await shot(page, `${SHOTS}/04-ordenar.png`);
   await pick(page, 'sort', 'Tus me gusta');
   await page.locator('#sort-key').selectOption('title');
   await page.locator('#panel-sort .btn.primary.big').click();
@@ -154,7 +154,7 @@ test('duplicados: analizar, quitar del original y deshacer', async ({ page }) =>
   await pick(page, 'dups', 'Con repetidas');
   await page.getByRole('button', { name: 'Analizar' }).click();
   await expect(page.getByText('3 canciones repetidas')).toBeVisible();
-  await page.screenshot({ path: `${SHOTS}/05-duplicados.png`, fullPage: true });
+  await shot(page, `${SHOTS}/05-duplicados.png`, { fullPage: true });
 
   const original = state.lists.get('pl_dupes').tracks.map((t) => t.uri);
   await page.getByRole('button', { name: 'Quitar del original' }).click();
@@ -189,7 +189,7 @@ test('copia de seguridad: exportar JSON y CSV y restaurar', async ({ page }) => 
   await pick(page, 'backup', 'Tus me gusta');
   await page.getByRole('button', { name: 'Preparar copia' }).click();
   await expect(page.getByText('Copia lista: 180 canciones en 2 listas')).toBeVisible();
-  await page.screenshot({ path: `${SHOTS}/06-copia.png`, fullPage: true });
+  await shot(page, `${SHOTS}/06-copia.png`, { fullPage: true });
 
   const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('#save-json').click()]);
   const path = await dl.path();
@@ -217,7 +217,7 @@ test('ajustes: Redirect URI, idioma e inglés, cerrar sesión', async ({ page })
   await page.locator('#open-settings').click();
   await expect(page.locator('#panel-settings .copybox input')).toHaveValue('http://127.0.0.1:5173/');
   await expect(page.locator('#settings-client-id')).toHaveValue(CLIENT_ID);
-  await page.screenshot({ path: `${SHOTS}/07-ajustes.png`, fullPage: true });
+  await shot(page, `${SHOTS}/07-ajustes.png`, { fullPage: true });
   await page.locator('#lang-select').selectOption('en');
   await expect(page.locator('#tab-shuffle')).toContainText('Shuffle');
   await expect(page.locator('#panel-settings')).toBeVisible();
@@ -228,7 +228,7 @@ test('ajustes: Redirect URI, idioma e inglés, cerrar sesión', async ({ page })
 
 test('sin horizontal scroll y objetivos táctiles de 44 px', async ({ page }) => {
   await login(page);
-  for (const tab of ['shuffle', 'sort', 'dups', 'backup']) {
+  for (const tab of ['home', 'shuffle', 'sort', 'dups', 'backup']) {
     await page.locator(`#tab-${tab}`).click();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow, tab).toBeLessThanOrEqual(0);

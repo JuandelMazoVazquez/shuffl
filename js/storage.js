@@ -39,4 +39,6 @@ export const KEYS = {
   barajaId: 'baraja.playlistId',
   logoNotice: 'baraja.logoNotice',
   cover: 'baraja.cover',
+  lastMix: 'baraja.lastMix',
+  theme: 'baraja.theme',
 };

@@ -18,6 +18,16 @@ Las funciones salen de quejas reales de usuarios (hilos de Spotify Community, pr
 
 ## Funciones
 
+### Inicio y aspecto
+
+![Inicio](docs/capturas/08-inicio.png)
+
+- Inicio con tarjetas grandes: «Volver a barajar mi última mezcla» y atajos a cada función.
+- Tema oscuro por defecto, claro o como el sistema (Ajustes). El fondo toma un degradado del color de la portada seleccionada.
+- Naipes que se mezclan mientras se leen las canciones, resultado en cascada, esqueletos de carga, deslizar a los lados para cambiar de pestaña y tirar hacia abajo para refrescar. Respeta «reducir movimiento».
+
+![Tema claro](docs/capturas/09-tema-claro.png)
+
 ### Barajar
 
 ![Barajar](docs/capturas/02-barajar.png)

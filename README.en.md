@@ -20,6 +20,16 @@ The features come from real user complaints (Spotify Community threads, press, r
 
 The app interface is available in Spanish and English; the screenshots are in Spanish.
 
+### Home and look
+
+![Home](docs/capturas/08-inicio.png)
+
+- Home with big cards: "Reshuffle my last mix" and shortcuts to each feature.
+- Dark theme by default, light, or like the system (Settings). The background takes a gradient from the selected cover's colour.
+- Cards shuffling while songs are read, cascading results, loading skeletons, swipe sideways to change tab and pull down to refresh. Respects "reduce motion".
+
+![Light theme](docs/capturas/09-tema-claro.png)
+
 ### Shuffle
 
 ![Shuffle](docs/capturas/02-barajar.png)

@@ -61,7 +61,7 @@ test('la portada se puede desactivar en Ajustes y no se sube al barajar la propi
   await page.locator('#open-settings').click();
   await page.locator('#cover-toggle').uncheck();
   await page.reload();
-  await expect(page.locator('#tab-shuffle')).toBeVisible();
+  await page.locator('#tab-shuffle').click();
   await pick(page, 'shuffle', 'Chill');
   await page.locator('#panel-shuffle .btn.primary.big').click();
   await expect(page.getByText('Listo: 80 canciones barajadas')).toBeVisible();
