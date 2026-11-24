@@ -76,8 +76,10 @@ export function createState() {
     ['pl_dupes', { id: 'pl_dupes', name: 'Con repetidas', owner: owner('me'), tracks: dupes }],
     ['pl_top', { id: 'pl_top', name: 'Top 50 Global', owner: owner('spotify'), tracks: range(2000, 2050) }],
   ]);
+  const top = { short_term: range(3000, 3030), medium_term: range(3100, 3150), long_term: range(3200, 3250) };
+  const recent = [...range(3300, 3310), ...range(3300, 3305)];
   const devices = [{ id: 'dev-phone', name: 'iPhone de prueba', type: 'Smartphone', is_active: true }];
-  return { catalog, lists, liked, created: 0, writes: [], tokens: 0, authorizeParams: null, devices, playerCalls: [], images: [], itemRequests: [], metaRequests: [] };
+  return { catalog, lists, liked, created: 0, writes: [], tokens: 0, authorizeParams: null, devices, playerCalls: [], images: [], itemRequests: [], metaRequests: [], top, recent, topRequests: [] };
 }
 
 const json = (route, body, status = 200) =>
@@ -130,6 +132,14 @@ export async function mockSpotify(page, state) {
     const isJson = (req.headers()['content-type'] ?? '').includes('json');
     const body = req.postData() && isJson ? JSON.parse(req.postData()) : null;
 
+    if (method === 'GET' && path === '/me/top/tracks') {
+      state.topRequests.push(Object.fromEntries(url.searchParams));
+      return json(route, { items: state.top[url.searchParams.get('time_range')] ?? [] });
+    }
+    if (method === 'GET' && path === '/me/player/recently-played') {
+      state.topRequests.push({ recent: true, limit: url.searchParams.get('limit') });
+      return json(route, { items: state.recent.map((track, i) => ({ track, played_at: `2026-01-01T10:${String(i).padStart(2, '0')}:00Z` })) });
+    }
     if (method === 'GET' && path === '/me/player/devices') return json(route, { devices: state.devices });
     if (method === 'PUT' && (path === '/me/player/shuffle' || path === '/me/player/play')) {
       state.playerCalls.push({ path, query: Object.fromEntries(url.searchParams), body });

@@ -6,6 +6,9 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). E
 
 ### Añadido
 
+- **Instantáneas**: «📸 Top 4 semanas», «📸 Top 6 meses», «📸 Top siempre» (`GET /me/top/tracks`, 50) y «📸 Últimas escuchas» (`GET /me/player/recently-played`, 50, sin repetidas), creando la playlist o actualizando la misma (con Deshacer), con opción de barajar.
+- **Me gusta sin playlist**: canciones de Tus me gusta que no están en ninguna de tus playlists (sin contar las que genera Baraja); crea una playlist con ellas, barajada si se quiere.
+- **Dividir playlist**: en N partes, por década de lanzamiento, por artista principal (con mínimo configurable) o por año de añadida, con vista previa y nombres editables. La original no se toca.
 - **Playlists de otras personas**: sección «Playlists que sigues» en los selectores, con portada y marcadas «No se puede leer»; al tocarlas se explica por qué y cómo hacerse una copia propia en Spotify (móvil y ordenador) con botón «Abrir en Spotify». Una playlist propia con el mismo nombre se marca «Tu copia de…» y se puede barajar. Las colaborativas se barajan como propias. Se puede pegar un enlace, URI o id: solo se leen nombre y autor, nunca las canciones.
 - **Filtros antes de barajar**: años de lanzamiento, fecha de añadida, duración y explícitas, con contador en vivo («N de M canciones pasan los filtros»). Se filtra primero y luego se baraja de forma uniforme lo que queda. Con filtros activos no se permite sobrescribir la propia playlist (perdería las canciones filtradas).
 - **Barajar toda mi biblioteca**: todas las playlists propias y colaborativas más Tus me gusta, con resumen «N playlists · M canciones». Las de otras personas se saltan y se avisa; «🔀 Baraja» no se incluye a sí misma.

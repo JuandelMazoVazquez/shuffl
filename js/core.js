@@ -266,6 +266,59 @@ export function sanitizeFilters(raw) {
   return f;
 }
 
+// ---------- Dividir una playlist ----------
+
+export const SPLIT_MODES = ['parts', 'decade', 'artist', 'addedYear'];
+export const MAX_SPLIT_PARTS = 50;
+
+/**
+ * Reparte las canciones en grupos `{ key, label, tracks }` sin perder ni repetir ninguna.
+ * `opts`: `parts` (modo parts, 2..50) y `minArtist` (modo artist, mínimo de canciones para tener playlist propia).
+ * Lanza `Error` con `code` 'tooMany' si saldrían más de MAX_SPLIT_PARTS grupos.
+ */
+export function splitTracks(tracks, mode, opts = {}) {
+  const groups = new Map();
+  const add = (key, label, t) => {
+    if (!groups.has(key)) groups.set(key, { key, label, tracks: [] });
+    groups.get(key).tracks.push(t);
+  };
+  if (mode === 'parts') {
+    const n = Math.max(2, Math.min(MAX_SPLIT_PARTS, Math.floor(Number(opts.parts) || 2)));
+    const size = Math.floor(tracks.length / n);
+    const extra = tracks.length % n;
+    let at = 0;
+    for (let i = 0; i < n && at < tracks.length; i++) {
+      const len = size + (i < extra ? 1 : 0);
+      if (len === 0) break;
+      groups.set(String(i + 1), { key: String(i + 1), label: String(i + 1), tracks: tracks.slice(at, at + len) });
+      at += len;
+    }
+  } else if (mode === 'decade') {
+    for (const t of tracks) {
+      const year = parseReleaseDate(t.releaseDate, t.releaseDatePrecision)?.year;
+      if (year == null) add('none', '', t); else add(String(Math.floor(year / 10) * 10), `${Math.floor(year / 10) * 10}s`, t);
+    }
+  } else if (mode === 'addedYear') {
+    for (const t of tracks) {
+      const y = /^(\d{4})-/.exec(t.addedAt ?? '')?.[1];
+      if (y) add(y, y, t); else add('none', '', t);
+    }
+  } else if (mode === 'artist') {
+    const min = Math.max(1, Math.floor(Number(opts.minArtist) || 1));
+    const counts = new Map();
+    for (const t of tracks) counts.set(t.artists[0] ?? '', (counts.get(t.artists[0] ?? '') ?? 0) + 1);
+    for (const t of tracks) {
+      const a = t.artists[0] ?? '';
+      if (a && counts.get(a) >= min) add(`a:${a}`, a, t); else add('others', '', t);
+    }
+  } else {
+    throw new RangeError('modo de división desconocido');
+  }
+  const list = [...groups.values()].sort((a, b) => (a.key === 'none' || a.key === 'others') - (b.key === 'none' || b.key === 'others') || a.key.localeCompare(b.key, undefined, { numeric: true }));
+  if (list.length > MAX_SPLIT_PARTS) throw Object.assign(new Error('tooMany'), { code: 'tooMany', count: list.length });
+  return list;
+}
+
 // ---------- Duplicados ----------
 
 const KEEP_RE = /\b(live|en vivo|acoustic|ac[uú]stic[oa]|unplugged)\b/i;
