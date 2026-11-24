@@ -33,6 +33,9 @@ function h(tag, props = {}, ...kids) {
   return el;
 }
 
+/** replaceChildren convierte null y false en el texto "null"/"false"; aquí se descartan. */
+const setKids = (el, ...kids) => el.replaceChildren(...kids.flat().filter((k) => k != null && k !== false));
+
 function icon(...paths) {
   const svg = document.createElementNS(SVGNS, 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
@@ -279,7 +282,7 @@ function renderResult(container, status, o) {
   }) }, t('undo'));
   const sync = () => { const u = getItem(KEYS.undo); undoBtn.hidden = !(u && u.playlistId === o.playlistId); };
   sync();
-  container.replaceChildren(
+  setKids(container,
     h('h2', { class: 'result-title' }, o.title),
     ...o.notes.map((n) => h('p', { class: 'note' }, n)),
     h('ol', { class: 'preview', 'aria-label': t('preview') }, o.tracks.slice(0, 20).map((tr) => h('li', {}, h('strong', {}, tr.name), ' ', h('span', { class: 'muted' }, artistsOf(tr))))),
@@ -523,7 +526,7 @@ function dupsPanel() {
       status.clear();
       form.hidden = true;
       if (!groups.length) {
-        result.replaceChildren(h('h2', { class: 'result-title' }, t('noDups')), ...skipNotes(skipped).map((n) => h('p', { class: 'note' }, n)),
+        setKids(result,h('h2', { class: 'result-title' }, t('noDups')), ...skipNotes(skipped).map((n) => h('p', { class: 'note' }, n)),
           h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', onclick: back }, t('back'))));
         result.hidden = false;
         return;
@@ -582,7 +585,7 @@ function dupsPanel() {
       });
     }
 
-    result.replaceChildren(
+    setKids(result,
       h('h2', { class: 'result-title' }, t('dupsFound', { n: fmt(groups.length) })),
       h('ul', { class: 'dup-list' }, items), count,
       h('div', { class: 'actions' }, removeBtn, copyBtn, h('button', { class: 'btn', type: 'button', onclick: back }, t('back'))));
@@ -643,7 +646,7 @@ function backupPanel() {
       const csvBlob = new Blob(['﻿', toCsv(lists)], { type: 'text/csv' });
       const total = lists.reduce((n, p) => n + p.tracks.length, 0);
       status.clear();
-      out.replaceChildren(
+      setKids(out,
         h('h2', { class: 'result-title' }, t('backupReady', { n: fmt(total), p: fmt(lists.length) })),
         skippedTotal ? h('p', { class: 'note' }, t('skipped', { n: fmt(skippedTotal) })) : null,
         h('div', { class: 'actions' },
@@ -676,7 +679,7 @@ function backupPanel() {
     const go = h('button', { class: 'btn primary', type: 'button', onclick: () => restore() }, t('restoreBtn'));
     const upd = () => { go.disabled = !boxes.some((b) => b.box.checked); };
     boxes.forEach((b) => b.box.addEventListener('change', upd));
-    restoreBox.replaceChildren(
+    setKids(restoreBox,
       h('ul', { class: 'restore-list' }, boxes.map(({ p, box }) => h('li', {}, h('label', { class: 'check' }, box, h('span', {}, `${p.name} · ${t('songs', { n: fmt(p.tracks.length) })}`))))),
       go);
     restoreBox.hidden = false;
@@ -773,7 +776,7 @@ function mountApp() {
     tabBtns[key] = b;
     return b;
   }));
-  root.replaceChildren(
+  setKids(root,
     h('header', { class: 'top' }, h('h1', {}, h('img', { src: 'icons/icon.svg', alt: '', width: '28', height: '28' }), 'Baraja'), gear),
     h('main', {}, Object.values(panels)),
     nav);
@@ -797,7 +800,7 @@ function renderSetup(problem) {
   const langSel = h('select', { 'aria-label': t('language'), onchange: () => { setLang(langSel.value); renderSetup(problem); } },
     LANGS.map(([code, label]) => { const o = h('option', { value: code }, label); if (code === getLang()) o.selected = true; return o; }));
   const steps = ['step1', 'step2', 'step3', 'step4', 'step5'];
-  root.replaceChildren(h('main', { class: 'setup' },
+  setKids(root,h('main', { class: 'setup' },
     h('div', { class: 'brand' }, h('img', { src: 'icons/icon.svg', alt: '', width: '72', height: '72' }), h('h1', {}, 'Baraja')),
     h('p', { class: 'lead' }, t('welcome')),
     h('h2', {}, t('guideTitle')),
@@ -829,7 +832,7 @@ async function boot() {
   } catch (e) {
     console.error(e);
     if (e instanceof auth.AuthError) return renderSetup(e);
-    root.replaceChildren(h('main', { class: 'setup' }, h('p', { class: 'error', role: 'alert' }, errorMessage(e)),
+    setKids(root,h('main', { class: 'setup' }, h('p', { class: 'error', role: 'alert' }, errorMessage(e)),
       h('button', { class: 'btn primary', type: 'button', onclick: () => location.reload() }, t('retry'))));
   }
 }

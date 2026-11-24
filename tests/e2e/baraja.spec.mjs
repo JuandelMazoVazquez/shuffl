@@ -328,6 +328,46 @@ test('volver a barajar a medias: Deshacer sigue recuperando el original y otra p
   expect(state.lists.get('pl_rock').tracks.map((t) => t.uri)).toEqual(original);
 });
 
+test('ninguna pantalla de resultado muestra «null», «undefined» ni «false»', async ({ page }) => {
+  const clean = async (label) => {
+    const text = await page.locator('main').innerText();
+    expect(text, label).not.toMatch(/\b(null|undefined|false)\b/);
+  };
+  await login(page);
+
+  await pick(page, 'shuffle', 'Chill');
+  await page.locator('#panel-shuffle .btn.primary.big').click();
+  await expect(page.getByText('Listo: 80 canciones barajadas')).toBeVisible();
+  await clean('barajar');
+
+  await page.locator('#tab-sort').click();
+  await pick(page, 'sort', 'Chill');
+  await page.locator('#panel-sort .btn.primary.big').click();
+  await expect(page.locator('#panel-sort .result-title')).toBeVisible();
+  await clean('ordenar');
+
+  await page.locator('#tab-dups').click();
+  await pick(page, 'dups', 'Rock');
+  await page.getByRole('button', { name: 'Analizar' }).click();
+  await expect(page.locator('#panel-dups .result-title')).toBeVisible();
+  await clean('duplicados');
+
+  await page.locator('#tab-backup').click();
+  await pick(page, 'backup', 'Rock');
+  await page.getByRole('button', { name: 'Preparar copia' }).click();
+  await expect(page.getByText('Copia lista: 120 canciones en 1 listas')).toBeVisible();
+  await clean('copia');
+
+  const uri = (i) => `spotify:track:${String(i).padStart(22, '0')}`;
+  const backup = { app: 'baraja', version: 1, playlists: [{ id: 'x', name: 'Mi lista', tracks: [{ uri: uri(1) }, { uri: uri(2) }] }] };
+  await page.locator('#restore-file').setInputFiles({ name: 'b.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(backup)) });
+  await expect(page.getByRole('button', { name: 'Restaurar' })).toBeVisible();
+  await clean('restaurar (lista)');
+  await page.getByRole('button', { name: 'Restaurar' }).click();
+  await expect(page.getByText('Restauradas 1 playlists.')).toBeVisible();
+  await clean('restaurar (hecho)');
+});
+
 test('importar: archivo enorme se rechaza sin leerlo', async ({ page }) => {
   await login(page);
   await page.locator('#tab-backup').click();
