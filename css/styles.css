@@ -44,6 +44,7 @@ body {
   padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
 }
 body.busy button, body.busy a.btn, body.busy input, body.busy select { pointer-events: none; opacity: .6; }
+body.busy .update-banner button { pointer-events: auto; opacity: 1; }
 h1 { font-size: 1.35rem; margin: 0; display: flex; align-items: center; gap: .5rem; letter-spacing: .01em; }
 h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 1.4rem 0 .5rem; }
 p { margin: .4rem 0; }
@@ -162,6 +163,16 @@ progress { width: 100%; height: 8px; accent-color: var(--accent); margin-top: .4
 
 .result-title { font-size: 1.3rem; text-transform: none; letter-spacing: 0; color: var(--text); margin-top: 1.2rem; font-variant-numeric: tabular-nums; }
 .note { color: var(--muted); }
+/* Logo oficial de Spotify: 88 px de ancho (mínimo 70) y zona de seguridad de media altura del icono (12 px) en el padding. */
+.spotify-attrib { display: inline-flex; padding: 12px; margin: 0; line-height: 0; }
+.spotify-attrib img { width: 88px; height: 24px; flex: none; max-width: none; }
+.spotify-attrib .on-light { display: none; }
+:root[data-theme="light"] .spotify-attrib .on-dark { display: none; }
+:root[data-theme="light"] .spotify-attrib .on-light { display: block; }
+@media (prefers-color-scheme: light) {
+  :root[data-theme="auto"] .spotify-attrib .on-dark { display: none; }
+  :root[data-theme="auto"] .spotify-attrib .on-light { display: block; }
+}
 .preview { padding-left: 1.6rem; margin: 1rem 0; }
 .preview li { padding: .15rem 0; }
 .dup-list, .restore-list { list-style: none; padding: 0; margin: 1rem 0; display: grid; gap: .6rem; }

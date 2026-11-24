@@ -2,6 +2,16 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). El proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 
+## [1.1.1] - 2026-11-24
+
+### Añadido
+
+- **Logo oficial de Spotify** junto a carátulas y metadatos: en los selectores de playlists, la pantalla de resultado, la lista de duplicados y la hoja de playlists de otras personas. Se usa el logo completo sin modificar del kit de marca de Spotify (blanco en tema oscuro, negro en claro) a 88 px de ancho, con zona de seguridad de 12 px y enlazado a Spotify.
+
+### Corregido
+
+- El botón «Actualizar» del banner de versión nueva no se podía pulsar durante una tarea (quedaba desactivado como el resto); ahora responde y avisa de que hay que terminar la tarea antes de actualizar.
+
 ## [1.1.0] - 2026-11-24
 
 ### Seguridad

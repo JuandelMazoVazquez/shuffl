@@ -70,6 +70,15 @@ const ICONS = {
 
 const fmt = (n) => Number(n).toLocaleString(getLang());
 const spotifyUrl = (id) => `https://open.spotify.com/playlist/${encodeURIComponent(id)}`;
+
+/**
+ * Atribución obligatoria junto a carátulas y metadatos: logo completo oficial sin modificar, enlazado a Spotify.
+ * Blanco en tema oscuro y negro en claro (el verde solo vale sobre negro o blanco puros); el CSS elige cuál se ve.
+ */
+const spotifyAttribution = (href = 'https://open.spotify.com/') =>
+  h('a', { class: 'spotify-attrib', href, target: '_blank', rel: 'noopener', 'aria-label': t('contentFromSpotify') },
+    h('img', { class: 'on-dark', src: 'icons/spotify/full-logo-white.svg', alt: '', width: '88', height: '24' }),
+    h('img', { class: 'on-light', src: 'icons/spotify/full-logo-black.svg', alt: '', width: '88', height: '24' }));
 const nowLabel = () => new Date().toLocaleString(getLang(), { dateStyle: 'short', timeStyle: 'short' });
 const artistsOf = (tr) => tr.artists.join(', ');
 
@@ -323,7 +332,7 @@ function createPicker({ multi, disabledReason, onChange }) {
   }
 
   const picker = {
-    el: h('div', { class: 'picker-wrap' }, search, list),
+    el: h('div', { class: 'picker-wrap' }, search, list, spotifyAttribution()),
     getSelected: () => S.playlists.filter((p) => selected.has(p.id)),
     /** Sustituye la selección por las playlists de `ids` que se puedan elegir. Devuelve cuántas quedaron. */
     setSelected(ids) {
@@ -371,6 +380,7 @@ function showFollowedHelp(pl) {
   const sheet = h('div', { class: 'sheet-backdrop', onclick: (e) => { if (e.target === sheet) close(); } },
     h('div', { class: 'sheet', id: 'followed-help', role: 'dialog', 'aria-modal': 'true', 'aria-label': pl.name },
       h('div', { class: 'row' }, cover, h('span', { class: 'row-text' }, h('strong', {}, pl.name), pl.owner ? h('span', { class: 'row-meta' }, pl.owner) : null)),
+      spotifyAttribution(spotifyUrl(pl.id)),
       h('p', {}, t('followedWhy')),
       pl.hasCopy !== undefined ? h('p', { class: 'note', id: 'followed-has-copy' }, t('followedHasCopy', { name: pl.hasCopy })) : null,
       h('h2', {}, t('copyGuideTitle')),
@@ -462,6 +472,7 @@ function renderResult(container, status, o) {
     title,
     ...o.notes.map((n) => h('p', { class: 'note' }, n)),
     h('ol', { class: 'preview', 'aria-label': t('preview') }, o.tracks.slice(0, 20).map((tr, i) => h('li', { style: `--i:${i}` }, h('strong', {}, tr.name), ' ', h('span', { class: 'muted' }, artistsOf(tr))))),
+    spotifyAttribution(spotifyUrl(o.playlistId)),
     h('div', { class: 'actions' },
       h('button', { class: 'btn primary', type: 'button', id: 'play-now', onclick: () => playNow(o.playlistId, info, status) }, t('playNow')),
       info,
@@ -989,7 +1000,7 @@ function dupsPanel() {
 
     setKids(result,
       h('h2', { class: 'result-title' }, t('dupsFound', { n: fmt(groups.length) })),
-      h('ul', { class: 'dup-list' }, items), count,
+      h('ul', { class: 'dup-list' }, items), spotifyAttribution(spotifyUrl(pl.id)), count,
       h('div', { class: 'actions' }, removeBtn, copyBtn, h('button', { class: 'btn', type: 'button', onclick: back }, t('back'))));
     result.hidden = false;
     update();

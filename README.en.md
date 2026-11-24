@@ -4,7 +4,7 @@
 
 Baraja is a static PWA (vanilla HTML, CSS and JavaScript, no build step and no runtime dependencies) that truly shuffles your Spotify playlists.
 
-Independent project, not affiliated with or endorsed by Spotify. Spotify is a trademark of Spotify AB.
+Independent project, not affiliated with or endorsed by Spotify. Spotify is a trademark of Spotify AB; its logo (`icons/spotify/`) is included unmodified under its developer branding guidelines.
 
 ## Why it exists
 
