@@ -3,10 +3,19 @@ import { KEYS, getItem, setItem, removeItem } from './storage.js';
 
 const AUTHORIZE_URL = 'https://accounts.spotify.com/authorize';
 const TOKEN_URL = 'https://accounts.spotify.com/api/token';
-export const SCOPES = [
+export const SCOPE_LIST = [
   'playlist-read-private', 'playlist-read-collaborative',
   'playlist-modify-private', 'playlist-modify-public', 'user-library-read',
-].join(' ');
+  'user-read-playback-state', 'user-modify-playback-state',
+  'ugc-image-upload', 'user-top-read', 'user-read-recently-played', 'user-follow-read',
+];
+export const SCOPES = SCOPE_LIST.join(' ');
+
+/** Scopes que la sesión guardada no tiene (sesiones de antes de añadir funciones). */
+export function missingScopes(tokens) {
+  const granted = new Set(String(tokens?.scope ?? '').split(/\s+/).filter(Boolean));
+  return SCOPE_LIST.filter((s) => !granted.has(s));
+}
 
 export class AuthError extends Error {
   constructor(code, message) {
@@ -23,6 +32,7 @@ export function redirectUri() {
 export const getClientId = () => getItem(KEYS.clientId) || DEFAULT_CLIENT_ID;
 export const setClientId = (id) => setItem(KEYS.clientId, id.trim());
 export const isLoggedIn = () => !!getItem(KEYS.tokens)?.refresh_token;
+export const needsReconnect = () => isLoggedIn() && missingScopes(getItem(KEYS.tokens)).length > 0;
 
 const b64url = (bytes) =>
   btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -74,6 +84,7 @@ function storeTokens(data, previous) {
   setItem(KEYS.tokens, {
     access_token: data.access_token,
     refresh_token: data.refresh_token ?? previous?.refresh_token,
+    scope: data.scope ?? previous?.scope,
     expires_at: Date.now() + (data.expires_in ?? 3600) * 1000,
   });
 }

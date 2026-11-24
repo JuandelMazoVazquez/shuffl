@@ -12,6 +12,7 @@ export class ApiError extends Error {
     this.name = 'ApiError';
     this.status = status;
     this.body = body;
+    this.reason = body?.error?.reason ?? null;
   }
 }
 
@@ -51,6 +52,10 @@ export class SpotifyApi {
         refreshed = true;
         await this.auth.refresh();
         continue;
+      }
+      if (res.status === 429) {
+        const detail = await res.clone().json().catch(() => null);
+        if (detail?.error?.reason === 'QUOTA_EXCEEDED') throw new ApiError(429, detail.error.message || 'QUOTA_EXCEEDED', detail);
       }
       if (res.status === 429 && rateRetries < 5) {
         rateRetries++;
@@ -124,6 +129,21 @@ export class SpotifyApi {
 
   getLikedTracks(onProgress) {
     return this.paginate('/me/tracks', onProgress);
+  }
+
+  async getDevices() {
+    const data = await this.request('GET', '/me/player/devices');
+    return Array.isArray(data?.devices) ? data.devices : [];
+  }
+
+  /** Apaga el aleatorio de Spotify y reproduce la playlist desde la primera canción. */
+  async playPlaylist(playlistId, deviceId) {
+    const dev = deviceId ? `&device_id=${encodeURIComponent(deviceId)}` : '';
+    await this.request('PUT', `/me/player/shuffle?state=false${dev}`);
+    await this.request('PUT', `/me/player/play${deviceId ? `?device_id=${encodeURIComponent(deviceId)}` : ''}`, {
+      context_uri: `spotify:playlist:${playlistId}`,
+      offset: { position: 0 },
+    });
   }
 
   createPlaylist(name, description = '') {

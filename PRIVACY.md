@@ -29,9 +29,15 @@ Las copias JSON y CSV se generan en tu dispositivo y las guardas tú donde quier
 | `playlist-read-collaborative` | Leer playlists colaborativas |
 | `playlist-modify-private` | Crear y modificar playlists privadas (las que crea Baraja son privadas) |
 | `playlist-modify-public` | Modificar tus playlists públicas |
-| `user-library-read` | Leer Tus me gusta |
+| `user-library-read` | Leer Tus me gusta y álbumes guardados |
+| `user-read-playback-state` | Ver tus dispositivos para «Reproducir ahora» |
+| `user-modify-playback-state` | Apagar el aleatorio y empezar a reproducir una playlist |
+| `ugc-image-upload` | Subir la portada de «🔀 Baraja» |
+| `user-top-read` | Instantáneas de tus canciones más escuchadas |
+| `user-read-recently-played` | Instantánea de tus últimas escuchas |
+| `user-follow-read` | Incluir los artistas que sigues en la copia de seguridad |
 
-Baraja no modifica Tus me gusta ni lee tu historial de escucha.
+Baraja no modifica Tus me gusta. Tu historial, tus tops y tus artistas solo se leen cuando usas la función que los necesita, y nada sale de tu dispositivo.
 
 ## Borrar tus datos
 
