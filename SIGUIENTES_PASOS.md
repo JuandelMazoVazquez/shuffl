@@ -1,6 +1,7 @@
 # Siguientes pasos
 
-## 1. Qué hay hecho (v1.1.0)
+## 1. Qué hay hecho (v1.1.1)
+- v1.1.1: logo oficial de Spotify junto a carátulas y metadatos, y botón «Actualizar» usable durante una tarea.
 - Todo lo de la v1.0 más: Reproducir ahora, portada propia de «🔀 Baraja», pantalla «Tenerla siempre a mano», logo e iconos nuevos, rediseño con Inicio, mezclas guardadas, filtros, toda la biblioteca, playlists de otras personas con guía, instantáneas, Me gusta sin playlist, dividir, orden combinado, copia ampliada, asistente de alta y compartir. Detalle en `CHANGELOG.md`; decisiones en `DECISIONES.md`.
 - Tests: unitarios y e2e con Spotify simulado en verde; CI y despliegue automático a Pages tras el CI de `main`.
 - Tres rondas de seguridad en la v1.0 y una más sobre la v1.1.
@@ -19,6 +20,5 @@
 - Cuando haya versión nueva saldrá el banner «Nueva versión disponible · Actualizar».
 
 ## 4. Pendiente
-- **Logo oficial de Spotify**: no está incluido; las referencias son enlaces de texto («LISTEN ON SPOTIFY», «Abrir en Spotify»). Si quieres cumplir al pie de la letra las normas de marca donde salen carátulas, añade el recurso oficial sin modificar (mínimo 21 px el icono).
 - Menores conocidos: una restauración que falla a mitad deja una playlist «(restaurada)» incompleta; el refresh del token entre pestañas simultáneas puede mostrar sesión caducada hasta recargar; el test de Escape/animaciones usa esperas cortas solo para las capturas del README.
 - Ideas futuras en `ROADMAP.md`.

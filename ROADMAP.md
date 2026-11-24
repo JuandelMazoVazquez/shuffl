@@ -8,5 +8,4 @@ Ideas posibles con la API actual pero grandes o con demanda por verificar. Lo ya
 - **Dividir Tus me gusta** sin pasar por una playlist.
 - **Restaurar álbumes y artistas** de la copia ampliada con `PUT /me/library`.
 - **Restaurar Tus me gusta** conservando la fecha de añadida (la API no lo permite hoy; revisar si cambia).
-- **Logo oficial de Spotify** junto a los metadatos que se muestran (hay que añadir el recurso oficial sin modificar).
 - **Más idiomas** además de español e inglés.

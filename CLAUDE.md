@@ -16,4 +16,5 @@ PWA estática (HTML + CSS + JS vanilla con ES modules, sin build ni dependencias
 - La versión de la caché la inyecta el despliegue (`__BUILD__` en `sw.js`, hash del commit): no se sube a mano. Si añades un archivo JS a la app, inclúyelo en `SHELL` de `sw.js` (los de `js/` ya se copian con la carpeta en `pages.yml`).
 - Pages despliega solo desde main y solo si el CI pasa.
 - No se usa "Spotify" en el nombre ni el logo de la app.
+- Los logos de `icons/spotify/` son los oficiales sin modificar (un test fija su hash): no se editan ni se recolorean. Donde se muestren carátulas o metadatos de Spotify, añadir `spotifyAttribution()`.
 - Push, merge y hacer público el repo: solo con OK del usuario (ver docs/bandeja.md).

@@ -4,7 +4,7 @@
 
 Baraja es una PWA estática (HTML, CSS y JavaScript vanilla, sin build ni dependencias de runtime) que baraja de verdad tus playlists de Spotify.
 
-Proyecto independiente, no afiliado ni respaldado por Spotify. Spotify es una marca de Spotify AB.
+Proyecto independiente, no afiliado ni respaldado por Spotify. Spotify es una marca de Spotify AB; su logo (`icons/spotify/`) se incluye sin modificar según sus normas de marca para desarrolladores.
 
 ## Por qué existe
 
