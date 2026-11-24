@@ -77,7 +77,7 @@ export function createState() {
     ['pl_top', { id: 'pl_top', name: 'Top 50 Global', owner: owner('spotify'), tracks: range(2000, 2050) }],
   ]);
   const devices = [{ id: 'dev-phone', name: 'iPhone de prueba', type: 'Smartphone', is_active: true }];
-  return { catalog, lists, liked, created: 0, writes: [], tokens: 0, authorizeParams: null, devices, playerCalls: [], images: [] };
+  return { catalog, lists, liked, created: 0, writes: [], tokens: 0, authorizeParams: null, devices, playerCalls: [], images: [], itemRequests: [], metaRequests: [] };
 }
 
 const json = (route, body, status = 200) =>
@@ -113,7 +113,7 @@ export async function mockSpotify(page, state) {
   };
   const toEntries = (tracks) => tracks.map(entry);
   const metaOf = (l) => ({
-    id: l.id, name: l.name, owner: l.owner, collaborative: false, items: { total: l.tracks.length },
+    id: l.id, name: l.name, owner: l.owner, collaborative: !!l.collaborative, items: { total: l.tracks.length },
     images: l.cover ? [{ url: `https://i.scdn.co/image/${l.id}`, height: 64, width: 64 }] : [],
   });
 
@@ -151,12 +151,20 @@ export async function mockSpotify(page, state) {
       state.images.push({ id: img[1], contentType: req.headers()['content-type'], body: req.postData() });
       return route.fulfill({ status: 202, headers: CORS });
     }
+    const meta = /^\/playlists\/([^/]+)$/.exec(path);
+    if (meta && method === 'GET') {
+      const list = state.lists.get(meta[1]);
+      if (!list) return json(route, { error: { status: 404, message: 'Not found' } }, 404);
+      state.metaRequests.push(meta[1]);
+      return json(route, { id: list.id, name: list.name, owner: list.owner, collaborative: !!list.collaborative, images: [] });
+    }
     const m = /^\/playlists\/([^/]+)\/items$/.exec(path);
     if (m) {
       const list = state.lists.get(m[1]);
       if (!list) return json(route, { error: { status: 404, message: 'Not found' } }, 404);
       if (method === 'GET') {
-        if (list.owner.id !== 'me') return json(route, { error: { status: 403, message: 'Forbidden' } }, 403);
+        state.itemRequests.push(m[1]);
+        if (list.owner.id !== 'me' && !list.collaborative) return json(route, { error: { status: 403, message: 'Forbidden' } }, 403);
         return json(route, page_(toEntries(list.tracks), url));
       }
       const tracksOf = (uris) => uris.map((u) => state.catalog.get(u) ?? { id: u.split(':').pop(), uri: u, type: 'track', name: u, artists: [], album: {} });

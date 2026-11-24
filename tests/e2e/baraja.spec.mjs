@@ -29,8 +29,8 @@ test('pantalla inicial, guía y login completo con PKCE', async ({ page }) => {
   expect(state.authorizeParams.redirect_uri).toBe('http://127.0.0.1:5173/');
   expect(state.lastTokenBody.get('code_verifier')).toHaveLength(96);
   expect(page.url()).toBe('http://127.0.0.1:5173/');
-  await expect(page.locator('#panel-shuffle label.row', { hasText: 'Top 50 Global' })).toContainText('Spotify solo permite leer');
-  await expect(page.locator('#panel-shuffle input[type=checkbox]:disabled')).toHaveCount(1);
+  await expect(page.locator('#panel-shuffle .followed', { hasText: 'Top 50 Global' })).toContainText('No se puede leer');
+  await expect(page.locator('#panel-shuffle input[type=checkbox]:disabled')).toHaveCount(0);
   await shot(page, `${SHOTS}/02-barajar.png`);
 });
 

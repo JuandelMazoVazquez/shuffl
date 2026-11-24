@@ -6,6 +6,7 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). E
 
 ### Añadido
 
+- **Playlists de otras personas**: sección «Playlists que sigues» en los selectores, con portada y marcadas «No se puede leer»; al tocarlas se explica por qué y cómo hacerse una copia propia en Spotify (móvil y ordenador) con botón «Abrir en Spotify». Una playlist propia con el mismo nombre se marca «Tu copia de…» y se puede barajar. Las colaborativas se barajan como propias. Se puede pegar un enlace, URI o id: solo se leen nombre y autor, nunca las canciones.
 - **Filtros antes de barajar**: años de lanzamiento, fecha de añadida, duración y explícitas, con contador en vivo («N de M canciones pasan los filtros»). Se filtra primero y luego se baraja de forma uniforme lo que queda. Con filtros activos no se permite sobrescribir la propia playlist (perdería las canciones filtradas).
 - **Barajar toda mi biblioteca**: todas las playlists propias y colaborativas más Tus me gusta, con resumen «N playlists · M canciones». Las de otras personas se saltan y se avisa; «🔀 Baraja» no se incluye a sí misma.
 - **Mezclas guardadas**: fuentes, filtros y destino con nombre, desde Inicio con un toque; se pueden editar y borrar. Una mezcla de biblioteca incluye las playlists nuevas. Viajan en la copia de seguridad (JSON) y se restauran.

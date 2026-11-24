@@ -147,6 +147,11 @@ export class SpotifyApi {
     });
   }
 
+  /** Solo metadatos: Spotify no deja leer el contenido de playlists ajenas y Baraja no lo intenta. */
+  getPlaylistMeta(id) {
+    return this.request('GET', `/playlists/${encodeURIComponent(id)}?fields=${encodeURIComponent('id,name,owner(id,display_name),images,collaborative')}`);
+  }
+
   /** `base64` es un JPEG de hasta 256 KB, sin el prefijo data:. */
   setPlaylistImage(id, base64) {
     return this.request('PUT', `/playlists/${encodeURIComponent(id)}/images`, undefined, { rawBody: base64, contentType: 'image/jpeg' });
