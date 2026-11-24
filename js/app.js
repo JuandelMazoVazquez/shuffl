@@ -8,6 +8,7 @@ import { KEYS, getItem, setItem, removeItem } from './storage.js';
 import { t, setLang, getLang, LANGS } from './i18n.js';
 import { REPO_URL } from './config.js';
 import { registerUpdates } from './update.js';
+import { makeCover } from './cover.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 const BARAJA_NAME = '🔀 Baraja';
@@ -350,6 +351,8 @@ function renderResult(container, status, o) {
   return sync;
 }
 
+const coverEnabled = () => getItem(KEYS.cover) !== false;
+
 const skipNotes = (s) => (skippedCount(s) ? [t('skipped', { n: fmt(skippedCount(s)) })] : []);
 
 // ---------- Barajar ----------
@@ -403,23 +406,38 @@ function shufflePanel() {
         saveUndo(fresh.id, fresh.name, current.map((x) => x.uri), { soft: true });
         return fresh.id;
       }
-      const created = await S.api.createPlaylist(BARAJA_NAME, t('barajaDesc'));
+      const created = await S.api.createPlaylist(BARAJA_NAME, t('shuffleDesc'));
       setItem(KEYS.barajaId, created.id);
       return created.id;
     }
-    return (await S.api.createPlaylist(`Baraja · ${nowLabel()}`, t('barajaDesc'))).id;
+    return (await S.api.createPlaylist(`Baraja · ${nowLabel()}`, t('shuffleDesc'))).id;
+  }
+
+  /** La portada nunca hace fallar la baraja: si algo va mal solo devuelve un aviso. */
+  async function uploadCover(mode, playlistId) {
+    if (mode === 'self' || !coverEnabled()) return [];
+    try {
+      await S.api.setPlaylistImage(playlistId, await makeCover({ label: nowLabel() }));
+      return [];
+    } catch (e) {
+      console.warn('Portada no subida:', e?.status ?? e?.message);
+      return [t('coverFailed')];
+    }
   }
 
   function showResult(info) {
     form.hidden = true;
     last = info;
-    const notes = [...skipNotes(info.skipped)];
+    const notes = [...skipNotes(info.skipped), ...(info.coverNotes ?? [])];
     if (info.dedupRemoved) notes.push(t('dedupRemoved', { n: fmt(info.dedupRemoved) }));
     if (info.truncated) notes.push(t('truncated', { n: fmt(info.truncated) }));
     renderResult(result, status, {
       title: t('shuffledDone', { n: fmt(info.order.length) }),
       notes, tracks: info.order, playlistId: info.playlistId,
-      extra: [h('button', { class: 'btn', type: 'button', onclick: () => reshuffle() }, t('reshuffle'))],
+      extra: [
+        h('button', { class: 'btn', type: 'button', onclick: () => reshuffle() }, t('reshuffle')),
+        h('button', { class: 'btn', type: 'button', id: 'open-pin-result', onclick: () => S.show('pin') }, t('pinTitle')),
+      ],
       onBack: () => { result.hidden = true; form.hidden = false; status.clear(); },
     });
   }
@@ -435,9 +453,10 @@ function shufflePanel() {
       const { tracks: order, truncated } = capPlaylist(shuffle(base));
       const playlistId = await resolveTarget(mode, sel, tracks);
       await overwritePlaylist(playlistId, order.map((x) => x.uri), status);
+      const coverNotes = await uploadCover(mode, playlistId);
       await loadPlaylists();
       status.clear();
-      showResult({ base, order, skipped, truncated, dedupRemoved: tracks.length - base.length, playlistId });
+      showResult({ base, order, skipped, truncated, dedupRemoved: tracks.length - base.length, playlistId, mode, coverNotes });
     });
   }
 
@@ -447,8 +466,9 @@ function shufflePanel() {
       await assertUnchanged(last.playlistId, last.order.length, last.order);
       saveUndo(last.playlistId, '', last.order.map((x) => x.uri), { soft: true });
       await overwritePlaylist(last.playlistId, order.map((x) => x.uri), status);
+      const coverNotes = await uploadCover(last.mode, last.playlistId);
       status.clear();
-      showResult({ ...last, order, truncated });
+      showResult({ ...last, order, truncated, coverNotes });
     });
   }
 
@@ -780,6 +800,8 @@ function settingsPanel() {
   const idIn = h('input', { type: 'text', id: 'settings-client-id', class: 'text mono', value: auth.getClientId(), autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', 'aria-label': t('clientId') });
   const langSel = h('select', { id: 'lang-select', 'aria-label': t('language'), onchange: () => { setLang(langSel.value); mountApp(); } },
     LANGS.map(([code, label]) => { const o = h('option', { value: code }, label); if (code === getLang()) o.selected = true; return o; }));
+  const coverToggle = h('input', { type: 'checkbox', id: 'cover-toggle', onchange: () => setItem(KEYS.cover, coverToggle.checked) });
+  coverToggle.checked = coverEnabled();
   const undoInfo = h('p', { class: 'muted' });
   const undoBtn = h('button', { class: 'btn', type: 'button', onclick: () => task(status, async () => {
     if (await applyUndo(status)) status.say(t('undone'));
@@ -796,6 +818,9 @@ function settingsPanel() {
     h('button', { class: 'btn', type: 'button', onclick: () => { auth.setClientId(idIn.value); status.say(t('saved')); } }, t('save')),
     h('h2', {}, t('redirectUri')), copyBox(auth.redirectUri()),
     h('h2', {}, t('language')), langSel,
+    h('h2', {}, t('coverTitle')),
+    h('label', { class: 'check' }, coverToggle, h('span', {}, t('coverToggle'))),
+    h('button', { class: 'btn', type: 'button', id: 'open-pin', onclick: () => S.show('pin') }, t('pinTitle')),
     h('h2', {}, t('undoTitle')), undoInfo, undoBtn,
     h('h2', {}, t('account')), h('p', { class: 'muted' }, S.me?.display_name || S.me?.id || ''),
     h('button', { class: 'btn danger', type: 'button', id: 'logout', onclick: () => { auth.logout(); renderSetup(); } }, t('logout')),
@@ -805,6 +830,25 @@ function settingsPanel() {
     h('p', {}, h('a', { href: REPO_URL, target: '_blank', rel: 'noopener' }, t('repoLink'))),
     status.el);
   panel.refresh = syncUndo;
+  return panel;
+}
+
+// ---------- Tenerla siempre a mano ----------
+
+function pinPanel() {
+  const slot = h('div', { class: 'actions' });
+  const panel = h('section', { class: 'panel', id: 'panel-pin', hidden: true },
+    h('h2', {}, t('pinTitle')),
+    h('p', { class: 'lead' }, t('pinLead')),
+    h('h2', {}, t('pinHow')), h('p', {}, t('pinHowText')),
+    h('h2', {}, t('pinWhy')), h('p', {}, t('pinWhyText')),
+    h('h2', {}, t('pinHome')), h('p', {}, t('pinHomeText')),
+    slot,
+    h('button', { class: 'btn', type: 'button', id: 'pin-back', onclick: () => S.show('shuffle') }, t('back')));
+  panel.refresh = () => {
+    const id = getItem(KEYS.barajaId);
+    setKids(slot, id ? h('a', { class: 'btn primary', href: spotifyUrl(id), target: '_blank', rel: 'noopener', id: 'pin-open' }, t('openInSpotify')) : null);
+  };
   return panel;
 }
 
@@ -823,7 +867,7 @@ const TABS = [['shuffle', 'tabShuffle'], ['sort', 'tabSort'], ['dups', 'tabDups'
 
 function mountApp() {
   S.pickers = [];
-  const panels = { shuffle: shufflePanel(), sort: sortPanel(), dups: dupsPanel(), backup: backupPanel(), settings: settingsPanel() };
+  const panels = { shuffle: shufflePanel(), sort: sortPanel(), dups: dupsPanel(), backup: backupPanel(), pin: pinPanel(), settings: settingsPanel() };
   const tabBtns = {};
   const show = (key) => {
     S.tab = key;
@@ -831,8 +875,10 @@ function mountApp() {
     for (const [k, b] of Object.entries(tabBtns)) b.setAttribute('aria-current', k === key ? 'page' : 'false');
     gear.setAttribute('aria-pressed', String(key === 'settings'));
     panels.settings.refresh();
+    panels.pin.refresh();
     window.scrollTo(0, 0);
   };
+  S.show = show;
   const gear = h('button', { class: 'icon-btn', type: 'button', id: 'open-settings', 'aria-label': t('settings'), onclick: () => show(S.tab === 'settings' ? 'shuffle' : 'settings') }, icon(...ICONS.settings));
   const nav = h('nav', { class: 'tabs', 'aria-label': t('sections') }, TABS.map(([key, label]) => {
     const b = h('button', { type: 'button', id: `tab-${key}`, onclick: () => show(key) }, icon(...ICONS[key]), h('span', {}, t(label)));

@@ -27,7 +27,8 @@ export class SpotifyApi {
     this.sleep = sleep;
   }
 
-  async request(method, path, body) {
+  /** `opts.rawBody` + `opts.contentType` envían el cuerpo tal cual (la portada va en base64, no en JSON). */
+  async request(method, path, body, opts = {}) {
     let refreshed = false;
     let rateRetries = 0;
     let serverRetries = 0;
@@ -40,9 +41,9 @@ export class SpotifyApi {
         method,
         headers: {
           Authorization: `Bearer ${token}`,
-          ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+          ...(opts.rawBody !== undefined ? { 'Content-Type': opts.contentType } : body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         },
-        body: body !== undefined ? JSON.stringify(body) : undefined,
+        body: opts.rawBody ?? (body !== undefined ? JSON.stringify(body) : undefined),
       });
       if (res.ok) {
         const text = await res.text();
@@ -144,6 +145,11 @@ export class SpotifyApi {
       context_uri: `spotify:playlist:${playlistId}`,
       offset: { position: 0 },
     });
+  }
+
+  /** `base64` es un JPEG de hasta 256 KB, sin el prefijo data:. */
+  setPlaylistImage(id, base64) {
+    return this.request('PUT', `/playlists/${encodeURIComponent(id)}/images`, undefined, { rawBody: base64, contentType: 'image/jpeg' });
   }
 
   createPlaylist(name, description = '') {
