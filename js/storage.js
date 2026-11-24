@@ -41,5 +41,6 @@ export const KEYS = {
   cover: 'baraja.cover',
   lastMix: 'baraja.lastMix',
   mixes: 'baraja.mixes',
+  snaps: 'baraja.snapshots',
   theme: 'baraja.theme',
 };

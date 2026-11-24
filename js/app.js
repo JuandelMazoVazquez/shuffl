@@ -2,6 +2,7 @@ import {
   LIKED_ID, shuffle, uniqueByUri, capPlaylist, normalizeEntries, normalizePlaylist, sortTracks, SORT_KEYS,
   filterByAdded, findDuplicates, removeIndexes, buildBackup, toCsv, validateBackup, MAX_BACKUP_BYTES, MAX_BACKUP_PLAYLISTS,
   EXPLICIT_MODES, emptyFilters, hasFilters, filterTracks, sanitizeFilters, organizePlaylists, parsePlaylistRef,
+  SPLIT_MODES, MAX_SPLIT_PARTS, splitTracks,
 } from './core.js';
 import { sanitizeMix, sanitizeMixes, upsertMix, removeMix, newMixId, mixSources } from './mixes.js';
 import { SpotifyApi, ApiError } from './api.js';
@@ -54,6 +55,9 @@ function icon(...paths) {
 }
 
 const ICONS = {
+  snap: ['M4 7h3l2-3h6l2 3h3v13H4Z', 'M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8'],
+  orphans: ['M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z'],
+  split: ['M12 3v18', 'M3 8l4 4-4 4', 'M21 8l-4 4 4 4'],
   edit: ['M12 20h9', 'M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z'],
   trash: ['M3 6h18', 'M8 6V4h8v2', 'M19 6l-1 14H6L5 6'],
   home: ['M3 11 12 3l9 8', 'M5 9.5V21h14V9.5'],
@@ -959,6 +963,189 @@ function dupsPanel() {
   return h('section', { class: 'panel', id: 'panel-dups', hidden: true }, form, result, status.el);
 }
 
+// ---------- Más herramientas: instantáneas, Me gusta sin playlist y dividir ----------
+
+const SNAPS = [
+  ['top_short', 'snapTop4w', 'short_term'], ['top_medium', 'snapTop6m', 'medium_term'],
+  ['top_long', 'snapTopAll', 'long_term'], ['recent', 'snapRecent', null],
+];
+
+/** Playlists que Baraja genera: no cuentan como «tus playlists» al buscar Me gusta sin playlist. */
+const isGenerated = (pl) => pl.id === getItem(KEYS.barajaId) || /^(🔀 Baraja|Baraja · |📸 )/.test(pl.name);
+
+function toolPanel(id, title, lead, status, ...body) {
+  return h('section', { class: 'panel', id, hidden: true },
+    h('h2', { class: 'tool-title' }, title), h('p', { class: 'lead' }, lead), ...body, status.el,
+    h('button', { class: 'btn', type: 'button', onclick: () => S.show('home') }, t('back')));
+}
+
+function snapPanel() {
+  const status = createStatus();
+  const result = h('div', { class: 'result', hidden: true });
+  const radios = SNAPS.map(([key, label]) => ({ key, input: h('input', { type: 'radio', name: 'snap-kind', value: key, id: `snap-${key}` }), label }));
+  radios[0].input.checked = true;
+  const shuffleBox = h('input', { type: 'checkbox', id: 'snap-shuffle' });
+  const form = h('div', {},
+    h('div', { class: 'choices' }, radios.map(({ input, label }) => h('label', { class: 'choice' }, input, h('span', {}, h('strong', {}, t(label)))))),
+    h('label', { class: 'check' }, shuffleBox, h('span', {}, t('snapShuffle'))),
+    h('button', { class: 'btn primary big', type: 'button', id: 'snap-go', onclick: () => run() }, t('snapBtn')));
+
+  function run() {
+    task(status, async () => {
+      const [kind, labelKey, range] = SNAPS.find(([k]) => radios.find((r) => r.key === k).input.checked);
+      const entries = range ? (await S.api.getTopTracks(range)).map((track) => ({ track })) : await S.api.getRecentlyPlayed();
+      const tracks = uniqueByUri(normalizeEntries(entries).tracks);
+      if (!tracks.length) throw new UserError(t('errEmpty'));
+      const order = shuffleBox.checked ? shuffle(tracks) : tracks;
+      const uris = order.map((x) => x.uri);
+      const name = t(labelKey);
+      const snaps = getItem(KEYS.snaps, {});
+      const existing = snaps[kind] ? (await S.api.getMyPlaylists()).find((p) => p?.id === snaps[kind] && p.owner?.id === S.me.id) : null;
+      let id;
+      if (existing) {
+        id = existing.id;
+        const current = normalizeEntries(await S.api.getPlaylistItems(id)).tracks;
+        saveUndo(id, existing.name, current.map((x) => x.uri));
+        await overwritePlaylist(id, uris, status);
+      } else {
+        id = (await S.api.createPlaylist(name, t('snapDesc'))).id;
+        setItem(KEYS.snaps, { ...snaps, [kind]: id });
+        await S.api.addItems(id, uris, (d, tot) => status.progress('saving', d, tot));
+      }
+      await loadPlaylists();
+      status.clear();
+      form.hidden = true;
+      renderResult(result, status, {
+        title: t('snapDone', { name, n: fmt(order.length) }), notes: [], tracks: order, playlistId: id,
+        onBack: () => { result.hidden = true; form.hidden = false; status.clear(); },
+      });
+    });
+  }
+  return toolPanel('panel-snap', t('snapTitle'), t('snapLead'), status, form, result);
+}
+
+function orphansPanel() {
+  const status = createStatus();
+  const result = h('div', { class: 'result', hidden: true });
+  const shuffleBox = h('input', { type: 'checkbox', id: 'orphans-shuffle' });
+  const found = h('div', { id: 'orphans-found', hidden: true });
+  let orphans = [];
+  const form = h('div', {},
+    h('p', { class: 'muted' }, t('orphansNote')),
+    h('button', { class: 'btn primary big', type: 'button', id: 'orphans-scan', onclick: () => scan() }, t('orphansScan')),
+    found);
+
+  function scan() {
+    task(status, async () => {
+      const liked = S.playlists.find((p) => p.isLiked);
+      const mine = S.playlists.filter((p) => !p.isLiked && p.readable && !isGenerated(p));
+      const likedRead = await readSource(liked, (d, tot) => status.progress('reading', d, tot));
+      const inPlaylists = new Set();
+      let done = 0;
+      for (const pl of mine) {
+        status.say(t('orphansReading', { i: fmt(++done), n: fmt(mine.length) }));
+        for (const tr of (await readSource(pl)).tracks) inPlaylists.add(tr.uri);
+      }
+      orphans = uniqueByUri(likedRead.tracks.filter((tr) => !inPlaylists.has(tr.uri)));
+      status.clear();
+      if (!orphans.length) { setKids(found, h('p', { class: 'note', id: 'orphans-none' }, t('orphansNone'))); found.hidden = false; return; }
+      setKids(found,
+        h('h2', { class: 'result-title', id: 'orphans-count' }, t('orphansFound', { n: fmt(orphans.length), p: fmt(mine.length) })),
+        h('label', { class: 'check' }, shuffleBox, h('span', {}, t('snapShuffle'))),
+        h('button', { class: 'btn primary big', type: 'button', id: 'orphans-create', onclick: () => create() }, t('orphansCreate')));
+      found.hidden = false;
+    });
+  }
+
+  function create() {
+    task(status, async () => {
+      const order = shuffleBox.checked ? shuffle(orphans) : orphans;
+      const { tracks, truncated } = capPlaylist(order);
+      const id = (await S.api.createPlaylist(`${t('orphansName')} · ${nowLabel()}`, t('barajaDesc'))).id;
+      await S.api.addItems(id, tracks.map((x) => x.uri), (d, tot) => status.progress('saving', d, tot));
+      await loadPlaylists();
+      status.clear();
+      form.hidden = true;
+      renderResult(result, status, {
+        title: t('orphansDone', { n: fmt(tracks.length) }), notes: truncated ? [t('truncated', { n: fmt(truncated) })] : [], tracks, playlistId: id,
+        onBack: () => { result.hidden = true; form.hidden = false; status.clear(); },
+      });
+    });
+  }
+  return toolPanel('panel-orphans', t('orphansTitle'), t('orphansLead'), status, form, result);
+}
+
+function splitPanel() {
+  const status = createStatus();
+  const result = h('div', { class: 'result', hidden: true });
+  const modeSel = h('select', { id: 'split-mode', 'aria-label': t('splitBy') }, SPLIT_MODES.map((k) => h('option', { value: k }, t(`split_${k}`))));
+  const partsIn = h('input', { type: 'number', class: 'text', id: 'split-parts', min: '2', max: String(MAX_SPLIT_PARTS), value: '3', 'aria-label': t('splitParts') });
+  const minIn = h('input', { type: 'number', class: 'text', id: 'split-min', min: '1', max: '1000', value: '5', 'aria-label': t('splitMinArtist') });
+  const partsLabel = h('label', { class: 'field-wide' }, t('splitParts'), partsIn);
+  const minLabel = h('label', { class: 'field-wide', hidden: true }, t('splitMinArtist'), minIn);
+  const preview = h('div', { id: 'split-preview', hidden: true });
+  const syncMode = () => { partsLabel.hidden = modeSel.value !== 'parts'; minLabel.hidden = modeSel.value !== 'artist'; preview.hidden = true; };
+  modeSel.addEventListener('change', syncMode);
+  const go = h('button', { class: 'btn primary big', type: 'button', id: 'split-preview-btn', disabled: true, onclick: () => scan() }, t('splitPreview'));
+  const picker = createPicker({
+    multi: false,
+    disabledReason: (pl) => (pl.isLiked ? t('likedNoDup') : pl.readable ? '' : t('notReadable')),
+    onChange: (sel) => { go.disabled = sel.length === 0; preview.hidden = true; },
+  });
+  const form = h('div', {}, h('h2', {}, t('source')), picker.el, h('h2', {}, t('splitBy')), modeSel, partsLabel, minLabel, go, preview);
+
+  const nameOf = (base, mode, g) => {
+    const part = mode === 'parts' ? t('splitPartName', { n: g.label })
+      : g.key === 'none' ? t('splitNoDate') : g.key === 'others' ? t('splitOthers') : g.label;
+    return `${base} · ${part}`.slice(0, 100);
+  };
+
+  function scan() {
+    task(status, async () => {
+      const pl = picker.getSelected()[0];
+      const { tracks, skipped } = await readSources([pl], status);
+      const mode = modeSel.value;
+      let groups;
+      try {
+        groups = splitTracks(tracks, mode, { parts: partsIn.value, minArtist: minIn.value });
+      } catch (e) {
+        if (e.code === 'tooMany') throw new UserError(t('splitTooMany', { n: fmt(e.count), max: fmt(MAX_SPLIT_PARTS) }));
+        throw e;
+      }
+      if (groups.length < 2) throw new UserError(t('splitOneGroup'));
+      status.clear();
+      const rows = groups.map((g) => ({ g, input: h('input', { type: 'text', class: 'text', maxlength: '100', value: nameOf(pl.name, mode, g), 'aria-label': t('newName') }), done: false }));
+      const createBtn = h('button', { class: 'btn primary big', type: 'button', id: 'split-create', onclick: () => create() }, t('splitCreate', { n: fmt(groups.length) }));
+      setKids(preview,
+        h('h2', { class: 'result-title', id: 'split-summary' }, t('splitSummary', { n: fmt(groups.length), m: fmt(tracks.length) })),
+        skippedCount(skipped) ? h('p', { class: 'note' }, t('skipped', { n: fmt(skippedCount(skipped)) })) : null,
+        h('ul', { class: 'restore-list' }, rows.map(({ g, input }) => h('li', {}, input, h('span', { class: 'muted small' }, t('songs', { n: fmt(g.tracks.length) }))))),
+        createBtn);
+      preview.hidden = false;
+
+      function create() {
+        task(status, async () => {
+          let made = 0;
+          for (const row of rows) {
+            if (row.done) continue;
+            const name = row.input.value.trim() || row.input.getAttribute('value');
+            const id = (await S.api.createPlaylist(name.slice(0, 100), t('barajaDesc'))).id;
+            await S.api.addItems(id, row.g.tracks.map((x) => x.uri), (d, tot) => status.progress('saving', d, tot));
+            row.done = true;
+            row.input.disabled = true;
+            made++;
+          }
+          await loadPlaylists();
+          status.clear();
+          status.say(t('splitDone', { n: fmt(made) }));
+          createBtn.hidden = true;
+        });
+      }
+    });
+  }
+  return toolPanel('panel-split', t('splitTitle'), t('splitLead'), status, form, result);
+}
+
 // ---------- Copia de seguridad ----------
 
 function download(blob, filename) {
@@ -1213,14 +1400,21 @@ function homePanel() {
       card('shuffle', t('tabShuffle'), t('cardShuffleSub')),
       card('sort', t('tabSort'), t('cardSortSub')),
       card('dups', t('tabDups'), t('cardDupsSub')),
-      card('backup', t('tabBackup'), t('cardBackupSub')));
+      card('backup', t('tabBackup'), t('cardBackupSub')),
+      h('h2', {}, t('moreTools')),
+      card('snap', t('snapTitle'), t('cardSnapSub')),
+      card('orphans', t('orphansTitle'), t('cardOrphansSub')),
+      card('split', t('splitTitle'), t('cardSplitSub')));
   };
   return panel;
 }
 
 function mountApp() {
   S.pickers = [];
-  const panels = { home: homePanel(), shuffle: shufflePanel(), sort: sortPanel(), dups: dupsPanel(), backup: backupPanel(), pin: pinPanel(), settings: settingsPanel() };
+  const panels = {
+    home: homePanel(), shuffle: shufflePanel(), sort: sortPanel(), dups: dupsPanel(), backup: backupPanel(),
+    snap: snapPanel(), orphans: orphansPanel(), split: splitPanel(), pin: pinPanel(), settings: settingsPanel(),
+  };
   const tabBtns = {};
   const show = (key, dir) => {
     const from = TAB_ORDER.indexOf(S.tab);

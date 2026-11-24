@@ -147,6 +147,17 @@ export class SpotifyApi {
     });
   }
 
+  /** `range`: short_term (4 semanas), medium_term (6 meses) o long_term (siempre). */
+  async getTopTracks(range) {
+    const data = await this.request('GET', `/me/top/tracks?limit=50&time_range=${encodeURIComponent(range)}`);
+    return Array.isArray(data?.items) ? data.items : [];
+  }
+
+  async getRecentlyPlayed() {
+    const data = await this.request('GET', '/me/player/recently-played?limit=50');
+    return Array.isArray(data?.items) ? data.items : [];
+  }
+
   /** Solo metadatos: Spotify no deja leer el contenido de playlists ajenas y Baraja no lo intenta. */
   getPlaylistMeta(id) {
     return this.request('GET', `/playlists/${encodeURIComponent(id)}?fields=${encodeURIComponent('id,name,owner(id,display_name),images,collaborative')}`);
