@@ -1040,7 +1040,7 @@ function snapPanel() {
       if (existing) {
         id = existing.id;
         const current = normalizeEntries(await S.api.getPlaylistItems(id)).tracks;
-        saveUndo(id, existing.name, current.map((x) => x.uri));
+        saveUndo(id, existing.name, current.map((x) => x.uri), { soft: true });
         await overwritePlaylist(id, uris, status);
       } else {
         id = (await S.api.createPlaylist(name, t('snapDesc'))).id;
@@ -1298,9 +1298,11 @@ function backupPanel() {
       task(status, async () => {
         let n = 0;
         let mixCount = 0;
+        let mixSkipped = 0;
         if (mixes.length && mixBox.checked) {
           let list = getMixes();
           for (const m of mixes) {
+            if (list.some((x) => x.id === m.id)) { mixSkipped++; continue; }
             const r = upsertMix(list, m);
             if (r.ok) { list = r.list; mixCount++; }
           }
@@ -1318,7 +1320,7 @@ function backupPanel() {
         }
         await loadPlaylists();
         status.clear();
-        status.say(t('restoredDone', { n: fmt(n) }) + (mixCount ? ` ${t('restoredMixes2', { n: fmt(mixCount) })}` : ''));
+        status.say(t('restoredDone', { n: fmt(n) }) + (mixCount || mixSkipped ? ` ${t('restoredMixes2', { n: fmt(mixCount) })}` : '') + (mixSkipped ? ` ${t('mixesSkipped', { n: fmt(mixSkipped) })}` : ''));
         restoreBox.hidden = true;
         fileIn.value = '';
       });
@@ -1656,7 +1658,10 @@ function showUpdateBanner(apply) {
   if (document.getElementById('update-banner')) return;
   document.body.append(h('div', { id: 'update-banner', class: 'update-banner', role: 'status' },
     h('span', {}, t('updateAvailable')),
-    h('button', { class: 'btn primary', type: 'button', onclick: apply }, t('update'))));
+    h('button', { class: 'btn primary', type: 'button', id: 'update-apply', onclick: (e) => {
+      if (S.busy) { e.currentTarget.textContent = t('updateBusy'); return; }
+      apply();
+    } }, t('update'))));
 }
 
 registerUpdates({ onUpdate: showUpdateBanner }).catch((e) => console.warn('Service worker no registrado', e.message));
