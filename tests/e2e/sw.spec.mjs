@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { createAppServer } from '../../scripts/serve.mjs';
+import { installMock } from './helpers.mjs';
+import { CLIENT_ID } from './mock.mjs';
 
 test.use({ serviceWorkers: 'allow' });
 
@@ -44,6 +46,47 @@ test('el service worker avisa de la versión nueva, la aplica al pulsar y limpia
   await page.reload();
   await expect(page.locator('#connect')).toBeVisible();
   await context.setOffline(false);
+});
+
+test('«Actualizar» no recarga mientras hay una tarea en curso y sí cuando termina', async ({ page }) => {
+  build = 'b1';
+  await installMock(page);
+  await page.goto(base);
+  await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
+  await page.locator('#client-id').fill(CLIENT_ID);
+  await page.locator('#connect').click();
+  await page.locator('#tab-shuffle').click();
+  await page.locator('#panel-shuffle label.row', { hasText: 'Rock' }).click();
+
+  let release;
+  const held = new Promise((ok) => { release = ok; });
+  let reads = 0;
+  await page.route(/api\.spotify\.com\/v1\/playlists\/[^/]+\/items/, async (route) => {
+    if (route.request().method() === 'GET') { reads++; await held; }
+    await route.fallback();
+  });
+  await page.locator('#shuffle-go').click();
+  await expect.poll(() => reads).toBeGreaterThan(0);
+  await expect(page.locator('body')).toHaveClass(/busy/);
+
+  build = 'b2';
+  await page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r.update()));
+  await expect(page.locator('#update-banner')).toBeVisible();
+  let loads = 0;
+  page.on('load', () => { loads++; });
+  await page.locator('#update-apply').click();
+  await expect(page.locator('#update-apply')).toHaveText('Termina la tarea en curso y pulsa otra vez');
+  await page.waitForTimeout(500);
+  expect(loads).toBe(0);
+  expect(await cacheNames(page)).toEqual(['baraja-b1', 'baraja-b2']);
+
+  release();
+  await expect(page.locator('body')).not.toHaveClass(/busy/);
+  await expect(page.locator('#panel-shuffle .result-title')).toBeVisible();
+  expect(loads).toBe(0);
+  await page.locator('#update-apply').click();
+  await expect.poll(() => loads).toBe(1);
+  await expect.poll(() => cacheNames(page)).toEqual(['baraja-b2']);
 });
 
 test('el banner sale en inglés con el idioma en inglés', async ({ page }) => {
