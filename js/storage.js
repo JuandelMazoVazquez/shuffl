@@ -11,12 +11,15 @@ export function getItem(key, fallback = null) {
   }
 }
 
-export function setItem(key, value) {
+/** Devuelve si quedó guardado en localStorage. Con `strict` no se usa la memoria de respaldo. */
+export function setItem(key, value, { strict = false } = {}) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
     memory.delete(key);
+    return true;
   } catch {
-    memory.set(key, value);
+    if (!strict) memory.set(key, value);
+    return false;
   }
 }
 

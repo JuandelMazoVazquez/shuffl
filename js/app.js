@@ -1,6 +1,6 @@
 import {
   LIKED_ID, shuffle, uniqueByUri, capPlaylist, normalizeEntries, normalizePlaylist, sortTracks, SORT_KEYS,
-  filterByAdded, findDuplicates, removeIndexes, buildBackup, toCsv, validateBackup,
+  filterByAdded, findDuplicates, removeIndexes, buildBackup, toCsv, validateBackup, MAX_BACKUP_BYTES,
 } from './core.js';
 import { SpotifyApi, ApiError } from './api.js';
 import * as auth from './auth.js';
@@ -167,13 +167,31 @@ const skippedCount = (s) => s.local + s.empty;
 
 /** Con `soft` no pisa un Deshacer ya guardado (así no se pierde el estado original). */
 function saveUndo(playlistId, name, uris, { soft = false } = {}) {
-  if (soft && getItem(KEYS.undo)) return;
-  setItem(KEYS.undo, { playlistId, name, uris, date: new Date().toISOString() });
+  const prev = getItem(KEYS.undo);
+  if (soft && prev) return;
+  if (prev?.pending && prev.playlistId === playlistId) throw new UserError(t('errPending'));
+  const entry = { playlistId, name, uris, pending: true, date: new Date().toISOString() };
+  if (!setItem(KEYS.undo, entry, { strict: true })) throw new UserError(t('errUndoStorage'));
 }
 
-async function assertUnchanged(playlistId, expectedTotal) {
-  const { total } = await S.api.request('GET', `/playlists/${encodeURIComponent(playlistId)}/items?limit=1`);
-  if (total !== expectedTotal) throw new UserError(t('errChanged'));
+/** Marca el Deshacer como seguro de aplicar: la escritura terminó y la playlist tiene `count` elementos. */
+function finishUndo(playlistId, count) {
+  const u = getItem(KEYS.undo);
+  if (u?.playlistId === playlistId) setItem(KEYS.undo, { ...u, pending: false, after: count });
+}
+
+async function overwritePlaylist(id, uris, status) {
+  await S.api.replaceItems(id, uris, (d, tot) => status.progress('saving', d, tot));
+  finishUndo(id, uris.length);
+}
+
+/** Comprueba el total y la primera página (si se pasa `expected`) antes de escribir con datos leídos antes. */
+async function assertUnchanged(playlistId, expectedTotal, expected) {
+  const page = await S.api.request('GET', `/playlists/${encodeURIComponent(playlistId)}/items?limit=50&additional_types=track,episode`);
+  if (page.total !== expectedTotal) throw new UserError(t('errChanged'));
+  if (!expected || !Array.isArray(page.items)) return;
+  const head = normalizeEntries(page.items).tracks;
+  if (head.some((x, i) => x.uri !== expected[i]?.uri)) throw new UserError(t('errChanged'));
 }
 
 function confirmOverwrite(name, skipped) {
@@ -185,6 +203,7 @@ async function applyUndo(status, expectedId) {
   const u = getItem(KEYS.undo);
   if (!u) return false;
   if (expectedId && u.playlistId !== expectedId) throw new UserError(t('errUndoOther'));
+  if (!u.pending && Number.isInteger(u.after)) await assertUnchanged(u.playlistId, u.after);
   if (!confirm(t('confirmUndo', { name: u.name || u.playlistId, date: new Date(u.date).toLocaleString(getLang()) }))) return false;
   await S.api.replaceItems(u.playlistId, u.uris, (d, tot) => status.progress('saving', d, tot));
   removeItem(KEYS.undo);
@@ -349,7 +368,7 @@ function shufflePanel() {
       if (!base.length) throw new UserError(t('errEmpty'));
       const { tracks: order, truncated } = capPlaylist(shuffle(base));
       const playlistId = await resolveTarget(mode, sel, tracks);
-      await S.api.replaceItems(playlistId, order.map((x) => x.uri), (d, tot) => status.progress('saving', d, tot));
+      await overwritePlaylist(playlistId, order.map((x) => x.uri), status);
       await loadPlaylists();
       status.clear();
       showResult({ base, order, skipped, truncated, dedupRemoved: tracks.length - base.length, playlistId });
@@ -359,9 +378,9 @@ function shufflePanel() {
   function reshuffle() {
     task(status, async () => {
       const { tracks: order, truncated } = capPlaylist(shuffle(last.base));
-      await assertUnchanged(last.playlistId, last.order.length);
+      await assertUnchanged(last.playlistId, last.order.length, last.order);
       saveUndo(last.playlistId, '', last.order.map((x) => x.uri), { soft: true });
-      await S.api.replaceItems(last.playlistId, order.map((x) => x.uri), (d, tot) => status.progress('saving', d, tot));
+      await overwritePlaylist(last.playlistId, order.map((x) => x.uri), status);
       status.clear();
       showResult({ ...last, order, truncated });
     });
@@ -435,7 +454,7 @@ function sortPanel() {
       if (overwrite) {
         saveUndo(sel.id, sel.name, tracks.map((x) => x.uri));
         playlistId = sel.id;
-        await S.api.replaceItems(playlistId, sorted.map((x) => x.uri), (d, tot) => status.progress('saving', d, tot));
+        await overwritePlaylist(playlistId, sorted.map((x) => x.uri), status);
       } else {
         playlistId = (await S.api.createPlaylist(nameIn.value.trim() || sel.name, t('barajaDesc'))).id;
         await S.api.addItems(playlistId, sorted.map((x) => x.uri), (d, tot) => status.progress('saving', d, tot));
@@ -532,10 +551,10 @@ function dupsPanel() {
     function remove() {
       if (!confirmOverwrite(pl.name, skippedCount(skipped))) return;
       task(status, async () => {
-        await assertUnchanged(pl.id, tracks.length + skippedCount(skipped));
+        await assertUnchanged(pl.id, tracks.length + skippedCount(skipped), tracks);
         const remaining = removeIndexes(tracks, chosen());
         saveUndo(pl.id, pl.name, tracks.map((x) => x.uri));
-        await S.api.replaceItems(pl.id, remaining.map((x) => x.uri), (d, tot) => status.progress('saving', d, tot));
+        await overwritePlaylist(pl.id, remaining.map((x) => x.uri), status);
         await loadPlaylists();
         status.clear();
         finishWith(t('dupsRemoved', { n: fmt(tracks.length - remaining.length) }), remaining, pl.id);
@@ -628,10 +647,11 @@ function backupPanel() {
     const file = fileIn.files[0];
     if (!file) return;
     try {
+      if (file.size > MAX_BACKUP_BYTES) throw new UserError(t('errBackupSize'));
       const playlists = validateBackup(JSON.parse(await file.text()));
       showRestore(playlists);
     } catch (e) {
-      status.fail(e instanceof SyntaxError ? new UserError(t('restoreBad_notBackup')) : new UserError(t(`restoreBad_${e.code ?? 'notBackup'}`)));
+      status.fail(e instanceof UserError ? e : e instanceof SyntaxError ? new UserError(t('restoreBad_notBackup')) : new UserError(t(`restoreBad_${e.code ?? 'notBackup'}`)));
     }
   }
 
@@ -657,6 +677,8 @@ function backupPanel() {
           const id = (await S.api.createPlaylist(`${p.name} (${t('restoredSuffix')})`, t('barajaDesc'))).id;
           await S.api.addItems(id, p.tracks.map((x) => x.uri), (d, tot) => status.progress('saving', d, tot));
           n++;
+          box.checked = false;
+          box.disabled = true;
         }
         await loadPlaylists();
         status.clear();

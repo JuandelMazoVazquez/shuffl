@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  randomInt, shuffle, chunk, uniqueByUri, capPlaylist, MAX_PLAYLIST, parseReleaseDate, sortTracks, SORT_KEYS,
+  randomInt, shuffle, chunk, uniqueByUri, capPlaylist, MAX_PLAYLIST, MAX_BACKUP_PLAYLISTS,parseReleaseDate, sortTracks, SORT_KEYS,
   filterByAdded, normalizeTitle, findDuplicates, removeIndexes, normalizeEntry, normalizeEntries, normalizePlaylist,
   buildBackup, toCsv, validateBackup,
 } from '../../js/core.js';
@@ -219,19 +219,28 @@ test('normalizePlaylist: items.total y tracks.total, propiedad y colaborativas',
 });
 
 test('backup: construir, validar, CSV y rechazo de archivos malos', () => {
-  const lists = [{ id: 'p', name: 'Mi "lista"', isLiked: false, tracks: [tr({ uri: 'spotify:track:abc', name: '=cmd()', artists: ['A', 'B'] })] }];
+  const ID22 = '4uLU6hMCjMI75M1A2tKUQC';
+  const lists = [{ id: 'p', name: 'Mi "lista"', isLiked: false, tracks: [tr({ uri: `spotify:track:${ID22}`, name: '=cmd()', artists: ['A', 'B'] })] }];
   const b = buildBackup(lists, new Date('2026-01-01T00:00:00Z'));
   assert.equal(b.app, 'baraja');
   assert.equal(b.version, 1);
   assert.equal(b.exportedAt, '2026-01-01T00:00:00.000Z');
   const back = validateBackup(JSON.parse(JSON.stringify(b)));
-  assert.equal(back[0].tracks[0].uri, 'spotify:track:abc');
+  assert.equal(back[0].tracks[0].uri, `spotify:track:${ID22}`);
   const csv = toCsv(lists);
   assert.match(csv, /"Mi ""lista"""/);
   assert.match(csv, /'=cmd\(\)/);
   assert.match(csv, /"A, B"/);
   assert.match(toCsv([{ name: 'p', tracks: [tr({ name: 'x;=1+1' })] }]), /"x;=1\+1"/);
-  assert.throws(() => validateBackup({ app: 'baraja', version: 1, playlists: [{ name: 'x', tracks: Array.from({ length: MAX_PLAYLIST + 1 }, () => ({ uri: 'spotify:track:a' })) }] }), { code: 'tooBig' });
+  assert.throws(() => validateBackup({ app: 'baraja', version: 1, playlists: [{ name: 'x', tracks: Array.from({ length: MAX_PLAYLIST + 1 }, () => ({ uri: `spotify:track:${ID22}` })) }] }), { code: 'tooBig' });
+  const many = Array.from({ length: MAX_BACKUP_PLAYLISTS + 1 }, () => ({ name: 'x', tracks: [] }));
+  assert.throws(() => validateBackup({ app: 'baraja', version: 1, playlists: many }), { code: 'tooBig' });
+  for (const uri of [`spotify:track:${'a'.repeat(1_000_000)}`, 'spotify:track:abc', `spotify:track:${ID22}\n`]) {
+    assert.throws(() => validateBackup({ app: 'baraja', version: 1, playlists: [{ name: 'x', tracks: [{ uri }] }] }), { code: 'badTrack' });
+  }
+  const proto = validateBackup(JSON.parse(`{"app":"baraja","version":1,"playlists":[{"name":"x","__proto__":{"polluted":1},"tracks":[]}]}`));
+  assert.equal(({}).polluted, undefined);
+  assert.equal(proto[0].polluted, undefined);
   for (const bad of [null, {}, { app: 'otra', version: 1, playlists: [] }, { app: 'baraja', version: 1, playlists: 'x' }]) {
     assert.throws(() => validateBackup(bad), { code: 'notBackup' });
   }

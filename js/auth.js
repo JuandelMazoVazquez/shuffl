@@ -106,7 +106,9 @@ export function refresh() {
     try {
       storeTokens(await tokenRequest({ grant_type: 'refresh_token', refresh_token: tokens.refresh_token }), tokens);
     } catch (e) {
-      if (e.code === 'invalid_grant' && getItem(KEYS.tokens)?.refresh_token === tokens.refresh_token) logout();
+      const current = getItem(KEYS.tokens)?.refresh_token;
+      if (e.code === 'invalid_grant' && current && current !== tokens.refresh_token) return;
+      if (e.code === 'invalid_grant' && current === tokens.refresh_token) logout();
       throw e;
     }
   })().finally(() => { refreshing = null; });

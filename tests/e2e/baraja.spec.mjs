@@ -251,3 +251,59 @@ test('sin horizontal scroll y objetivos táctiles de 44 px', async ({ page }) =>
     .filter((el) => el.offsetParent && el.getBoundingClientRect().height < 43.5).map((el) => el.outerHTML.slice(0, 80)));
   expect(small).toEqual([]);
 });
+
+test('escritura a medias: reintentar no pisa el Deshacer y Deshacer recupera el original', async ({ page }) => {
+  await login(page);
+  await pick(page, 'shuffle', 'Rock');
+  const original = state.lists.get('pl_rock').tracks.map((t) => t.uri);
+  await page.locator('#panel-shuffle label.choice', { hasText: 'La propia playlist' }).click();
+  state.failNextPost = true;
+  await page.locator('#panel-shuffle .btn.primary.big').click();
+  await expect(page.getByRole('alert')).toBeVisible();
+  expect(state.lists.get('pl_rock').tracks).toHaveLength(100);
+
+  const writesBefore = state.writes.length;
+  await page.locator('#panel-shuffle .btn.primary.big').click();
+  await expect(page.getByRole('alert')).toContainText('no terminó');
+  expect(state.writes).toHaveLength(writesBefore);
+
+  await page.locator('#open-settings').click();
+  await page.getByRole('button', { name: 'Deshacer último cambio' }).click();
+  await expect(page.getByText('Cambio deshecho.')).toBeVisible();
+  expect(state.lists.get('pl_rock').tracks.map((t) => t.uri)).toEqual(original);
+});
+
+test('duplicados: si el orden cambió en Spotify con el mismo total no se escribe', async ({ page }) => {
+  await login(page);
+  await page.locator('#tab-dups').click();
+  await pick(page, 'dups', 'Con repetidas');
+  await page.getByRole('button', { name: 'Analizar' }).click();
+  await expect(page.getByText('3 canciones repetidas')).toBeVisible();
+  const list = state.lists.get('pl_dupes');
+  [list.tracks[0], list.tracks[1]] = [list.tracks[1], list.tracks[0]];
+  const writesBefore = state.writes.length;
+  await page.getByRole('button', { name: 'Quitar del original' }).click();
+  await expect(page.getByRole('alert')).toContainText('ha cambiado');
+  expect(state.writes).toHaveLength(writesBefore);
+});
+
+test('Deshacer no se aplica si la playlist cambió después de la operación', async ({ page }) => {
+  await login(page);
+  await pick(page, 'shuffle', 'Rock');
+  await page.locator('#panel-shuffle label.choice', { hasText: 'La propia playlist' }).click();
+  await page.locator('#panel-shuffle .btn.primary.big').click();
+  await expect(page.getByText('Listo: 120 canciones barajadas')).toBeVisible();
+  const list = state.lists.get('pl_rock');
+  list.tracks.push([...state.catalog.values()][500]);
+  const writesBefore = state.writes.length;
+  await page.getByRole('button', { name: 'Deshacer último cambio' }).click();
+  await expect(page.getByRole('alert')).toContainText('ha cambiado');
+  expect(state.writes).toHaveLength(writesBefore);
+});
+
+test('importar: archivo enorme se rechaza sin leerlo', async ({ page }) => {
+  await login(page);
+  await page.locator('#tab-backup').click();
+  await page.locator('#restore-file').setInputFiles({ name: 'big.json', mimeType: 'application/json', buffer: Buffer.alloc(21 * 1024 * 1024, 32) });
+  await expect(page.getByRole('alert')).toContainText('demasiado grande');
+});

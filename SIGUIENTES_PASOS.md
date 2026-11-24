@@ -3,12 +3,12 @@
 ## 1. Qué hay hecho
 - Baraja v1.0.0 completa: barajar (varias playlists + Tus me gusta, destino «🔀 Baraja», nueva o la propia con Deshacer), ordenar (con atajo para copiar Tus me gusta y filtro por fecha), duplicados (exacto/inteligente), copia JSON/CSV y restaurar, Deshacer, es/en, PWA.
 - Investigación en `INVESTIGACION.md`; decisiones en `DECISIONES.md`; ideas futuras en `ROADMAP.md`.
-- 39 tests unitarios y 12 e2e en verde. Capturas en `docs/capturas/`.
+- 42 tests unitarios y 16 e2e en verde. Capturas en `docs/capturas/`.
 - Repo privado `new-spoti` con la rama `feat/v1-baraja` (sin merge: ver `docs/bandeja.md`).
 
 **Pendiente / no verificado**
 - Nunca se ha probado contra la API real de Spotify (solo simulada).
-- Segunda ronda de revisión de seguridad sin hacer.
+- Segunda ronda de revisión hecha (2026-11-24); una tercera sobre los cambios nuevos queda sin hacer.
 - Las cifras de votos de `INVESTIGACION.md` son de resúmenes de búsqueda; Reddit, App Store y Google Play no se pudieron leer.
 
 ## 2. Probar en el PC hoy

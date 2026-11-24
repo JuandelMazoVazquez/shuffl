@@ -1,6 +1,8 @@
 // Lógica pura de Baraja: sin DOM ni red, para poder probarla con node --test.
 
 export const MAX_PLAYLIST = 10000;
+export const MAX_BACKUP_PLAYLISTS = 200;
+export const MAX_BACKUP_BYTES = 20 * 1024 * 1024;
 export const LIKED_ID = '__liked__';
 
 const defaultRandomValues = (arr) => globalThis.crypto.getRandomValues(arr);
@@ -283,11 +285,12 @@ export function validateBackup(obj) {
   if (!obj || typeof obj !== 'object' || obj.app !== 'baraja') throw fail('notBackup');
   if (obj.version !== 1) throw fail('badVersion');
   if (!Array.isArray(obj.playlists)) throw fail('notBackup');
+  if (obj.playlists.length > MAX_BACKUP_PLAYLISTS) throw fail('tooBig');
   return obj.playlists.map((p, i) => {
     if (!p || typeof p.name !== 'string' || !Array.isArray(p.tracks)) throw fail('notBackup');
     if (p.tracks.length > MAX_PLAYLIST) throw fail('tooBig');
     const tracks = p.tracks.map((t) => {
-      if (!t || typeof t.uri !== 'string' || !/^spotify:(track|episode):[A-Za-z0-9]+$/.test(t.uri)) throw fail('badTrack');
+      if (!t || typeof t.uri !== 'string' || !/^spotify:(track|episode):[A-Za-z0-9]{22}$/.test(t.uri)) throw fail('badTrack');
       return {
         uri: t.uri,
         name: String(t.name ?? ''),
