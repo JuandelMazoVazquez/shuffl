@@ -43,7 +43,8 @@ export function createState() {
     ['pl_dupes', { id: 'pl_dupes', name: 'Con repetidas', owner: owner('me'), tracks: dupes }],
     ['pl_top', { id: 'pl_top', name: 'Top 50 Global', owner: owner('spotify'), tracks: range(2000, 2050) }],
   ]);
-  return { catalog, lists, liked, created: 0, writes: [], tokens: 0, authorizeParams: null };
+  const devices = [{ id: 'dev-phone', name: 'iPhone de prueba', type: 'Smartphone', is_active: true }];
+  return { catalog, lists, liked, created: 0, writes: [], tokens: 0, authorizeParams: null, devices, playerCalls: [] };
 }
 
 const json = (route, body, status = 200) =>
@@ -64,7 +65,10 @@ export async function mockSpotify(page, state) {
     if (url.pathname === '/api/token') {
       state.tokens++;
       state.lastTokenBody = new URLSearchParams(req.postData());
-      return json(route, { access_token: `access-${state.tokens}`, refresh_token: 'refresh-1', expires_in: 3600, token_type: 'Bearer' });
+      return json(route, {
+        access_token: `access-${state.tokens}`, refresh_token: 'refresh-1', expires_in: 3600, token_type: 'Bearer',
+        scope: state.grantedScope ?? state.authorizeParams?.scope ?? '',
+      });
     }
     return route.fulfill({ status: 404 });
   });
@@ -85,6 +89,12 @@ export async function mockSpotify(page, state) {
     const method = req.method();
     const body = req.postData() ? JSON.parse(req.postData()) : null;
 
+    if (method === 'GET' && path === '/me/player/devices') return json(route, { devices: state.devices });
+    if (method === 'PUT' && (path === '/me/player/shuffle' || path === '/me/player/play')) {
+      state.playerCalls.push({ path, query: Object.fromEntries(url.searchParams), body });
+      if (path === '/me/player/play' && state.playError) return json(route, state.playError.body, state.playError.status);
+      return route.fulfill({ status: 204, headers: CORS });
+    }
     if (method === 'GET' && path === '/me') return json(route, { id: 'me', display_name: 'Usuaria Prueba' });
     if (method === 'GET' && path === '/me/playlists') return json(route, page_([...state.lists.values()].map(metaOf), url));
     if (method === 'GET' && path === '/me/tracks') return json(route, page_(toEntries(state.liked), url));

@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync, mkdirSync } from 'node:fs';
-import { CLIENT_ID, createState, mockSpotify } from './mock.mjs';
+import { CLIENT_ID } from './mock.mjs';
+import { installMock, login, idle, pick, names } from './helpers.mjs';
 
 const SHOTS = 'docs/capturas';
 mkdirSync(SHOTS, { recursive: true });
@@ -8,27 +9,8 @@ mkdirSync(SHOTS, { recursive: true });
 let state;
 
 test.beforeEach(async ({ page }) => {
-  state = createState();
-  await mockSpotify(page, state);
-  page.on('dialog', (d) => (state.dismissNext ? ((state.dismissNext = false), d.dismiss()) : d.accept()));
-  await page.addInitScript(() => {
-    if (!localStorage.getItem('baraja.lang')) localStorage.setItem('baraja.lang', JSON.stringify('es'));
-    delete navigator.canShare;
-  });
+  state = await installMock(page);
 });
-
-async function login(page) {
-  await page.goto('/');
-  await page.locator('#client-id').fill(CLIENT_ID);
-  await page.locator('#connect').click();
-  await expect(page.locator('#tab-shuffle')).toBeVisible();
-  await expect(page.locator('#panel-shuffle label.row', { hasText: 'Rock' })).toBeVisible();
-}
-
-/** La app marca `body.busy` de forma síncrona al empezar una tarea; esperar a que se quite es esperar a que termine. */
-const idle = (page) => expect(page.locator('body')).not.toHaveClass(/busy/);
-const pick = (page, panel, name) => page.locator(`#panel-${panel} label.row`, { hasText: name }).click();
-const names = (list) => list.tracks.map((t) => t.name);
 
 test('pantalla inicial, guía y login completo con PKCE', async ({ page }) => {
   await page.goto('/');

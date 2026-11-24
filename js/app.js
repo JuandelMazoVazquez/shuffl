@@ -69,6 +69,8 @@ function errorMessage(e) {
   if (e instanceof auth.AuthError) return t(e.code === 'invalid_grant' ? 'errSession' : `authErr_${e.code}`);
   if (e instanceof ApiError) {
     if (e.status === 0) return t('errIncomplete');
+    if (e.reason === 'QUOTA_EXCEEDED') return t('errQuota');
+    if (e.reason === 'PREMIUM_REQUIRED') return t('errPremiumPlayer');
     if (e.status === 403) return t('err403');
     if (e.status === 404) return t('err404');
     if (e.status === 429) return t('errRate');
@@ -275,6 +277,53 @@ function baseReason(pl) {
   return pl.readable ? '' : t('notReadable');
 }
 
+// ---------- Reproducir ahora ----------
+
+function chooseDevice(devices) {
+  return new Promise((resolve) => {
+    const onKey = (e) => { if (e.key === 'Escape') close(null); };
+    const close = (value) => {
+      document.removeEventListener('keydown', onKey);
+      sheet.remove();
+      resolve(value);
+    };
+    const sheet = h('div', { class: 'sheet-backdrop', onclick: (e) => { if (e.target === sheet) close(null); } },
+      h('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('chooseDevice') },
+        h('h2', {}, t('chooseDevice')),
+        devices.map((d) => h('button', { class: 'btn device', type: 'button', onclick: () => close(d) }, `${d.name} · ${d.type}`)),
+        h('button', { class: 'btn', type: 'button', onclick: () => close(null) }, t('cancel'))));
+    document.addEventListener('keydown', onKey);
+    document.body.append(sheet);
+    sheet.querySelector('button').focus();
+  });
+}
+
+function showNoDevice(info) {
+  setKids(info,
+    h('p', {}, t('noDevice')),
+    h('a', { class: 'btn', href: 'https://open.spotify.com/', target: '_blank', rel: 'noopener' }, t('listenOnSpotify')),
+    h('p', { class: 'muted small' }, t('shuffleReminder')));
+}
+
+async function playNow(playlistId, info, status) {
+  setKids(info);
+  let devices = null;
+  await task(status, async () => { devices = await S.api.getDevices(); });
+  if (!devices) return;
+  if (!devices.length) return showNoDevice(info);
+  const target = devices.find((d) => d.is_active) ?? await chooseDevice(devices);
+  if (!target) return;
+  await task(status, async () => {
+    try {
+      await S.api.playPlaylist(playlistId, target.id);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) return showNoDevice(info);
+      throw e;
+    }
+    setKids(info, h('p', {}, t('playingOn', { device: target.name })), h('p', { class: 'muted small' }, t('shuffleOffNote')));
+  });
+}
+
 // ---------- Resultado compartido ----------
 
 function renderResult(container, status, o) {
@@ -283,12 +332,15 @@ function renderResult(container, status, o) {
   }) }, t('undo'));
   const sync = () => { const u = getItem(KEYS.undo); undoBtn.hidden = !(u && u.playlistId === o.playlistId); };
   sync();
+  const info = h('div', { class: 'play-info', role: 'status' });
   setKids(container,
     h('h2', { class: 'result-title' }, o.title),
     ...o.notes.map((n) => h('p', { class: 'note' }, n)),
     h('ol', { class: 'preview', 'aria-label': t('preview') }, o.tracks.slice(0, 20).map((tr) => h('li', {}, h('strong', {}, tr.name), ' ', h('span', { class: 'muted' }, artistsOf(tr))))),
     h('div', { class: 'actions' },
-      h('a', { class: 'btn primary', href: spotifyUrl(o.playlistId), target: '_blank', rel: 'noopener' }, t('openInSpotify')),
+      h('button', { class: 'btn primary', type: 'button', id: 'play-now', onclick: () => playNow(o.playlistId, info, status) }, t('playNow')),
+      info,
+      h('a', { class: 'btn', href: spotifyUrl(o.playlistId), target: '_blank', rel: 'noopener' }, t('openInSpotify')),
       ...(o.extra ?? []),
       undoBtn,
       h('button', { class: 'btn', type: 'button', onclick: o.onBack }, t('back'))),
@@ -813,6 +865,18 @@ function renderSetup(problem) {
     langSel));
 }
 
+function renderReconnect() {
+  S.playlists = [];
+  const err = h('p', { class: 'error', role: 'alert', hidden: true });
+  setKids(root, h('main', { class: 'setup' },
+    h('div', { class: 'brand' }, h('img', { src: 'icons/icon.svg', alt: '', width: '72', height: '72' }), h('h1', {}, 'Baraja')),
+    h('p', { class: 'lead', id: 'reconnect-msg' }, t('reconnectMsg')),
+    err,
+    h('button', { class: 'btn primary big', type: 'button', id: 'reconnect', onclick: async () => {
+      try { await auth.startLogin(); } catch (e) { err.textContent = errorMessage(e); err.hidden = false; }
+    } }, t('connect'))));
+}
+
 // ---------- Arranque ----------
 
 async function boot() {
@@ -824,6 +888,7 @@ async function boot() {
     problem = e;
   }
   if (!auth.getClientId() || !auth.isLoggedIn()) return renderSetup(problem);
+  if (auth.needsReconnect()) return renderReconnect();
   S.api = new SpotifyApi({ auth });
   try {
     S.me = await S.api.getMe();

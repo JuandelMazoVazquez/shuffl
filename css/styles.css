@@ -46,6 +46,19 @@ a { color: var(--accent); }
   box-shadow: 0 6px 24px rgba(0, 0, 0, .35);
 }
 
+.play-info { flex: 1 1 100%; }
+.play-info .btn { margin: .4rem 0; }
+.sheet-backdrop {
+  position: fixed; inset: 0; z-index: 30; display: flex; align-items: flex-end;
+  background: rgba(0, 0, 0, .55);
+}
+.sheet {
+  width: 100%; max-width: 40rem; margin: 0 auto; display: flex; flex-direction: column; gap: .5rem;
+  padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom));
+  background: var(--surface); border-radius: var(--radius) var(--radius) 0 0; border: 1px solid var(--border);
+}
+.sheet h2 { margin-top: 0; }
+
 .top {
   display: flex; align-items: center; justify-content: space-between;
   padding: .6rem 1rem; position: sticky; top: 0; z-index: 5;

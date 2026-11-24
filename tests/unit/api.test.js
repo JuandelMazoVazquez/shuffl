@@ -8,6 +8,7 @@ const res = (status, body, headers = {}) => ({
   headers: { get: (k) => headers[k] ?? null },
   text: async () => (body === undefined ? '' : JSON.stringify(body)),
   json: async () => body,
+  clone() { return this; },
 });
 
 function setup(handler) {
@@ -152,6 +153,28 @@ test('el token no se envía a URLs que no son de la API de Spotify', async () =>
   const { api, calls } = setup(async () => res(200, {}));
   await assert.rejects(() => api.request('GET', 'https://evil.example/x'), (e) => e.status === 0);
   assert.equal(calls.length, 0);
+});
+
+test('429 con QUOTA_EXCEEDED no se reintenta y expone la razón', async () => {
+  const { api, calls, sleeps } = setup(async () => res(429, { error: { status: 429, message: 'quota', reason: 'QUOTA_EXCEEDED' } }, { 'Retry-After': '2' }));
+  await assert.rejects(() => api.getMe(), (e) => e instanceof ApiError && e.status === 429 && e.reason === 'QUOTA_EXCEEDED');
+  assert.equal(calls.length, 1);
+  assert.equal(sleeps.length, 0);
+});
+
+test('playPlaylist apaga el aleatorio y reproduce desde la posición 0 en el dispositivo', async () => {
+  const { api, calls } = setup(async () => ({ ok: true, status: 204, headers: { get: () => null }, text: async () => '' }));
+  await api.playPlaylist('pl1', 'dev 1');
+  assert.deepEqual(calls.map((c) => [c.method, c.url]), [
+    ['PUT', 'https://api.spotify.com/v1/me/player/shuffle?state=false&device_id=dev%201'],
+    ['PUT', 'https://api.spotify.com/v1/me/player/play?device_id=dev%201'],
+  ]);
+  assert.deepEqual(calls[1].body, { context_uri: 'spotify:playlist:pl1', offset: { position: 0 } });
+});
+
+test('getDevices tolera respuestas sin lista', async () => {
+  const { api } = setup(async () => res(200, {}));
+  assert.deepEqual(await api.getDevices(), []);
 });
 
 test('respuesta vacía (204) devuelve null', async () => {

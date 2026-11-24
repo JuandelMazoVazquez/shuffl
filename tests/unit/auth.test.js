@@ -8,7 +8,7 @@ globalThis.localStorage = {
   removeItem: (k) => store.delete(k),
 };
 
-const { refresh } = await import('../../js/auth.js');
+const { refresh, missingScopes, SCOPE_LIST } = await import('../../js/auth.js');
 const { KEYS, getItem, setItem } = await import('../../js/storage.js');
 
 const invalidGrant = () => ({ ok: false, json: async () => ({ error: 'invalid_grant' }) });
@@ -28,6 +28,13 @@ test('refresh: si otra pestaña ya rotó el token, no falla ni cierra la sesión
   };
   await refresh();
   assert.equal(getItem(KEYS.tokens).refresh_token, 'r2');
+});
+
+test('missingScopes: sesiones antiguas piden volver a conectar', () => {
+  assert.deepEqual(missingScopes({ scope: SCOPE_LIST.join(' ') }), []);
+  assert.deepEqual(missingScopes(null), SCOPE_LIST);
+  assert.deepEqual(missingScopes({ scope: 'playlist-read-private user-library-read' }).includes('user-modify-playback-state'), true);
+  assert.deepEqual(missingScopes({ scope: SCOPE_LIST.slice(1).join(' ') }), [SCOPE_LIST[0]]);
 });
 
 test('storage: setItem estricto no usa la memoria cuando localStorage falla', async () => {
