@@ -301,6 +301,33 @@ test('Deshacer no se aplica si la playlist cambió después de la operación', a
   expect(state.writes).toHaveLength(writesBefore);
 });
 
+test('volver a barajar a medias: Deshacer sigue recuperando el original y otra playlist no lo pisa', async ({ page }) => {
+  await login(page);
+  await pick(page, 'shuffle', 'Rock');
+  const original = state.lists.get('pl_rock').tracks.map((t) => t.uri);
+  await page.locator('#panel-shuffle label.choice', { hasText: 'La propia playlist' }).click();
+  await page.locator('#panel-shuffle .btn.primary.big').click();
+  await expect(page.getByText('Listo: 120 canciones barajadas')).toBeVisible();
+  state.failNextPost = true;
+  await page.getByRole('button', { name: 'Volver a barajar' }).click();
+  await expect(page.getByRole('alert')).toBeVisible();
+  expect(state.lists.get('pl_rock').tracks).toHaveLength(100);
+
+  await page.locator('#tab-dups').click();
+  await pick(page, 'dups', 'Con repetidas');
+  await page.getByRole('button', { name: 'Analizar' }).click();
+  await expect(page.getByText('3 canciones repetidas')).toBeVisible();
+  const writesBefore = state.writes.length;
+  await page.getByRole('button', { name: 'Quitar del original' }).click();
+  await expect(page.getByRole('alert')).toContainText('no terminó');
+  expect(state.writes).toHaveLength(writesBefore);
+
+  await page.locator('#open-settings').click();
+  await page.getByRole('button', { name: 'Deshacer último cambio' }).click();
+  await expect(page.getByText('Cambio deshecho.')).toBeVisible();
+  expect(state.lists.get('pl_rock').tracks.map((t) => t.uri)).toEqual(original);
+});
+
 test('importar: archivo enorme se rechaza sin leerlo', async ({ page }) => {
   await login(page);
   await page.locator('#tab-backup').click();

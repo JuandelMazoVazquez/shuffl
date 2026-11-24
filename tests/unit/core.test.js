@@ -232,7 +232,9 @@ test('backup: construir, validar, CSV y rechazo de archivos malos', () => {
   assert.match(csv, /'=cmd\(\)/);
   assert.match(csv, /"A, B"/);
   assert.match(toCsv([{ name: 'p', tracks: [tr({ name: 'x;=1+1' })] }]), /"x;=1\+1"/);
-  assert.throws(() => validateBackup({ app: 'baraja', version: 1, playlists: [{ name: 'x', tracks: Array.from({ length: MAX_PLAYLIST + 1 }, () => ({ uri: `spotify:track:${ID22}` })) }] }), { code: 'tooBig' });
+  const huge = validateBackup({ app: 'baraja', version: 1, playlists: [{ name: 'x', tracks: Array.from({ length: MAX_PLAYLIST + 1 }, () => ({ uri: `spotify:track:${ID22}` })) }, { name: 'y', tracks: [] }] });
+  assert.equal(huge[0].tracks.length, MAX_PLAYLIST);
+  assert.equal(huge.length, 2);
   const many = Array.from({ length: MAX_BACKUP_PLAYLISTS + 1 }, () => ({ name: 'x', tracks: [] }));
   assert.throws(() => validateBackup({ app: 'baraja', version: 1, playlists: many }), { code: 'tooBig' });
   for (const uri of [`spotify:track:${'a'.repeat(1_000_000)}`, 'spotify:track:abc', `spotify:track:${ID22}\n`]) {

@@ -288,8 +288,7 @@ export function validateBackup(obj) {
   if (obj.playlists.length > MAX_BACKUP_PLAYLISTS) throw fail('tooBig');
   return obj.playlists.map((p, i) => {
     if (!p || typeof p.name !== 'string' || !Array.isArray(p.tracks)) throw fail('notBackup');
-    if (p.tracks.length > MAX_PLAYLIST) throw fail('tooBig');
-    const tracks = p.tracks.map((t) => {
+    const tracks = p.tracks.slice(0, MAX_PLAYLIST).map((t) => {
       if (!t || typeof t.uri !== 'string' || !/^spotify:(track|episode):[A-Za-z0-9]{22}$/.test(t.uri)) throw fail('badTrack');
       return {
         uri: t.uri,

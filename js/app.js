@@ -1,6 +1,6 @@
 import {
   LIKED_ID, shuffle, uniqueByUri, capPlaylist, normalizeEntries, normalizePlaylist, sortTracks, SORT_KEYS,
-  filterByAdded, findDuplicates, removeIndexes, buildBackup, toCsv, validateBackup, MAX_BACKUP_BYTES,
+  filterByAdded, findDuplicates, removeIndexes, buildBackup, toCsv, validateBackup, MAX_BACKUP_BYTES, MAX_BACKUP_PLAYLISTS,
 } from './core.js';
 import { SpotifyApi, ApiError } from './api.js';
 import * as auth from './auth.js';
@@ -169,7 +169,7 @@ const skippedCount = (s) => s.local + s.empty;
 function saveUndo(playlistId, name, uris, { soft = false } = {}) {
   const prev = getItem(KEYS.undo);
   if (soft && prev) return;
-  if (prev?.pending && prev.playlistId === playlistId) throw new UserError(t('errPending'));
+  if (prev?.pending) throw new UserError(t('errPending', { name: prev.name || prev.playlistId }));
   const entry = { playlistId, name, uris, pending: true, date: new Date().toISOString() };
   if (!setItem(KEYS.undo, entry, { strict: true })) throw new UserError(t('errUndoStorage'));
 }
@@ -180,7 +180,15 @@ function finishUndo(playlistId, count) {
   if (u?.playlistId === playlistId) setItem(KEYS.undo, { ...u, pending: false, after: count });
 }
 
+/** Vuelve a marcar el Deshacer como pendiente antes de tocar su playlist, por si la escritura falla a medias. */
+function markUndoPending(playlistId) {
+  const u = getItem(KEYS.undo);
+  if (u?.playlistId !== playlistId || u.pending) return;
+  if (!setItem(KEYS.undo, { ...u, pending: true }, { strict: true })) throw new UserError(t('errUndoStorage'));
+}
+
 async function overwritePlaylist(id, uris, status) {
+  markUndoPending(id);
   await S.api.replaceItems(id, uris, (d, tot) => status.progress('saving', d, tot));
   finishUndo(id, uris.length);
 }
@@ -189,7 +197,8 @@ async function overwritePlaylist(id, uris, status) {
 async function assertUnchanged(playlistId, expectedTotal, expected) {
   const page = await S.api.request('GET', `/playlists/${encodeURIComponent(playlistId)}/items?limit=50&additional_types=track,episode`);
   if (page.total !== expectedTotal) throw new UserError(t('errChanged'));
-  if (!expected || !Array.isArray(page.items)) return;
+  if (!expected) return;
+  if (!Array.isArray(page.items)) throw new ApiError(0, 'incomplete');
   const head = normalizeEntries(page.items).tracks;
   if (head.some((x, i) => x.uri !== expected[i]?.uri)) throw new UserError(t('errChanged'));
 }
@@ -205,6 +214,7 @@ async function applyUndo(status, expectedId) {
   if (expectedId && u.playlistId !== expectedId) throw new UserError(t('errUndoOther'));
   if (!u.pending && Number.isInteger(u.after)) await assertUnchanged(u.playlistId, u.after);
   if (!confirm(t('confirmUndo', { name: u.name || u.playlistId, date: new Date(u.date).toLocaleString(getLang()) }))) return false;
+  markUndoPending(u.playlistId);
   await S.api.replaceItems(u.playlistId, u.uris, (d, tot) => status.progress('saving', d, tot));
   removeItem(KEYS.undo);
   await loadPlaylists();
@@ -619,6 +629,7 @@ function backupPanel() {
   function prepare() {
     task(status, async () => {
       const sel = picker.getSelected();
+      if (sel.length > MAX_BACKUP_PLAYLISTS) throw new UserError(t('errBackupLimit'));
       const lists = [];
       let skippedTotal = 0;
       for (const pl of sel) {
@@ -627,7 +638,8 @@ function backupPanel() {
         lists.push({ id: pl.id, name: pl.name, isLiked: pl.isLiked, tracks });
       }
       const stamp = new Date().toISOString().slice(0, 10);
-      const jsonBlob = new Blob([JSON.stringify(buildBackup(lists), null, 1)], { type: 'application/json' });
+      const jsonBlob = new Blob([JSON.stringify(buildBackup(lists))], { type: 'application/json' });
+      if (jsonBlob.size > MAX_BACKUP_BYTES) throw new UserError(t('errBackupLimit'));
       const csvBlob = new Blob(['﻿', toCsv(lists)], { type: 'text/csv' });
       const total = lists.reduce((n, p) => n + p.tracks.length, 0);
       status.clear();
@@ -651,7 +663,7 @@ function backupPanel() {
       const playlists = validateBackup(JSON.parse(await file.text()));
       showRestore(playlists);
     } catch (e) {
-      status.fail(e instanceof UserError ? e : e instanceof SyntaxError ? new UserError(t('restoreBad_notBackup')) : new UserError(t(`restoreBad_${e.code ?? 'notBackup'}`)));
+      status.fail(e instanceof UserError ? e : e instanceof SyntaxError ? new UserError(t('restoreBad_notBackup')) : new UserError(t(`restoreBad_${typeof e.code === 'string' ? e.code : 'notBackup'}`)));
     }
   }
 
