@@ -37,4 +37,5 @@ export const KEYS = {
   lang: 'baraja.lang',
   undo: 'baraja.undo',
   barajaId: 'baraja.playlistId',
+  logoNotice: 'baraja.logoNotice',
 };

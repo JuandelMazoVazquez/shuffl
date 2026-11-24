@@ -800,7 +800,8 @@ function settingsPanel() {
     h('h2', {}, t('account')), h('p', { class: 'muted' }, S.me?.display_name || S.me?.id || ''),
     h('button', { class: 'btn danger', type: 'button', id: 'logout', onclick: () => { auth.logout(); renderSetup(); } }, t('logout')),
     h('h2', {}, t('privacyTitle')), h('p', { class: 'muted' }, t('privacy')),
-    h('p', { class: 'muted' }, t('notAffiliated')),
+    h('h2', {}, t('aboutTitle')),
+    h('p', { class: 'muted', id: 'about-notice' }, t('notAffiliated')),
     h('p', {}, h('a', { href: REPO_URL, target: '_blank', rel: 'noopener' }, t('repoLink'))),
     status.el);
   panel.refresh = syncUndo;
@@ -808,6 +809,15 @@ function settingsPanel() {
 }
 
 // ---------- Estructura de la app ----------
+
+/** Aviso único de logo nuevo (en iPhone el icono de la pantalla de inicio no se actualiza solo). */
+function logoNotice() {
+  if (getItem(KEYS.logoNotice)) return null;
+  const box = h('div', { class: 'notice', id: 'logo-notice', role: 'note' },
+    h('p', {}, t('logoNotice')),
+    h('button', { class: 'btn', type: 'button', onclick: () => { setItem(KEYS.logoNotice, true); box.remove(); } }, t('gotIt')));
+  return box;
+}
 
 const TABS = [['shuffle', 'tabShuffle'], ['sort', 'tabSort'], ['dups', 'tabDups'], ['backup', 'tabBackup']];
 
@@ -831,7 +841,7 @@ function mountApp() {
   }));
   setKids(root,
     h('header', { class: 'top' }, h('h1', {}, h('img', { src: 'icons/icon.svg', alt: '', width: '28', height: '28' }), 'Baraja'), gear),
-    h('main', {}, Object.values(panels)),
+    h('main', {}, logoNotice(), Object.values(panels)),
     nav);
   show(S.tab);
   S.playlists = S.playlists.length ? S.playlists : [likedEntry()];

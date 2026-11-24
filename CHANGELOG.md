@@ -6,6 +6,11 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). E
 
 ### Añadido
 
+- Botón «▶ Reproducir ahora» en los resultados: apaga el aleatorio de Spotify y reproduce la playlist desde la primera canción en el dispositivo activo (hoja para elegir dispositivo; ayuda y enlace «LISTEN ON SPOTIFY» si no hay ninguno). Requiere Premium.
+- Nuevos permisos de Spotify (reproducción, portada, tops, últimas escuchas y artistas seguidos). Quien ya tenía sesión verá «Baraja tiene funciones nuevas: vuelve a conectar con Spotify».
+- `QUOTA_EXCEEDED` de Spotify: se explica y no se reintenta.
+- Logo nuevo («abanico de tres naipes», índigo, ámbar, coral y crema) y todos los iconos (SVG, favicon.ico, apple-touch-icon, 192, 512 y maskable). **En iPhone, para ver el icono nuevo hay que quitar la app de la pantalla de inicio y volver a añadirla.**
+- Aviso de no afiliación ampliado («Spotify es una marca de Spotify AB») y apartado «Acerca de» en Ajustes.
 - Auto-actualización: banner «Nueva versión disponible · Actualizar». La caché usa el hash del commit; sin `skipWaiting` automático; se busca versión nueva al volver a primer plano y cada hora; las cachés viejas se borran.
 - Pages despliega solo desde `main` y solo si el CI pasa.
 

@@ -46,6 +46,12 @@ a { color: var(--accent); }
   box-shadow: 0 6px 24px rgba(0, 0, 0, .35);
 }
 
+.notice {
+  display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+  margin: .75rem 0; padding: .6rem .75rem .6rem 1rem;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.notice p { margin: 0; }
 .play-info { flex: 1 1 100%; }
 .play-info .btn { margin: .4rem 0; }
 .sheet-backdrop {
