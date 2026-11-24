@@ -9,11 +9,12 @@ import { t, setLang, getLang, LANGS } from './i18n.js';
 import { REPO_URL } from './config.js';
 import { registerUpdates } from './update.js';
 import { makeCover } from './cover.js';
+import { imageDominantColor, rgbCss } from './color.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 const BARAJA_NAME = '🔀 Baraja';
 const root = document.getElementById('app');
-const S = { api: null, me: null, playlists: [], busy: false, tab: 'shuffle', pickers: [] };
+const S = { api: null, me: null, playlists: [], loaded: false, busy: false, tab: 'home', pickers: [] };
 let pickerSeq = 0;
 
 // ---------- DOM ----------
@@ -51,6 +52,7 @@ function icon(...paths) {
 }
 
 const ICONS = {
+  home: ['M3 11 12 3l9 8', 'M5 9.5V21h14V9.5'],
   shuffle: ['M16 3h5v5', 'M4 20 21 3', 'M21 16v5h-5', 'M15 15l6 6', 'M4 4l5 5'],
   sort: ['m21 16-4 4-4-4', 'M17 20V4', 'm3 8 4-4 4 4', 'M7 4v16'],
   dups: ['M9 9h11a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V11a2 2 0 0 1 2-2z', 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1'],
@@ -83,24 +85,32 @@ function errorMessage(e) {
 
 // ---------- Estado de tarea (progreso y errores) ----------
 
-function createStatus() {
+/** Con `loader` muestra los naipes mezclándose; su barra sigue el progreso real. */
+function createStatus({ loader = false } = {}) {
   const bar = h('progress', { hidden: true, max: '1', value: '0' });
   const live = h('p', { class: 'live', role: 'status', 'aria-live': 'polite' });
   const err = h('p', { class: 'error', role: 'alert', hidden: true });
+  const cards = loader
+    ? h('div', { class: 'loader', 'aria-hidden': 'true' }, h('div', { class: 'deck' }, h('div', { class: 'lcard' }), h('div', { class: 'lcard' }), h('div', { class: 'lcard' })), h('div', { class: 'loader-bar' }))
+    : null;
+  const showCards = (on) => cards?.classList.toggle('on', on);
   return {
-    el: h('div', { class: 'status' }, live, bar, err),
-    say(msg) { live.textContent = msg; err.hidden = true; },
+    el: h('div', { class: 'status' }, cards, live, bar, err),
+    say(msg) { live.textContent = msg; err.hidden = true; showCards(false); },
     progress(key, done, total) {
       live.textContent = t(key, { done: fmt(done), total: fmt(total) });
       bar.hidden = false;
       bar.max = Math.max(total, 1);
       bar.value = done;
+      if (cards) { showCards(true); cards.style.setProperty('--p', String(Math.min(1, done / Math.max(total, 1)))); }
     },
-    clear() { live.textContent = ''; bar.hidden = true; err.hidden = true; },
+    stop() { bar.hidden = true; showCards(false); },
+    clear() { live.textContent = ''; bar.hidden = true; err.hidden = true; showCards(false); },
     fail(e) {
       console.error(e);
       live.textContent = '';
       bar.hidden = true;
+      showCards(false);
       err.textContent = errorMessage(e);
       err.hidden = false;
     },
@@ -119,7 +129,7 @@ async function task(status, fn) {
   } finally {
     S.busy = false;
     document.body.classList.remove('busy');
-    status.el.querySelector('progress').hidden = true;
+    status.stop();
   }
 }
 
@@ -133,7 +143,20 @@ const likedEntry = (prev) => ({
 async function loadPlaylists() {
   const raw = await S.api.getMyPlaylists();
   S.playlists = [likedEntry(S.playlists.find((p) => p.isLiked)), ...raw.filter(Boolean).map((p) => normalizePlaylist(p, S.me.id))];
+  S.loaded = true;
   S.pickers.forEach((p) => p.update());
+}
+
+let tintToken = 0;
+
+/** El fondo toma un degradado suave del color dominante de la portada seleccionada. */
+async function setTint(pl) {
+  const token = ++tintToken;
+  const root = document.documentElement;
+  const url = pl && !pl.isLiked && pl.image.startsWith('https://') ? pl.image : null;
+  const color = url ? await imageDominantColor(url) : null;
+  if (token !== tintToken) return;
+  if (color) root.style.setProperty('--tint', rgbCss(color)); else root.style.removeProperty('--tint');
 }
 
 async function probeLiked() {
@@ -246,6 +269,7 @@ function createPicker({ multi, disabledReason, onChange }) {
     const reason = disabledReason?.(pl);
     const input = h('input', { type: multi ? 'checkbox' : 'radio', name: group, value: pl.id, disabled: !!reason, onchange: () => {
       if (multi) { if (input.checked) selected.add(pl.id); else selected.delete(pl.id); } else { selected.clear(); selected.add(pl.id); }
+      setTint(input.checked ? pl : picker.getSelected().at(-1));
       onChange?.(picker.getSelected());
     } });
     input.checked = selected.has(pl.id);
@@ -261,8 +285,21 @@ function createPicker({ multi, disabledReason, onChange }) {
   const picker = {
     el: h('div', { class: 'picker-wrap' }, search, list),
     getSelected: () => S.playlists.filter((p) => selected.has(p.id)),
+    /** Sustituye la selección por las playlists de `ids` que se puedan elegir. Devuelve cuántas quedaron. */
+    setSelected(ids) {
+      selected.clear();
+      for (const id of ids) if (S.playlists.some((p) => p.id === id && !disabledReason?.(p))) selected.add(id);
+      picker.update();
+      return selected.size;
+    },
     update(silent = false) {
       for (const id of [...selected]) if (!S.playlists.some((p) => p.id === id && !disabledReason?.(p))) selected.delete(id);
+      if (!S.loaded) {
+        list.replaceChildren(...Array.from({ length: 6 }, () => h('li', { class: 'skeleton-row' }, h('div', { class: 'sk sk-cover' }), h('div', { class: 'sk sk-line' }))));
+        list.classList.add('skeleton');
+        return;
+      }
+      list.classList.remove('skeleton');
       list.replaceChildren(...S.playlists.map(row));
       search.dispatchEvent(new Event('input'));
       if (!silent) onChange?.(picker.getSelected());
@@ -334,10 +371,11 @@ function renderResult(container, status, o) {
   const sync = () => { const u = getItem(KEYS.undo); undoBtn.hidden = !(u && u.playlistId === o.playlistId); };
   sync();
   const info = h('div', { class: 'play-info', role: 'status' });
+  const title = h('h2', { class: 'result-title' }, o.titleFn ? o.titleFn(prefersReducedMotion() ? o.count : 0) : o.title);
   setKids(container,
-    h('h2', { class: 'result-title' }, o.title),
+    title,
     ...o.notes.map((n) => h('p', { class: 'note' }, n)),
-    h('ol', { class: 'preview', 'aria-label': t('preview') }, o.tracks.slice(0, 20).map((tr) => h('li', {}, h('strong', {}, tr.name), ' ', h('span', { class: 'muted' }, artistsOf(tr))))),
+    h('ol', { class: 'preview', 'aria-label': t('preview') }, o.tracks.slice(0, 20).map((tr, i) => h('li', { style: `--i:${i}` }, h('strong', {}, tr.name), ' ', h('span', { class: 'muted' }, artistsOf(tr))))),
     h('div', { class: 'actions' },
       h('button', { class: 'btn primary', type: 'button', id: 'play-now', onclick: () => playNow(o.playlistId, info, status) }, t('playNow')),
       info,
@@ -348,7 +386,22 @@ function renderResult(container, status, o) {
   );
   container.hidden = false;
   window.scrollTo(0, 0);
+  if (o.titleFn && !prefersReducedMotion()) animateCount(title, o.titleFn, o.count);
   return sync;
+}
+
+const prefersReducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/** Cuenta de 0 a `target` en ~0,7 s; siempre termina en el texto final. */
+function animateCount(el, textFor, target, ms = 700) {
+  const start = performance.now();
+  const step = (now) => {
+    const k = Math.min(1, (now - start) / ms);
+    el.textContent = textFor(Math.round(target * (1 - (1 - k) ** 3)));
+    if (k < 1 && el.isConnected) requestAnimationFrame(step);
+    else el.textContent = textFor(target);
+  };
+  requestAnimationFrame(step);
 }
 
 const coverEnabled = () => getItem(KEYS.cover) !== false;
@@ -358,7 +411,7 @@ const skipNotes = (s) => (skippedCount(s) ? [t('skipped', { n: fmt(skippedCount(
 // ---------- Barajar ----------
 
 function shufflePanel() {
-  const status = createStatus();
+  const status = createStatus({ loader: true });
   const result = h('div', { class: 'result', hidden: true });
   const dedupe = h('input', { type: 'checkbox', id: 'sh-dedupe', checked: true });
   const radios = {};
@@ -390,6 +443,16 @@ function shufflePanel() {
     h('h2', {}, t('destination')), destBox, go);
 
   let last = null;
+
+  S.runMix = (mix) => {
+    S.show('shuffle');
+    result.hidden = true;
+    form.hidden = false;
+    if (picker.setSelected(mix.ids) !== mix.ids.length) { status.fail(new UserError(t('mixMissing'))); return; }
+    dedupe.checked = mix.dedupe;
+    if (radios[mix.mode] && !radios[mix.mode].disabled) radios[mix.mode].checked = true;
+    run();
+  };
 
   const dest = () => Object.values(radios).find((r) => r.checked).value;
 
@@ -432,7 +495,7 @@ function shufflePanel() {
     if (info.dedupRemoved) notes.push(t('dedupRemoved', { n: fmt(info.dedupRemoved) }));
     if (info.truncated) notes.push(t('truncated', { n: fmt(info.truncated) }));
     renderResult(result, status, {
-      title: t('shuffledDone', { n: fmt(info.order.length) }),
+      titleFn: (n) => t('shuffledDone', { n: fmt(n) }), count: info.order.length,
       notes, tracks: info.order, playlistId: info.playlistId,
       extra: [
         h('button', { class: 'btn', type: 'button', onclick: () => reshuffle() }, t('reshuffle')),
@@ -454,6 +517,7 @@ function shufflePanel() {
       const playlistId = await resolveTarget(mode, sel, tracks);
       await overwritePlaylist(playlistId, order.map((x) => x.uri), status);
       const coverNotes = await uploadCover(mode, playlistId);
+      setItem(KEYS.lastMix, { ids: sel.map((p) => p.id), names: sel.map((p) => p.name), dedupe: dedupe.checked, mode });
       await loadPlaylists();
       status.clear();
       showResult({ base, order, skipped, truncated, dedupRemoved: tracks.length - base.length, playlistId, mode, coverNotes });
@@ -800,6 +864,8 @@ function settingsPanel() {
   const idIn = h('input', { type: 'text', id: 'settings-client-id', class: 'text mono', value: auth.getClientId(), autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', 'aria-label': t('clientId') });
   const langSel = h('select', { id: 'lang-select', 'aria-label': t('language'), onchange: () => { setLang(langSel.value); mountApp(); } },
     LANGS.map(([code, label]) => { const o = h('option', { value: code }, label); if (code === getLang()) o.selected = true; return o; }));
+  const themeSel = h('select', { id: 'theme-select', 'aria-label': t('themeTitle'), onchange: () => { setItem(KEYS.theme, themeSel.value); applyTheme(); } },
+    THEMES.map((k) => { const o = h('option', { value: k }, t(`theme_${k}`)); if (k === currentTheme()) o.selected = true; return o; }));
   const coverToggle = h('input', { type: 'checkbox', id: 'cover-toggle', onchange: () => setItem(KEYS.cover, coverToggle.checked) });
   coverToggle.checked = coverEnabled();
   const undoInfo = h('p', { class: 'muted' });
@@ -818,6 +884,7 @@ function settingsPanel() {
     h('button', { class: 'btn', type: 'button', onclick: () => { auth.setClientId(idIn.value); status.say(t('saved')); } }, t('save')),
     h('h2', {}, t('redirectUri')), copyBox(auth.redirectUri()),
     h('h2', {}, t('language')), langSel,
+    h('h2', {}, t('themeTitle')), themeSel,
     h('h2', {}, t('coverTitle')),
     h('label', { class: 'check' }, coverToggle, h('span', {}, t('coverToggle'))),
     h('button', { class: 'btn', type: 'button', id: 'open-pin', onclick: () => S.show('pin') }, t('pinTitle')),
@@ -863,23 +930,51 @@ function logoNotice() {
   return box;
 }
 
-const TABS = [['shuffle', 'tabShuffle'], ['sort', 'tabSort'], ['dups', 'tabDups'], ['backup', 'tabBackup']];
+const TABS = [['home', 'tabHome'], ['shuffle', 'tabShuffle'], ['sort', 'tabSort'], ['dups', 'tabDups'], ['backup', 'tabBackup']];
+const TAB_ORDER = TABS.map(([key]) => key);
+
+function homePanel() {
+  const slot = h('div', { class: 'cards' });
+  const panel = h('section', { class: 'panel', id: 'panel-home', hidden: true }, h('p', { class: 'lead' }, t('homeLead')), slot);
+  const card = (key, title, sub) => h('button', { class: 'card', type: 'button', id: `card-${key}`, onclick: () => S.show(key) },
+    h('span', { class: 'card-icon' }, icon(...ICONS[key])),
+    h('span', {}, h('span', { class: 'card-title' }, title), h('span', { class: 'card-sub' }, sub)));
+  panel.refresh = () => {
+    const mix = getItem(KEYS.lastMix);
+    setKids(slot,
+      mix ? h('button', { class: 'card hero', type: 'button', id: 'card-last-mix', onclick: () => S.runMix(mix) },
+        h('span', { class: 'card-icon' }, icon(...ICONS.shuffle)),
+        h('span', {}, h('span', { class: 'card-title' }, t('lastMix')), h('span', { class: 'card-sub' }, mix.names.join(' + ')))) : null,
+      card('shuffle', t('tabShuffle'), t('cardShuffleSub')),
+      card('sort', t('tabSort'), t('cardSortSub')),
+      card('dups', t('tabDups'), t('cardDupsSub')),
+      card('backup', t('tabBackup'), t('cardBackupSub')));
+  };
+  return panel;
+}
 
 function mountApp() {
   S.pickers = [];
-  const panels = { shuffle: shufflePanel(), sort: sortPanel(), dups: dupsPanel(), backup: backupPanel(), pin: pinPanel(), settings: settingsPanel() };
+  const panels = { home: homePanel(), shuffle: shufflePanel(), sort: sortPanel(), dups: dupsPanel(), backup: backupPanel(), pin: pinPanel(), settings: settingsPanel() };
   const tabBtns = {};
-  const show = (key) => {
+  const show = (key, dir) => {
+    const from = TAB_ORDER.indexOf(S.tab);
+    const to = TAB_ORDER.indexOf(key);
+    const dx = dir ?? (from >= 0 && to >= 0 ? Math.sign(to - from) : 0);
     S.tab = key;
-    for (const [k, p] of Object.entries(panels)) p.hidden = k !== key;
+    for (const [k, p] of Object.entries(panels)) {
+      p.hidden = k !== key;
+      if (k === key) p.style.setProperty('--dx', `${dx * 28}px`);
+    }
     for (const [k, b] of Object.entries(tabBtns)) b.setAttribute('aria-current', k === key ? 'page' : 'false');
     gear.setAttribute('aria-pressed', String(key === 'settings'));
+    panels.home.refresh();
     panels.settings.refresh();
     panels.pin.refresh();
     window.scrollTo(0, 0);
   };
   S.show = show;
-  const gear = h('button', { class: 'icon-btn', type: 'button', id: 'open-settings', 'aria-label': t('settings'), onclick: () => show(S.tab === 'settings' ? 'shuffle' : 'settings') }, icon(...ICONS.settings));
+  const gear = h('button', { class: 'icon-btn', type: 'button', id: 'open-settings', 'aria-label': t('settings'), onclick: () => show(S.tab === 'settings' ? 'home' : 'settings') }, icon(...ICONS.settings));
   const nav = h('nav', { class: 'tabs', 'aria-label': t('sections') }, TABS.map(([key, label]) => {
     const b = h('button', { type: 'button', id: `tab-${key}`, onclick: () => show(key) }, icon(...ICONS[key]), h('span', {}, t(label)));
     tabBtns[key] = b;
@@ -898,6 +993,7 @@ function mountApp() {
 
 function renderSetup(problem) {
   S.playlists = [];
+  S.loaded = false;
   const idIn = h('input', { type: 'text', id: 'client-id', class: 'text mono', value: auth.getClientId(), placeholder: t('clientIdPlaceholder'), autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', 'aria-label': t('clientId') });
   const err = h('p', { class: 'error', role: 'alert', hidden: !problem }, problem ? errorMessage(problem) : '');
   const connect = h('button', { class: 'btn primary big', type: 'button', id: 'connect', onclick: async () => {
@@ -933,10 +1029,64 @@ function renderReconnect() {
     } }, t('connect'))));
 }
 
+// ---------- Tema y gestos ----------
+
+const THEMES = ['dark', 'light', 'auto'];
+const currentTheme = () => (THEMES.includes(getItem(KEYS.theme)) ? getItem(KEYS.theme) : 'dark');
+const applyTheme = () => { document.documentElement.dataset.theme = currentTheme(); };
+
+async function refreshPlaylists() {
+  if (S.busy || !S.api) return;
+  let ind = document.getElementById('ptr');
+  if (!ind) {
+    ind = h('div', { id: 'ptr', class: 'ptr', role: 'status' });
+    document.body.append(ind);
+  }
+  ind.textContent = t('refreshing');
+  ind.classList.add('show');
+  S.busy = true;
+  try {
+    await loadPlaylists();
+    await probeLiked();
+    ind.textContent = t('refreshed');
+  } catch (e) {
+    console.error(e);
+    ind.textContent = errorMessage(e);
+  } finally {
+    S.busy = false;
+    setTimeout(() => ind.classList.remove('show'), 1200);
+  }
+}
+
+/** Deslizar a los lados cambia de pestaña; tirar hacia abajo desde arriba refresca las playlists. */
+function bindGestures() {
+  let start = null;
+  document.addEventListener('touchstart', (e) => {
+    const p = e.touches[0];
+    start = { x: p.clientX, y: p.clientY, ignore: !!e.target.closest?.('.picker, input, select, textarea, .sheet-backdrop') };
+  }, { passive: true });
+  document.addEventListener('touchend', (e) => {
+    const s = start;
+    start = null;
+    if (!s || s.ignore || !S.api || document.querySelector('.sheet-backdrop')) return;
+    const p = e.changedTouches[0];
+    const dx = p.clientX - s.x;
+    const dy = p.clientY - s.y;
+    if (Math.abs(dx) > 70 && Math.abs(dy) < 45 && Math.abs(dx) > Math.abs(dy) * 2) {
+      const next = TAB_ORDER[TAB_ORDER.indexOf(S.tab) + (dx < 0 ? 1 : -1)];
+      if (TAB_ORDER.includes(S.tab) && next) S.show(next, dx < 0 ? 1 : -1);
+    } else if (dy > 90 && Math.abs(dx) < 40 && window.scrollY <= 0) {
+      refreshPlaylists();
+    }
+  }, { passive: true });
+}
+
 // ---------- Arranque ----------
 
 async function boot() {
   setLang();
+  applyTheme();
+  bindGestures();
   let problem = null;
   try {
     await auth.handleCallback();

@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { installMock, login } from './helpers.mjs';
 
 test('aviso único de logo nuevo, aviso de no afiliación y favicons', async ({ page }) => {
-  await installMock(page);
+  await installMock(page, { logoNotice: true });
   await login(page);
   await expect(page.locator('#logo-notice')).toContainText('quitar la app de la pantalla de inicio');
   await page.locator('#logo-notice button').click();

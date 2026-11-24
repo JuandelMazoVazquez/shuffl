@@ -6,6 +6,9 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). E
 
 ### Añadido
 
+- Rediseño con la paleta Baraja (fondo `#0F0E17`, superficies `#1A1927`, coral, ámbar, índigo y crema) en oscuro por defecto, claro y «como el sistema» (contraste AA comprobado por test).
+- Inicio con tarjetas: «Volver a barajar mi última mezcla» y atajos. Degradado de fondo con el color dominante de la portada seleccionada.
+- Animación de naipes mezclándose durante el barajado (la barra sigue el progreso real), resultado en cascada con contador animado, esqueletos de carga, microinteracciones, deslizar para cambiar de pestaña y tirar para refrescar. Respeta `prefers-reduced-motion`.
 - Botón «▶ Reproducir ahora» en los resultados: apaga el aleatorio de Spotify y reproduce la playlist desde la primera canción en el dispositivo activo (hoja para elegir dispositivo; ayuda y enlace «LISTEN ON SPOTIFY» si no hay ninguno). Requiere Premium.
 - Nuevos permisos de Spotify (reproducción, portada, tops, últimas escuchas y artistas seguidos). Quien ya tenía sesión verá «Baraja tiene funciones nuevas: vuelve a conectar con Spotify».
 - Portada propia para «🔀 Baraja» y para las playlists nuevas que crea el barajado: logo sobre un color de la paleta y la fecha y hora de la baraja, JPEG de 640×640 por debajo de 256 KB. Si falla, la baraja no falla (aviso discreto). Se puede desactivar en Ajustes. No se sube al barajar la propia playlist de otro modo.

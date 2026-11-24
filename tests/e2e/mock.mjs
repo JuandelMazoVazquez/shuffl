@@ -1,5 +1,38 @@
 // Spotify simulado para los tests e2e: intercepta accounts.spotify.com y api.spotify.com.
+import { deflateSync } from 'node:zlib';
+
 export const CLIENT_ID = '0123456789abcdef0123456789abcdef';
+
+const crcTable = Array.from({ length: 256 }, (_, n) => {
+  let c = n;
+  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  return c >>> 0;
+});
+const crc32 = (buf) => {
+  let c = 0xffffffff;
+  for (const b of buf) c = crcTable[(c ^ b) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+};
+
+/** PNG de 8x8 de un solo color. */
+function solidPng(r, g, b) {
+  const chunk = (type, data) => {
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const out = Buffer.alloc(8 + data.length + 4);
+    out.writeUInt32BE(data.length, 0);
+    body.copy(out, 4);
+    out.writeUInt32BE(crc32(body), 8 + data.length);
+    return out;
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(8, 0);
+  ihdr.writeUInt32BE(8, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 2;
+  const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: 8 }, () => [r, g, b]).flat())]);
+  const raw = Buffer.concat(Array.from({ length: 8 }, () => row));
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+}
 
 const CORS = {
   'access-control-allow-origin': '*',
@@ -38,7 +71,7 @@ export function createState() {
 
   const owner = (id) => ({ id, display_name: id });
   const lists = new Map([
-    ['pl_rock', { id: 'pl_rock', name: 'Rock', owner: owner('me'), tracks: rock }],
+    ['pl_rock', { id: 'pl_rock', name: 'Rock', owner: owner('me'), tracks: rock, cover: true }],
     ['pl_chill', { id: 'pl_chill', name: 'Chill', owner: owner('me'), tracks: chill }],
     ['pl_dupes', { id: 'pl_dupes', name: 'Con repetidas', owner: owner('me'), tracks: dupes }],
     ['pl_top', { id: 'pl_top', name: 'Top 50 Global', owner: owner('spotify'), tracks: range(2000, 2050) }],
@@ -79,7 +112,14 @@ export async function mockSpotify(page, state) {
     return { total: items.length, limit, offset, items: items.slice(offset, offset + limit) };
   };
   const toEntries = (tracks) => tracks.map(entry);
-  const metaOf = (l) => ({ id: l.id, name: l.name, owner: l.owner, collaborative: false, images: [], items: { total: l.tracks.length } });
+  const metaOf = (l) => ({
+    id: l.id, name: l.name, owner: l.owner, collaborative: false, items: { total: l.tracks.length },
+    images: l.cover ? [{ url: `https://i.scdn.co/image/${l.id}`, height: 64, width: 64 }] : [],
+  });
+
+  await page.route('https://i.scdn.co/**', (route) => route.fulfill({
+    status: 200, headers: { 'access-control-allow-origin': '*', 'content-type': 'image/png' }, body: solidPng(200, 40, 60),
+  }));
 
   await page.route('https://api.spotify.com/v1/**', async (route) => {
     const req = route.request();
