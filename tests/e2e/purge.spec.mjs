@@ -1,7 +1,7 @@
 // v1.3.1: en tu cuenta solo hay una playlist de Shuffl a la vez. Antes de crear la nueva se quitan TODAS las anteriores
 // (con etiqueta, o antiguas con una descripción de una versión anterior), nunca una renombrada, ajena ni sin esa descripción.
 import { test, expect } from '@playwright/test';
-import { installMock, login, idle, pick, openPanel, moreOptions } from './helpers.mjs';
+import { installMock, login, idle, pick, openPanel, moreOptions, shot } from './helpers.mjs';
 
 let state;
 
@@ -193,6 +193,7 @@ test.describe('con la hoja ya aceptada', () => {
     await page.locator('#sh-time').check();
     await page.locator('label[for="sh-minutes-15"]').click();
     await pick(page, 'shuffle', 'Rock');
+    await shot(page, 'docs/capturas/24-shuffle-tiempo.png');
     await page.locator('#shuffle-go').click();
     await expect(resultMeta(page)).toBeVisible();
     await idle(page);
@@ -214,6 +215,7 @@ test.describe('primera vez', () => {
     await expect(page.locator('#purge-sheet')).toContainText('Spanish Rap · Shuffle');
     await expect(page.locator('#purge-sheet')).toContainText('90 días');
     await expect(page.locator('#purge-ok')).toHaveText('Borrar y no volver a preguntar');
+    await shot(page, 'docs/capturas/23-borrar-antiguas.png');
     await page.locator('#purge-ok').click();
     await expect(resultMeta(page)).toBeVisible();
     await idle(page);

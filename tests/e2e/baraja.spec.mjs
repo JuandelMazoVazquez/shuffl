@@ -50,7 +50,6 @@ test('barajar dos playlists combinadas en «Mix · Shuffle», volver a barajar y
   await page.locator('#panel-shuffle .btn.primary.big').click();
   await expect(page.locator('#result-meta:visible', { hasText: /^180 (canciones|songs) ·/ })).toBeVisible();
   await expect(page.getByText('20 repetidas quitadas.')).toBeVisible();
-  await shot(page, `${SHOTS}/03-resultado-barajar.png`);
 
   const baraja = [...state.lists.values()].find((l) => l.name === 'Mix · Shuffle');
   expect(baraja).toBeTruthy();

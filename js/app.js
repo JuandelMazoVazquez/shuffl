@@ -659,6 +659,7 @@ function renderResult(container, status, o) {
       h('div', { class: 'result-main' },
         h('button', { class: 'btn primary', type: 'button', id: 'play-now', onclick: () => playNow(o.playlistId, info, status) }, t('playNow')),
         h('a', { class: 'btn', href: spotifyUrl(o.playlistId), target: '_blank', rel: 'noopener', id: 'open-spotify' }, t('openInSpotify'))),
+      o.headExtra ?? null,
       info),
     ...o.notes.map((n) => h('p', { class: 'note' }, n)),
     h('ol', { class: 'tracks', 'aria-label': t('preview') }, o.tracks.slice(0, RESULT_ROWS).map(trackRow)),
@@ -698,7 +699,9 @@ function celebrate(container) {
   if (prefersReducedMotion()) return;
   const burst = h('div', { class: 'confetti', 'aria-hidden': 'true' },
     Array.from({ length: 14 }, (_, i) => h('span', { style: `--x:${(i * 37) % 100}%;--r:${(i * 53) % 90 - 45}deg;--d:${(i % 5) * 60}ms` })));
-  container.prepend(burst);
+  // Debajo de la cabecera: los naipes no caen sobre «Reproducir ahora».
+  const head = container.querySelector('.result-head');
+  if (head) head.after(burst); else container.prepend(burst);
   setTimeout(() => burst.remove(), 1600);
 }
 
@@ -1118,6 +1121,7 @@ function shufflePanel() {
     result.hidden = true;
     rouletteCard.hidden = true;
     back.hidden = true;
+    working.textContent = t('working');
     working.hidden = false;
     status.phase('reading');
     window.scrollTo(0, 0);
@@ -1167,7 +1171,10 @@ function shufflePanel() {
       await commitApp({ key, name, description, uris, protect: sel.map((p) => p.id) }, status, (w) => finish(w, w.notes));
     }).then(() => {
       // Si no hubo resultado (error o cancelación), «Volver» lleva al formulario; el error y «Reintentar» siguen arriba.
-      if (result.hidden && !working.hidden) back.hidden = false;
+      if (result.hidden && !working.hidden) {
+        back.hidden = false;
+        working.textContent = t('workingStopped');
+      }
       return written;
     });
   }
@@ -2206,7 +2213,7 @@ function discoverGenPanel(kind) {
     form.hidden = true;
     renderResult(result, status, {
       name: st.name, notes, tracks: st.tracks, playlistId: st.playlistId,
-      extra: [h('button', { class: 'btn primary', type: 'button', id: `${kind}-more-songs`, onclick: () => more() }, t('findMore'))],
+      headExtra: h('button', { class: 'btn find-more', type: 'button', id: `${kind}-more-songs`, onclick: () => more() }, t('findMore')),
       onBack: () => { result.hidden = true; form.hidden = false; status.clear(); },
     });
   }

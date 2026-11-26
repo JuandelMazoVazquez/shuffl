@@ -25,9 +25,9 @@ The app interface is available in Spanish and English; the screenshots are in Sp
 ![Home](docs/capturas/08-inicio.png)
 
 - Four tabs: **Home · Shuffle · Discover · More**. More holds Sort, Duplicates, Backup, Snapshots, Liked without playlist, Split, "Keep it at hand", "Is it really random?" and Settings.
-- Home has a huge "SHUFFLE" button (reshuffles your last mix or takes you to pick what to shuffle), "Recent" and your saved mixes.
+- Home shows a card with your last shuffle (cover, name and date) and "Shuffle again"; the first time, "Get started". Below, "Recent" and your saved mixes.
 - Black and lime green. Dark theme by default, light (white with dark green) or like the system, in Settings. The background takes a subtle gradient from the selected cover's colour.
-- Screen transitions (View Transitions where the browser supports them), cards shuffling while songs are read, cascading results with a discreet celebration, loading skeletons, swipe sideways to change tab and pull down to refresh. With "reduce motion" there are no animations.
+- Instant screen changes with a short fade and no jumps (each tab remembers where you left it), a "Shuffling…" screen with cards shuffling and the real step, cascading results with a discreet celebration, loading skeletons, swipe sideways to change tab and pull down to refresh. With "reduce motion" there are no animations.
 - **Shake to shuffle**: on Home, shaking the phone reshuffles the last mix, always after confirming. On iPhone it has to be turned on with a tap (motion sensor permission); it can be switched off in Settings.
 
 ![Light theme](docs/capturas/09-tema-claro.png)
@@ -38,42 +38,41 @@ The app interface is available in Spanish and English; the screenshots are in Sp
 
 ![Shuffle](docs/capturas/02-barajar.png)
 
-- Three types:
-  - **Songs**: all of them, in random order.
-  - **By time**: 15, 30, 45, 60 min or any length. It shuffles uniformly and fills the time within ±2 min ("35 min · Shuffle"), for your commute, workout or run.
-  - **By albums**: from your playlists or your saved albums. The album order is random and each album plays whole and in its order ("Rock · Albums · Shuffle").
-- Remove repeats, filters, destination, paste a link and save as mix are folded under "More options"; it works well without touching them.
+- One mode, by songs. "More options" holds **By time**: 15, 30, 45, 60 min or any length; it shuffles uniformly and fills the time within ±2 min ("35 min · Shuffle"), for your commute, workout or run.
+- Remove repeats, filters, destination, paste a link and save as mix are also under "More options"; it works well without touching them.
 
 ![Shuffle by time](docs/capturas/24-shuffle-tiempo.png)
 
 - Pick one or several playlists and Liked Songs: they are combined and shuffled together. By default it removes repeated songs (same URI) when combining. Optional filters (year, date added, length, explicit) are applied first; whatever is left is shuffled uniformly.
 - Destination:
-  - Its "· Shuffle" playlist (default). Each source has its own and it is overwritten on every shuffle, so a pin stays put: "Reggaeton · Shuffle", "Liked Songs · Shuffle", "Mix · Shuffle" (several playlists; the description lists them), "Car · Shuffle" (saved mix) or "All my music · Shuffle". If the source is renamed, the generated playlist is renamed on the next shuffle; if you delete it, a new one is created.
-  - A new playlist on every shuffle ("Rock · Shuffle · date").
+  - A new Shuffl playlist (default): "Reggaeton · Shuffle", "Liked Songs · Shuffle", "Mix · Shuffle" (several playlists; the description lists them), "Car · Shuffle" (saved mix) or "All my music · Shuffle". It replaces the previous Shuffl one (see below).
   - The playlist itself, only for one of your own playlists and with confirmation.
 - The generated playlist's cover shows the Shuffl icon, the source name and the date (can be turned off in Settings).
-- After shuffling you can play it right away (Premium), shuffle again, open it in Spotify, share it or press Undo.
+- The result shows the name, songs and length, with "▶ Play now" (Premium) and "Open in Spotify", and the song list with each album cover. You can also shuffle again, share it or press Undo.
 
 ![Shuffle result](docs/capturas/03-resultado-barajar.png)
 
-### One playlist per source, on any device
+### Only one Shuffl playlist in your account
 
-- Every "· Shuffle" carries a tag at the end of its description (` · shuffl:src=<hash>`) that identifies its source without revealing ids or names. Before creating one, Shuffl looks for it among your playlists, so switching phones, reinstalling or using Safari and the installed app does not create duplicates.
-- If there are repeated copies already, the one shuffled last stays and the others are removed from your library (recoverable for 90 days on spotify.com). It asks the first time; Settings can make it always happen without asking. Playlists you renamed are never touched, and the old "🔀 Baraja" is only removed if you confirm.
+![Removing old ones](docs/capturas/23-borrar-antiguas.png)
 
-![Repeated copies](docs/capturas/23-copias-repetidas.png)
+- Every time Shuffl is about to create a playlist (shuffle, Discover, Forgotten, Snapshots, My top), it first reads the songs, then removes from your library every playlist it created before, and then creates the new one. So only one exists: the latest.
+- Shuffl playlists are your own ones with its tag in the description (` · shuffl:src=<hash>`, no ids or names) or, from older versions, with a "… · Shuffle", "📸 …" or "🔀 Baraja" name and a description the app used to write. Renamed playlists, other people's, collaborative ones and those without that description are never touched, and they are not offered as a source.
+- The first time it shows the list with "Remove and don't ask again"; after that it is automatic, with a notice. It can be turned off in Settings. Removed playlists can be recovered for 90 days on spotify.com → Account → Recover playlists.
+- If removing or creating fails, you see Spotify's real error with "Retry" (the songs stay in memory). "Check connection" in Settings tests that Shuffl can remove playlists.
+- Since every shuffle creates a new playlist, the pin in Your Library is not kept: sort Your Library by "Recents" to keep it at the top.
 
 ### Discover
 
-Spotify no longer offers recommendations to apps like this one, so Shuffl finds them from what you play and follow. Each option creates its own "· Shuffle" with a cover and "Play now".
+Spotify no longer offers recommendations to apps like this one, so Shuffl finds them from what you play and follow. Each option creates a Shuffl playlist with a cover and "Play now".
 
-- **New releases**: releases from the last 7, 30 or 90 days by your most played artists and the ones you follow (up to 25), without what you already saved.
-- **Explore**: never-saved songs from the albums you have been playing.
-- **On this day**: what you saved to Liked Songs this same month in past years, by year and with a memory ("In November 2024 you were hooked on…").
+- **New releases**: releases from the last 7, 30 or 90 days.
+- **Explore**: songs from the albums you play and from your artists.
+- In both: about 30 songs and "Find more" to add 30 more to the same playlist; under "More options", a number (15-100) or a length (30-90 min). They can be based on your artists, on one of your playlists ("Like my playlist…") or on a genre (if Spotify gives genres for your artists). They never include songs you already have in your playlists or Liked Songs.
 - **Forgotten**: Liked Songs from over 1, 2, 3 or 5 years ago.
 - **Your summary**: your top 5 artists and songs (4 weeks, 6 months or all time) on a vertical story card (1080×1920) and a square one, to share or download. Covers are shown whole with nothing on top, next to the Spotify logo. You can create "My top · Shuffle".
 
-What is read from Spotify (artists, releases, album songs) is kept for 24 h on the device to use fewer requests.
+What is read from Spotify (artists, releases, album songs and which songs you have) is kept on the device for up to 24 h to use fewer requests.
 
 ![Discover](docs/capturas/21-descubrir.png)
 
@@ -83,16 +82,16 @@ What is read from Spotify (artists, releases, album songs) is kept for 24 h on t
 
 ### Pick for me and "Is it really random?"
 
-- **Pick for me**: a roulette picks one of your playlists, all with the same probability (the pick happens before the animation), and shuffles it into its "· Shuffle".
+- **Pick for me**: a roulette picks one of your playlists, all with the same probability (the pick happens before the animation), and shuffles it into a new Shuffl playlist.
 - **Is it really random?**: simulates 10,000 shuffles of 10 songs on your device and shows, with an animated bar chart and a table, how often each song plays first with the Shuffl shuffle (all close to 10%) and with a biased shuffle (the classic mistake of swapping each song with any position).
 
 ![Randomness check](docs/capturas/19-prueba-aleatorio.png)
 
 ### Siri, shortcuts and the car
 
-- Deep links: `?mezcla=<id>&play=1` reshuffles a saved mix and plays it with Spotify shuffle off; `?origen=<playlist id>&play=1` does the same for a playlist. They only run when signed in and if the mix or playlist exists in that browser, they always write to the "· Shuffle" playlist (never to the source) and they are removed from the address bar once read. Shortcuts carry a key for that browser (`k`); a link without it, for example from another website, asks for confirmation.
+- Deep links: `?mezcla=<id>&play=1` reshuffles a saved mix and plays it with Spotify shuffle off; `?origen=<playlist id>&play=1` does the same for a playlist. They only run when signed in and if the mix or playlist exists in that browser, they always create a new Shuffl playlist (never write to the source) and they are removed from the address bar once read. Shortcuts carry a key for that browser (`k`); a link without it, for example from another website, asks for confirmation.
 - Every saved mix has a "Create Siri shortcut" button with the link to copy and the steps in the Shortcuts app ("Open URLs" action and a name such as "Shuffl car"). On iPhone, Shortcuts opens the link in Safari, which does not share data with the Home Screen app: you need to sign in, have the mix and create the shortcut in Safari too.
-- CarPlay does not support web apps. The "· Shuffle" playlists do show up in Spotify inside CarPlay; the "Keep it handy" help explains it.
+- CarPlay does not support web apps. Your Shuffl playlist does show up in Spotify inside CarPlay; the "Keep it handy" help explains it.
 
 ![Siri shortcut](docs/capturas/18-atajo-siri.png)
 
