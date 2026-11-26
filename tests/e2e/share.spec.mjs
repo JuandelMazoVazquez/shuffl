@@ -13,14 +13,14 @@ async function shuffleChill(page) {
   await page.locator('#panel-shuffle .btn.primary.big').click();
   await expect(page.getByText('Listo: 80 canciones barajadas')).toBeVisible();
   await idle(page);
-  return [...state.lists.values()].find((l) => l.name === '🔀 Baraja');
+  return [...state.lists.values()].find((l) => l.name === 'Chill · Shuffle');
 }
 
 test('Compartir usa la hoja del sistema (Web Share) con el enlace de la playlist', async ({ page }) => {
   await page.addInitScript(() => { navigator.share = async (data) => { window.__shared = data; }; });
   const list = await shuffleChill(page);
   await page.locator('#share-link').click();
-  await expect.poll(() => page.evaluate(() => window.__shared)).toEqual({ title: 'Baraja', url: `https://open.spotify.com/playlist/${list.id}` });
+  await expect.poll(() => page.evaluate(() => window.__shared)).toEqual({ title: 'Shuffl', url: `https://open.spotify.com/playlist/${list.id}` });
 });
 
 test('si el usuario cancela la hoja de compartir no se muestra ningún error', async ({ page }) => {

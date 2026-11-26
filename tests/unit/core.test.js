@@ -245,7 +245,9 @@ test('backup: construir, validar, CSV y rechazo de archivos malos', () => {
   const ID22 = '4uLU6hMCjMI75M1A2tKUQC';
   const lists = [{ id: 'p', name: 'Mi "lista"', isLiked: false, tracks: [tr({ uri: `spotify:track:${ID22}`, name: '=cmd()', artists: ['A', 'B'] })] }];
   const b = buildBackup(lists, new Date('2026-01-01T00:00:00Z'));
-  assert.equal(b.app, 'baraja');
+  assert.equal(b.app, 'shuffl');
+  assert.deepEqual(validateBackup({ ...b, app: 'baraja' }), validateBackup(b), 'acepta copias de antes del cambio de nombre');
+  assert.throws(() => validateBackup({ ...b, app: 'otra' }), { code: 'notBackup' });
   assert.equal(b.version, 1);
   assert.equal(b.exportedAt, '2026-01-01T00:00:00.000Z');
   const back = validateBackup(JSON.parse(JSON.stringify(b)));

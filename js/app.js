@@ -5,17 +5,19 @@ import {
   SPLIT_MODES, MAX_SPLIT_PARTS, splitTracks, MULTI_KEYS, sortTracksBy, normalizeAlbum, normalizeFollowedArtist, toLibraryCsv,
 } from './core.js';
 import { sanitizeMix, sanitizeMixes, upsertMix, removeMix, newMixId, mixSources } from './mixes.js';
+import {
+  sourceKey, generatedName, datedName, generatedDescription, sameDescription, sanitizeTargets, setTarget, isGeneratedPlaylist, LEGACY_PLAYLIST,
+} from './targets.js';
 import { SpotifyApi, ApiError } from './api.js';
 import * as auth from './auth.js';
 import { KEYS, getItem, setItem, removeItem } from './storage.js';
 import { t, setLang, getLang, LANGS } from './i18n.js';
-import { REPO_URL } from './config.js';
+import { REPO_URL, APP_NAME } from './config.js';
 import { registerUpdates } from './update.js';
 import { makeCover } from './cover.js';
 import { imageDominantColor, rgbCss } from './color.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
-const BARAJA_NAME = '🔀 Baraja';
 const root = document.getElementById('app');
 const S = { api: null, me: null, playlists: [], sourceCache: new Map(), loaded: false, busy: false, tab: 'home', pickers: [] };
 let pickerSeq = 0;
@@ -163,10 +165,30 @@ async function loadPlaylists() {
   S.loaded = true;
   S.sourceCache.clear();
   S.pickers.forEach((p) => p.update());
+  showMigrationNotice();
+}
+
+/**
+ * Aviso único para quien venía de Baraja: la antigua «🔀 Baraja» ya no se actualiza y no se borra sola
+ * (borrar una playlist no se puede deshacer, así que lo hace la persona en Spotify).
+ */
+function showMigrationNotice() {
+  if (getItem(KEYS.migrationNotice) || document.getElementById('migration-notice')) return;
+  const legacy = S.playlists.find((p) => p.owned && (p.id === getItem(KEYS.barajaId) || p.name === LEGACY_PLAYLIST));
+  const main = root.querySelector('main');
+  if (!legacy || !main) return;
+  const box = h('div', { class: 'notice', id: 'migration-notice', role: 'note' },
+    h('p', {}, t('migrationNotice', { name: legacy.name })),
+    h('button', { class: 'btn', type: 'button', onclick: () => { setItem(KEYS.migrationNotice, true); box.remove(); } }, t('gotIt')));
+  main.prepend(box);
 }
 
 const getMixes = () => sanitizeMixes(getItem(KEYS.mixes, []));
 const setMixes = (list) => setItem(KEYS.mixes, list);
+const getTargets = () => sanitizeTargets(getItem(KEYS.targets, {}));
+/** Playlists que crea la app: no cuentan como origen de «toda mi biblioteca» ni de «Me gusta sin playlist». */
+const isGenerated = (pl) => isGeneratedPlaylist(pl, getTargets(), getItem(KEYS.barajaId));
+const nameLabels = () => ({ liked: t('liked'), library: t('allMyMusic') });
 
 /** Hoja inferior con un campo de texto. Devuelve el texto o null si se cancela. */
 function askName({ title, value = '' }) {
@@ -400,7 +422,7 @@ async function shareLink(playlistId, info) {
   const url = spotifyUrl(playlistId);
   try {
     if (navigator.share) {
-      await navigator.share({ title: 'Baraja', url });
+      await navigator.share({ title: APP_NAME, url });
     } else {
       await navigator.clipboard.writeText(url);
       setKids(info, h('p', { id: 'share-done' }, t('linkCopied')));
@@ -550,7 +572,7 @@ function shufflePanel() {
   // Origen: toda la biblioteca, resumen y contador
   let libraryMode = false;
   let programmatic = false;
-  const libraryIds = () => S.playlists.filter((p) => !baseReason(p) && p.id !== getItem(KEYS.barajaId)).map((p) => p.id);
+  const libraryIds = () => S.playlists.filter((p) => !baseReason(p) && (p.isLiked || !isGenerated(p))).map((p) => p.id);
   const selInfo = h('p', { class: 'muted', id: 'selection-info', role: 'status' });
   const libBtn = h('button', { class: 'btn shortcut', type: 'button', id: 'select-library', onclick: () => {
     libraryMode = true;
@@ -698,8 +720,9 @@ function shufflePanel() {
     if (radios[mix.mode] && !radios[mix.mode].disabled) radios[mix.mode].checked = true;
     return mix.library ? n > 0 : n === ids.length;
   }
-  S.runMix = (mix) => {
-    if (applyMix(mix)) run(); else status.fail(new UserError(t('mixMissing')));
+  /** `origin.mixId`/`origin.mixName`: la mezcla guardada de la que viene, para que tenga su propia playlist generada. */
+  S.runMix = (mix, origin = null) => {
+    if (applyMix(mix)) run(origin); else status.fail(new UserError(t('mixMissing')));
   };
   S.editMix = (mix) => {
     if (!applyMix(mix)) status.fail(new UserError(t('mixMissing')));
@@ -708,31 +731,50 @@ function shufflePanel() {
 
   const dest = () => Object.values(radios).find((r) => r.checked).value;
 
-  async function resolveTarget(mode, sel, originalTracks) {
+  /**
+   * Playlist de destino. «reuse»: cada origen (o combinación, o mezcla guardada) tiene su propia «… · Shuffle»,
+   * que se sobrescribe y se renombra si el origen cambió de nombre; si ya no existe, se crea otra.
+   */
+  async function resolveTarget(mode, sel, originalTracks, origin) {
     if (mode === 'self') {
       saveUndo(sel[0].id, sel[0].name, originalTracks.map((x) => x.uri));
-      return sel[0].id;
+      return { id: sel[0].id, notes: [] };
     }
-    if (mode === 'reuse') {
-      const storedId = getItem(KEYS.barajaId);
-      const fresh = storedId ? (await S.api.getMyPlaylists()).find((p) => p?.id === storedId && p.owner?.id === S.me.id) : null;
-      if (fresh) {
-        const current = normalizeEntries(await S.api.getPlaylistItems(fresh.id)).tracks;
-        saveUndo(fresh.id, fresh.name, current.map((x) => x.uri), { soft: true });
-        return fresh.id;
+    const name = generatedName({ mixName: origin?.mixName, library: origin?.library, sources: sel }, nameLabels());
+    const description = generatedDescription(t('shuffleDescFrom'), origin?.library ? [t('allMyMusic')] : sel.map((p) => (p.isLiked ? t('liked') : p.name)));
+    if (mode === 'new') return { id: (await S.api.createPlaylist(datedName(name, nowLabel()), description)).id, notes: [] };
+
+    const key = sourceKey({ mixId: origin?.mixId, library: origin?.library, ids: sel.map((p) => p.id) });
+    const storedId = key ? getTargets()[key] : null;
+    const fresh = storedId ? (await S.api.getMyPlaylists()).find((p) => p?.id === storedId && p.owner?.id === S.me.id) : null;
+    if (fresh) {
+      const current = normalizeEntries(await S.api.getPlaylistItems(fresh.id)).tracks;
+      saveUndo(fresh.id, fresh.name, current.map((x) => x.uri), { soft: true });
+      const notes = [];
+      if (fresh.name !== name || !sameDescription(fresh.description, description)) {
+        try {
+          await S.api.updatePlaylistDetails(fresh.id, { name, description });
+        } catch (e) {
+          console.warn('Nombre no actualizado:', e?.status ?? e?.message);
+          notes.push(t('renameFailed'));
+        }
       }
-      const created = await S.api.createPlaylist(BARAJA_NAME, t('shuffleDesc'));
-      setItem(KEYS.barajaId, created.id);
-      return created.id;
+      return { id: fresh.id, notes };
     }
-    return (await S.api.createPlaylist(`Baraja · ${nowLabel()}`, t('shuffleDesc'))).id;
+    const created = await S.api.createPlaylist(name, description);
+    if (key) setItem(KEYS.targets, setTarget(getTargets(), key, created.id));
+    return { id: created.id, notes: [] };
   }
 
+  /** Texto grande de la portada: el origen sin el sufijo. */
+  const coverTitle = (sel, origin) => origin?.mixName || (origin?.library ? t('allMyMusic')
+    : sel.length === 1 ? (sel[0].isLiked ? t('liked') : sel[0].name) : 'Mix');
+
   /** La portada nunca hace fallar la baraja: si algo va mal solo devuelve un aviso. */
-  async function uploadCover(mode, playlistId) {
+  async function uploadCover(mode, playlistId, title) {
     if (mode === 'self' || !coverEnabled()) return [];
     try {
-      await S.api.setPlaylistImage(playlistId, await makeCover({ label: nowLabel() }));
+      await S.api.setPlaylistImage(playlistId, await makeCover({ title, label: `SHUFFLE · ${nowLabel()}` }));
       return [];
     } catch (e) {
       console.warn('Portada no subida:', e?.status ?? e?.message);
@@ -758,10 +800,13 @@ function shufflePanel() {
     });
   }
 
-  function run() {
-    task(status, async () => {
+  /** Devuelve una promesa con el id de la playlist escrita (o null si no se barajó). */
+  function run(fromMix = null, { modeOverride } = {}) {
+    let written = null;
+    return task(status, async () => {
       const sel = picker.getSelected();
-      const mode = dest();
+      const mode = modeOverride ?? dest();
+      const origin = { mixId: fromMix?.mixId, mixName: fromMix?.mixName, library: libraryMode };
       const { tracks, skipped } = await readSources(sel, status);
       if (mode === 'self' && !confirmOverwrite(sel[0].name, skippedCount(skipped))) { status.clear(); return; }
       const filters = readFilters();
@@ -769,18 +814,22 @@ function shufflePanel() {
       const base = filterTracks(unique, filters);
       if (!base.length) throw new UserError(hasFilters(filters) ? t('errFiltersEmpty') : t('errEmpty'));
       const { tracks: order, truncated } = capPlaylist(shuffle(base));
-      const playlistId = await resolveTarget(mode, sel, tracks);
-      await overwritePlaylist(playlistId, order.map((x) => x.uri), status);
-      const coverNotes = await uploadCover(mode, playlistId);
-      setItem(KEYS.lastMix, currentConfig());
+      const target = await resolveTarget(mode, sel, tracks, origin);
+      await overwritePlaylist(target.id, order.map((x) => x.uri), status);
+      const title = coverTitle(sel, origin);
+      const coverNotes = [...target.notes, ...await uploadCover(mode, target.id, title)];
+      setItem(KEYS.lastMix, { ...currentConfig(), mixId: origin.mixId });
+      if (mode !== 'self') setItem(KEYS.lastTarget, target.id);
+      written = target.id;
       await loadPlaylists();
       status.clear();
       showResult({
         base, order, skipped, truncated, dedupRemoved: tracks.length - unique.length, filteredOut: unique.length - base.length,
-        playlistId, mode, coverNotes,
+        playlistId: target.id, mode, coverNotes, title,
       });
-    });
+    }).then(() => written);
   }
+  S.shuffleWith = run;
 
   function reshuffle() {
     task(status, async () => {
@@ -788,7 +837,7 @@ function shufflePanel() {
       await assertUnchanged(last.playlistId, last.order.length, last.order);
       saveUndo(last.playlistId, '', last.order.map((x) => x.uri), { soft: true });
       await overwritePlaylist(last.playlistId, order.map((x) => x.uri), status);
-      const coverNotes = await uploadCover(last.mode, last.playlistId);
+      const coverNotes = await uploadCover(last.mode, last.playlistId, last.title);
       status.clear();
       showResult({ ...last, order, truncated, coverNotes });
     });
@@ -1016,8 +1065,6 @@ const SNAPS = [
   ['top_long', 'snapTopAll', 'long_term'], ['recent', 'snapRecent', null],
 ];
 
-/** Playlists que Baraja genera: no cuentan como «tus playlists» al buscar Me gusta sin playlist. */
-const isGenerated = (pl) => pl.id === getItem(KEYS.barajaId) || /^(🔀 Baraja|Baraja · |📸 )/.test(pl.name);
 
 function toolPanel(id, title, lead, status, ...body) {
   return h('section', { class: 'panel', id, hidden: true },
@@ -1264,9 +1311,9 @@ function backupPanel() {
         albums.length || artists.length ? h('p', { class: 'note', id: 'backup-extra' }, t('backupExtra', { a: fmt(albums.length), b: fmt(artists.length) })) : null,
         skippedTotal ? h('p', { class: 'note' }, t('skipped', { n: fmt(skippedTotal) })) : null,
         h('div', { class: 'actions' },
-          h('button', { class: 'btn primary', type: 'button', id: 'save-json', onclick: () => saveFile(jsonBlob, `baraja-${stamp}.json`, status) }, t('saveJson')),
-          lists.length ? h('button', { class: 'btn', type: 'button', id: 'save-csv', onclick: () => saveFile(csvBlob, `baraja-${stamp}.csv`, status) }, t('saveCsv')) : null,
-          albums.length || artists.length ? h('button', { class: 'btn', type: 'button', id: 'save-library-csv', onclick: () => saveFile(libraryBlob, `baraja-biblioteca-${stamp}.csv`, status) }, t('saveLibraryCsv')) : null));
+          h('button', { class: 'btn primary', type: 'button', id: 'save-json', onclick: () => saveFile(jsonBlob, `shuffl-${stamp}.json`, status) }, t('saveJson')),
+          lists.length ? h('button', { class: 'btn', type: 'button', id: 'save-csv', onclick: () => saveFile(csvBlob, `shuffl-${stamp}.csv`, status) }, t('saveCsv')) : null,
+          albums.length || artists.length ? h('button', { class: 'btn', type: 'button', id: 'save-library-csv', onclick: () => saveFile(libraryBlob, `shuffl-biblioteca-${stamp}.csv`, status) }, t('saveLibraryCsv')) : null));
       out.hidden = false;
     });
   }
@@ -1427,7 +1474,7 @@ function pinPanel() {
     slot,
     h('button', { class: 'btn', type: 'button', id: 'pin-back', onclick: () => S.show('shuffle') }, t('back')));
   panel.refresh = () => {
-    const id = getItem(KEYS.barajaId);
+    const id = getItem(KEYS.lastTarget) ?? getItem(KEYS.barajaId);
     setKids(slot, id ? h('a', { class: 'btn primary', href: spotifyUrl(id), target: '_blank', rel: 'noopener', id: 'pin-open' }, t('openInSpotify')) : null);
   };
   return panel;
@@ -1447,6 +1494,8 @@ function logoNotice() {
 const TABS = [['home', 'tabHome'], ['shuffle', 'tabShuffle'], ['sort', 'tabSort'], ['dups', 'tabDups'], ['backup', 'tabBackup']];
 const TAB_ORDER = TABS.map(([key]) => key);
 
+const mixOrigin = (mix) => ({ mixId: mix.id, mixName: mix.name });
+
 /** «Rock + Chill · filtros · sin repetidas» para las tarjetas de mezcla. */
 function mixSummary(mix) {
   const parts = [mixSources(mix, t('libraryName'))];
@@ -1461,7 +1510,7 @@ function homePanel() {
     h('span', { class: 'card-icon' }, icon(...ICONS[key])),
     h('span', {}, h('span', { class: 'card-title' }, title), h('span', { class: 'card-sub' }, sub)));
   const mixRow = (mix) => h('div', { class: 'mix-row' },
-    h('button', { class: 'card', type: 'button', 'data-mix': mix.id, onclick: () => S.runMix(mix) },
+    h('button', { class: 'card', type: 'button', 'data-mix': mix.id, onclick: () => S.runMix(mix, mixOrigin(mix)) },
       h('span', { class: 'card-icon' }, icon(...ICONS.shuffle)),
       h('span', {}, h('span', { class: 'card-title' }, mix.name), h('span', { class: 'card-sub' }, mixSummary(mix)))),
     h('button', { class: 'icon-btn', type: 'button', 'aria-label': t('editMix', { name: mix.name }), onclick: () => S.editMix(mix) }, icon(...ICONS.edit)),
@@ -1474,8 +1523,9 @@ function homePanel() {
     const raw = getItem(KEYS.lastMix);
     const mix = raw && sanitizeMix({ ...raw, id: 'last', name: 'last' });
     const mixes = getMixes();
+    const saved = raw?.mixId && mixes.find((m) => m.id === raw.mixId);
     setKids(slot,
-      mix ? h('button', { class: 'card hero', type: 'button', id: 'card-last-mix', onclick: () => S.runMix(mix) },
+      mix ? h('button', { class: 'card hero', type: 'button', id: 'card-last-mix', onclick: () => S.runMix(mix, saved ? mixOrigin(saved) : null) },
         h('span', { class: 'card-icon' }, icon(...ICONS.shuffle)),
         h('span', {}, h('span', { class: 'card-title' }, t('lastMix')), h('span', { class: 'card-sub' }, mixSources(mix, t('libraryName'))))) : null,
       mixes.length ? h('h2', {}, t('savedMixes')) : null,
@@ -1524,7 +1574,7 @@ function mountApp() {
     return b;
   }));
   setKids(root,
-    h('header', { class: 'top' }, h('h1', {}, h('img', { src: 'icons/icon.svg', alt: '', width: '28', height: '28' }), 'Baraja'), gear),
+    h('header', { class: 'top' }, h('h1', {}, h('img', { src: 'icons/icon.svg', alt: '', width: '28', height: '28' }), APP_NAME), gear),
     h('main', {}, logoNotice(), Object.values(panels)),
     nav);
   show(S.tab);
@@ -1561,7 +1611,7 @@ function renderSetup(problem) {
     return li;
   };
   setKids(root,h('main', { class: 'setup' },
-    h('div', { class: 'brand' }, h('img', { src: 'icons/icon.svg', alt: '', width: '72', height: '72' }), h('h1', {}, 'Baraja')),
+    h('div', { class: 'brand' }, h('img', { src: 'icons/icon.svg', alt: '', width: '72', height: '72' }), h('h1', {}, APP_NAME)),
     h('p', { class: 'lead' }, t('welcome')),
     h('h2', {}, t('guideTitle')),
     h('ol', { class: 'steps' }, steps.map(stepItem)),
@@ -1577,7 +1627,7 @@ function renderReconnect() {
   S.playlists = [];
   const err = h('p', { class: 'error', role: 'alert', hidden: true });
   setKids(root, h('main', { class: 'setup' },
-    h('div', { class: 'brand' }, h('img', { src: 'icons/icon.svg', alt: '', width: '72', height: '72' }), h('h1', {}, 'Baraja')),
+    h('div', { class: 'brand' }, h('img', { src: 'icons/icon.svg', alt: '', width: '72', height: '72' }), h('h1', {}, APP_NAME)),
     h('p', { class: 'lead', id: 'reconnect-msg' }, t('reconnectMsg')),
     err,
     h('button', { class: 'btn primary big', type: 'button', id: 'reconnect', onclick: async () => {

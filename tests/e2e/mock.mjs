@@ -120,7 +120,7 @@ export async function mockSpotify(page, state) {
   };
   const toEntries = (tracks) => tracks.map(entry);
   const metaOf = (l) => ({
-    id: l.id, name: l.name, owner: l.owner, collaborative: !!l.collaborative, items: { total: l.tracks.length },
+    id: l.id, name: l.name, description: l.description ?? '', owner: l.owner, collaborative: !!l.collaborative, items: { total: l.tracks.length },
     images: l.cover ? [{ url: `https://i.scdn.co/image/${l.id}`, height: 64, width: 64 }] : [],
   });
 
@@ -165,7 +165,7 @@ export async function mockSpotify(page, state) {
     if (method === 'GET' && path === '/me/tracks') return json(route, page_(toEntries(state.liked), url));
     if (method === 'POST' && path === '/me/playlists') {
       const id = `new${++state.created}`;
-      state.lists.set(id, { id, name: body.name, owner: { id: 'me' }, tracks: [] });
+      state.lists.set(id, { id, name: body.name, description: body.description, owner: { id: 'me' }, tracks: [] });
       state.writes.push({ op: 'create', id, name: body.name, public: body.public, description: body.description });
       return json(route, { id, name: body.name }, 201);
     }
@@ -176,6 +176,14 @@ export async function mockSpotify(page, state) {
       return route.fulfill({ status: 202, headers: CORS });
     }
     const meta = /^\/playlists\/([^/]+)$/.exec(path);
+    if (meta && method === 'PUT') {
+      const list = state.lists.get(meta[1]);
+      if (!list || list.owner.id !== 'me' || state.failDetails) return json(route, { error: { status: 403, message: 'Forbidden' } }, 403);
+      if (body.name !== undefined) list.name = body.name;
+      if (body.description !== undefined) list.description = body.description;
+      state.writes.push({ op: 'details', id: meta[1], ...body });
+      return route.fulfill({ status: 200, headers: CORS });
+    }
     if (meta && method === 'GET') {
       const list = state.lists.get(meta[1]);
       if (!list) return json(route, { error: { status: 404, message: 'Not found' } }, 404);

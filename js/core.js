@@ -3,6 +3,8 @@
 export const MAX_PLAYLIST = 10000;
 export const MAX_BACKUP_PLAYLISTS = 200;
 export const MAX_BACKUP_BYTES = 20 * 1024 * 1024;
+/** Las copias de antes del cambio de nombre llevan `app: 'baraja'` y se siguen aceptando. */
+const BACKUP_APPS = ['shuffl', 'baraja'];
 export const LIKED_ID = '__liked__';
 
 const defaultRandomValues = (arr) => globalThis.crypto.getRandomValues(arr);
@@ -415,7 +417,7 @@ const slim = (t) => ({
 /** `extra` añade secciones opcionales (mezclas guardadas, álbumes, artistas). */
 export function buildBackup(playlists, now = new Date(), extra = {}) {
   return {
-    app: 'baraja',
+    app: 'shuffl',
     version: 1,
     exportedAt: now.toISOString(),
     playlists: playlists.map((p) => ({ id: p.id, name: p.name, isLiked: !!p.isLiked, tracks: p.tracks.map(slim) })),
@@ -472,7 +474,7 @@ export function toCsv(playlists) {
 /** Valida un JSON de copia. Devuelve las playlists limpias o lanza Error con `code`. */
 export function validateBackup(obj) {
   const fail = (code) => Object.assign(new Error(code), { code });
-  if (!obj || typeof obj !== 'object' || obj.app !== 'baraja') throw fail('notBackup');
+  if (!obj || typeof obj !== 'object' || !BACKUP_APPS.includes(obj.app)) throw fail('notBackup');
   if (obj.version !== 1) throw fail('badVersion');
   if (!Array.isArray(obj.playlists)) throw fail('notBackup');
   if (obj.playlists.length > MAX_BACKUP_PLAYLISTS) throw fail('tooBig');

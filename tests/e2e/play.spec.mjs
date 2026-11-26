@@ -18,7 +18,7 @@ async function shuffleChill(page) {
 
 test('Reproducir ahora con dispositivo activo: apaga el aleatorio y reproduce desde 0', async ({ page }) => {
   await shuffleChill(page);
-  const created = [...state.lists.values()].find((l) => l.name === '🔀 Baraja');
+  const created = [...state.lists.values()].find((l) => l.name === 'Chill · Shuffle');
   await page.locator('#play-now').click();
   await expect(page.getByText('Reproduciendo en iPhone de prueba.')).toBeVisible();
   expect(state.playerCalls.map((c) => c.path)).toEqual(['/me/player/shuffle', '/me/player/play']);

@@ -1,8 +1,8 @@
-// Service worker de Baraja. `__BUILD__` lo sustituye el despliegue por el hash corto del commit;
+// Service worker de Shuffl. `__BUILD__` lo sustituye el despliegue por el hash corto del commit;
 // en desarrollo vale 'dev' y el worker no intercepta nada (siempre se ve lo último del disco).
 // Nunca toca otros orígenes (api y accounts de Spotify).
 const VERSION = '__BUILD__';
-const CACHE = `baraja-${VERSION}`;
+const CACHE = `shuffl-${VERSION}`;
 const DEV = VERSION === 'dev';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/styles.css',

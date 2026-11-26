@@ -25,19 +25,19 @@ test('el service worker avisa de la versión nueva, la aplica al pulsar y limpia
   await page.goto(base);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
-  expect(await cacheNames(page)).toEqual(['baraja-v1']);
+  expect(await cacheNames(page)).toEqual(['shuffl-v1']);
   await expect(page.locator('#update-banner')).toHaveCount(0);
 
   build = 'v2';
   await page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r.update()));
   await expect(page.locator('#update-banner')).toContainText('Nueva versión disponible');
-  expect(await cacheNames(page)).toEqual(['baraja-v1', 'baraja-v2']);
+  expect(await cacheNames(page)).toEqual(['shuffl-v1', 'shuffl-v2']);
 
   let loads = 0;
   page.on('load', () => { loads++; });
   await page.locator('#update-banner button').click();
   await expect.poll(() => loads).toBe(1);
-  await expect.poll(() => cacheNames(page)).toEqual(['baraja-v2']);
+  await expect.poll(() => cacheNames(page)).toEqual(['shuffl-v2']);
   await expect(page.locator('#update-banner')).toHaveCount(0);
   await page.waitForTimeout(500);
   expect(loads).toBe(1);
@@ -78,7 +78,7 @@ test('«Actualizar» no recarga mientras hay una tarea en curso y sí cuando ter
   await expect(page.locator('#update-apply')).toHaveText('Termina la tarea en curso y pulsa otra vez');
   await page.waitForTimeout(500);
   expect(loads).toBe(0);
-  expect(await cacheNames(page)).toEqual(['baraja-b1', 'baraja-b2']);
+  expect(await cacheNames(page)).toEqual(['shuffl-b1', 'shuffl-b2']);
 
   release();
   await expect(page.locator('body')).not.toHaveClass(/busy/);
@@ -86,7 +86,7 @@ test('«Actualizar» no recarga mientras hay una tarea en curso y sí cuando ter
   expect(loads).toBe(0);
   await page.locator('#update-apply').click();
   await expect.poll(() => loads).toBe(1);
-  await expect.poll(() => cacheNames(page)).toEqual(['baraja-b2']);
+  await expect.poll(() => cacheNames(page)).toEqual(['shuffl-b2']);
 });
 
 test('el banner sale en inglés con el idioma en inglés', async ({ page }) => {

@@ -187,6 +187,11 @@ export class SpotifyApi {
     return this.request('PUT', `/playlists/${encodeURIComponent(id)}/images`, undefined, { rawBody: base64, contentType: 'image/jpeg' });
   }
 
+  /** Cambia nombre y descripción de una playlist propia (PUT /playlists/{id}). */
+  updatePlaylistDetails(id, { name, description }) {
+    return this.request('PUT', `/playlists/${encodeURIComponent(id)}`, { name, description });
+  }
+
   createPlaylist(name, description = '') {
     return this.request('POST', '/me/playlists', { name, description, public: false });
   }
