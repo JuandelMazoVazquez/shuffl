@@ -177,7 +177,7 @@ export class SpotifyApi {
     return Array.isArray(data?.items) ? data.items : [];
   }
 
-  /** Solo metadatos: Spotify no deja leer el contenido de playlists ajenas y Baraja no lo intenta. */
+  /** Solo metadatos: Spotify no deja leer el contenido de playlists ajenas y Shuffl no lo intenta. */
   getPlaylistMeta(id) {
     return this.request('GET', `/playlists/${encodeURIComponent(id)}?fields=${encodeURIComponent('id,name,owner(id,display_name),images,collaborative')}`);
   }

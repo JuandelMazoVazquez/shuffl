@@ -113,6 +113,39 @@ test('si no se puede renombrar, la baraja sigue y hay un aviso', async ({ page }
   await expect(page.locator('#panel-shuffle .result-title')).toContainText('Listo: 120');
 });
 
+test('si renombras la generada para conservarla (sin «· Shuffle»), se deja intacta y se crea otra', async ({ page }) => {
+  await login(page);
+  await shuffle(page, 'Rock');
+  const [kept] = byName('Rock · Shuffle');
+  kept.name = 'Rock junio';
+  const before = kept.tracks.map((t) => t.uri);
+  const writesBefore = state.writes.filter((w) => w.id === kept.id).length;
+  await shuffle(page, 'Rock');
+  expect(state.lists.get(kept.id).name).toBe('Rock junio');
+  expect(state.lists.get(kept.id).tracks.map((t) => t.uri)).toEqual(before);
+  expect(state.writes.filter((w) => w.id === kept.id)).toHaveLength(writesBefore);
+  expect(state.images.filter((i) => i.id === kept.id)).toHaveLength(1);
+  const [fresh] = byName('Rock · Shuffle');
+  expect(fresh.id).not.toBe(kept.id);
+  expect(await targets(page)).toEqual({ 'pl:pl_rock': fresh.id });
+});
+
+test('si otra pestaña está escribiendo, la baraja espera a que termine (Web Locks)', async ({ page, context }) => {
+  await login(page);
+  const other = await context.newPage();
+  // Mismo origen pero sin la app: así no arranca otra sesión contra el Spotify real.
+  await other.goto('/manifest.webmanifest');
+  await other.evaluate(() => { navigator.locks.request('shuffl-write', () => new Promise((ok) => { window.__release = ok; })); });
+  await pick(page, 'shuffle', 'Rock');
+  await page.locator('#shuffle-go').click();
+  await page.waitForTimeout(1500);
+  expect(state.writes.filter((w) => w.op === 'put')).toEqual([]);
+  await expect(page.locator('body')).toHaveClass(/busy/);
+  await other.evaluate(() => window.__release());
+  await expect(page.locator('#panel-shuffle .result-title')).toContainText('Listo: 120');
+  expect(byName('Rock · Shuffle')).toHaveLength(1);
+});
+
 test('si la generada desaparece se crea otra y se actualiza la correspondencia', async ({ page }) => {
   await login(page);
   await shuffle(page, 'Rock');

@@ -255,6 +255,54 @@ progress { width: 100%; height: 8px; accent-color: var(--accent); margin-top: .4
 .mix-row .card { flex: 1; min-width: 0; }
 .mix-row .icon-btn { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); min-width: 52px; }
 
+.card-pair { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
+.card-pair .card { flex-direction: column; align-items: flex-start; min-height: 132px; }
+
+/* Elige por mí */
+.reel-frame {
+  margin: 1.2rem 0 .4rem; padding: 1.6rem 1rem; border: 2px solid var(--accent); border-radius: var(--radius);
+  background: var(--surface); text-align: center; overflow: hidden;
+}
+.reel { font: 900 1.6rem/1.2 var(--font-display); letter-spacing: -.02em; min-height: 2.4em; display: grid; place-items: center; overflow-wrap: anywhere; }
+.reel.spinning { color: var(--muted); filter: blur(.4px); }
+.reel.landed { color: var(--accent); animation: land .45s cubic-bezier(.2, 1.4, .4, 1); }
+@keyframes land { from { transform: scale(.85); } to { transform: none; } }
+
+/* ¿Es aleatorio de verdad? Barras finas con un hueco de 2 px, misma escala en los dos gráficos y línea de lo justo. */
+.proof-charts { display: grid; gap: 1.2rem; margin-top: 1rem; }
+.proof-chart { margin: 0; padding: .8rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.proof-chart figcaption { display: flex; flex-direction: column; margin-bottom: .6rem; }
+.bars { position: relative; height: 150px; display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; align-items: end; border-bottom: 1px solid var(--border); }
+.bar { height: 100%; display: flex; align-items: flex-end; cursor: default; }
+.bar:focus-visible { outline-offset: 0; }
+.bar-fill { width: 100%; height: 0; background: var(--accent); border-radius: 4px 4px 0 0; transition: height .7s cubic-bezier(.2, .8, .2, 1) calc(var(--i, 0) * 40ms); }
+#proof-biased .bar-fill { background: var(--muted); }
+.grow .bar-fill { height: var(--h); }
+.bar:hover .bar-fill, .bar:focus-visible .bar-fill { filter: brightness(1.15); }
+.ref { position: absolute; left: 0; right: 0; bottom: var(--ref); border-top: 2px dashed var(--text); pointer-events: none; font: .7rem/1 var(--font-mono); color: var(--text); text-align: right; padding-top: 2px; }
+.bar-labels { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; font: .7rem/1.6 var(--font-mono); color: var(--muted); text-align: center; }
+.proof-summary { font-weight: 700; margin-top: 1rem; }
+#proof-table table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; margin-top: .4rem; }
+#proof-table th, #proof-table td { text-align: right; padding: .3rem .4rem; border-bottom: 1px solid var(--border); }
+#proof-table th[scope="row"], #proof-table thead th:first-child { text-align: left; }
+
+/* Celebración discreta al terminar */
+.result { position: relative; }
+.confetti { position: absolute; inset: 0 0 auto; height: 0; pointer-events: none; z-index: 2; }
+.confetti span {
+  position: absolute; top: 0; left: var(--x); width: 10px; height: 14px; border-radius: 2px; background: var(--lime);
+  border: 1px solid var(--on-lime); opacity: 0; animation: drop 1.2s ease-out var(--d) both;
+}
+@keyframes drop {
+  0% { opacity: 0; transform: translateY(-10px) rotate(0); }
+  15% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(160px) rotate(var(--r)); }
+}
+
+/* Transiciones entre pantallas con View Transitions (sustituyen al deslizamiento del panel) */
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .22s; }
+.vt .panel { animation: none; }
+
 /* Animación de barajado, ligada al progreso real (--p de 0 a 1) */
 .loader { display: none; flex-direction: column; align-items: center; gap: .6rem; margin: .5rem 0 0; }
 .loader.on { display: flex; }
