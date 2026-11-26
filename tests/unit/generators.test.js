@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  fitDuration, sanitizeMinutes, MINUTE, TIME_MARGIN_MS, onThisDayGroups, topArtist, forgottenTracks, groupAlbums, shuffleAlbums,
+  fitDuration, sanitizeMinutes, MINUTE, TIME_MARGIN_MS, forgottenTracks, takeAmount, topGenres, artistsFromTracks, notInLibrary,
   pickArtists, recentAlbums, albumsFromListening, withoutUris, pruneCache, cacheGet, cacheSet, CACHE_TTL_MS, MAX_CACHE_ENTRIES,
 } from '../../js/generators.js';
 
@@ -60,48 +60,12 @@ test('fitDuration es uniforme: cada canción tiene la misma probabilidad de entr
   for (const c of counts) assert.ok(Math.abs(c - expected) / expected < 0.05, `sesgo: ${counts}`);
 });
 
-test('onThisDayGroups agrupa por año lo guardado este mes en años anteriores', () => {
-  const now = new Date(2026, 10, 26);
-  const songs = [
-    tr(1, { added: '2024-11-03T10:00:00Z' }), tr(2, { added: '2024-11-20T10:00:00Z' }), tr(3, { added: '2021-11-15T10:00:00Z' }),
-    tr(4, { added: '2026-11-01T10:00:00Z' }), tr(5, { added: '2024-10-15T10:00:00Z' }), tr(6, { added: 'nada' }), tr(1, { added: '2024-11-04T10:00:00Z' }),
-  ];
-  const g = onThisDayGroups(songs, now);
-  assert.deepEqual(g.map((x) => [x.year, x.yearsAgo, x.tracks.map((t) => t.id)]), [[2024, 2, ['1', '2']], [2021, 5, ['3']]]);
-  assert.deepEqual(onThisDayGroups([], now), []);
-});
-
-test('topArtist devuelve el más repetido o null', () => {
-  assert.equal(topArtist([tr(1, { artist: 'X' }), tr(2, { artist: 'Y' }), tr(3, { artist: 'Y' })]), 'Y');
-  assert.equal(topArtist([]), null);
-});
-
 test('forgottenTracks: guardadas hace más de N años', () => {
   const now = new Date('2026-11-26T12:00:00Z');
   const songs = [tr(1, { added: '2023-01-01T00:00:00Z' }), tr(2, { added: '2025-06-01T00:00:00Z' }), tr(3, { added: '' }), tr(4, { added: '2024-11-25T00:00:00Z' })];
   assert.deepEqual(forgottenTracks(songs, 2, now).map((x) => x.id), ['1', '4']);
   assert.deepEqual(forgottenTracks(songs, 3, now).map((x) => x.id), ['1']);
   assert.deepEqual(forgottenTracks(songs, 5, now), []);
-});
-
-test('groupAlbums conserva el orden de disco y pista y quita episodios y repetidas', () => {
-  const songs = [tr(1, { album: 'B', n: 2 }), tr(2, { album: 'A', n: 1 }), tr(3, { album: 'B', n: 1 }), tr(4, { album: 'B', disc: 2, n: 1 }), tr(1, { album: 'B', n: 2 }), { ...tr(9), type: 'episode', albumId: 'C' }, tr(5)];
-  const g = groupAlbums(songs);
-  assert.deepEqual(g.map((a) => [a.id, a.tracks.map((x) => x.id)]), [['B', ['3', '1', '4']], ['A', ['2']]]);
-});
-
-test('shuffleAlbums baraja el orden de los álbumes y nunca rompe un álbum', () => {
-  const albums = ['A', 'B', 'C', 'D'].map((id) => ({ id, tracks: [1, 2, 3].map((n) => tr(`${id}${n}`, { album: id, n })) }));
-  const firsts = {};
-  const rand = seeded(7);
-  for (let k = 0; k < 8000; k++) {
-    const r = shuffleAlbums(albums, rand);
-    const ids = r.tracks.map((x) => x.albumId);
-    for (let i = 0; i < ids.length; i += 3) assert.equal(new Set(ids.slice(i, i + 3)).size, 1, 'álbum partido');
-    assert.deepEqual(r.tracks.slice(0, 3).map((x) => x.trackNumber), [1, 2, 3]);
-    firsts[r.albums[0].id] = (firsts[r.albums[0].id] ?? 0) + 1;
-  }
-  for (const c of Object.values(firsts)) assert.ok(Math.abs(c - 2000) < 200, JSON.stringify(firsts));
 });
 
 test('pickArtists alterna listas, quita repetidos y respeta el tope', () => {
@@ -155,4 +119,33 @@ test('la caché tiene tope de tamaño: se quitan las más antiguas y nunca pasa 
   assert.deepEqual(cacheSet({ cache: {} }, 'enorme', 'x'.repeat(20_000), now, 10_000).cache, {}, 'una entrada que no cabe no se guarda');
   const again = cacheSet(cacheSet({ cache: {} }, 'k', 'aaa', now), 'k', 'bbbbbb', now + 1);
   assert.equal(again.size, JSON.stringify(again.cache).length, 'sustituir una clave descuenta la anterior');
+});
+
+test('takeAmount: por número o por duración (±2 min) y devuelve lo que sobra', () => {
+  const pool = Array.from({ length: 50 }, (_, i) => tr(i, { ms: 3 * MINUTE }));
+  const byCount = takeAmount(pool, { count: 30 });
+  assert.equal(byCount.taken.length, 30);
+  assert.equal(byCount.rest.length, 20);
+  assert.deepEqual(byCount.taken.map((x) => x.id), pool.slice(0, 30).map((x) => x.id), 'en el orden del pool');
+  const byTime = takeAmount(pool, { minutes: 30 });
+  const ms = byTime.taken.reduce((n, x) => n + x.durationMs, 0);
+  assert.ok(Math.abs(ms - 30 * MINUTE) <= TIME_MARGIN_MS);
+  assert.equal(byTime.taken.length + byTime.rest.length, 50);
+  assert.deepEqual(takeAmount([], { count: 30 }), { taken: [], rest: [] });
+  assert.equal(takeAmount(pool).taken.length, 30, 'por defecto, 30');
+});
+
+test('topGenres: los más frecuentes, sin vacíos; sin géneros, lista vacía', () => {
+  const artists = [{ genres: ['rap', 'trap'] }, { genres: ['rap'] }, { genres: ['', ' pop '] }, { genres: null }, {}];
+  assert.deepEqual(topGenres(artists), ['rap', 'pop', 'trap']);
+  assert.deepEqual(topGenres([{ genres: [] }]), []);
+  assert.deepEqual(topGenres(null), []);
+  assert.equal(topGenres(Array.from({ length: 20 }, (_, i) => ({ genres: [`g${i}`] }))).length, 8);
+});
+
+test('artistsFromTracks ordena por apariciones y notInLibrary quita lo que ya tienes', () => {
+  const a = (id, name) => ({ artistIds: [id], artists: [name] });
+  const tracks = [{ ...tr(1), ...a('x', 'X') }, { ...tr(2), ...a('y', 'Y') }, { ...tr(3), ...a('y', 'Y') }, { ...tr(4), artistIds: [''], artists: ['?'] }];
+  assert.deepEqual(artistsFromTracks(tracks), [{ id: 'y', name: 'Y' }, { id: 'x', name: 'X' }]);
+  assert.deepEqual(notInLibrary([tr(1), tr(2), tr(2), tr(3)], new Set(['3'])).map((x) => x.id), ['1', '2']);
 });

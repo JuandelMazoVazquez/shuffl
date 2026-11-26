@@ -1,4 +1,4 @@
-// Lógica pura de las playlists nuevas de la v1.3 (a medida de tiempo, recuerdos, álbumes y descubrir): sin DOM ni red.
+// Lógica pura de las playlists de la v1.3 (a medida de tiempo, Olvidadas y Descubrir): sin DOM ni red.
 import { shuffle, randomInt, uniqueByUri } from './core.js';
 
 export const MINUTE = 60000;
@@ -34,41 +34,12 @@ export function fitDuration(tracks, minutes, rand = randomInt) {
   return { tracks: out, totalMs: total, reached: total >= min };
 }
 
-// ---------- Tal día como hoy y Olvidadas ----------
+// ---------- Olvidadas ----------
 
 const addedDate = (tr) => {
   const d = new Date(tr.addedAt);
   return Number.isNaN(d.getTime()) ? null : d;
 };
-
-/**
- * Canciones de Tus me gusta guardadas en el mismo mes que `now` de años anteriores, agrupadas por año
- * (del más reciente al más antiguo). Se usa la hora local, como el calendario de quien la usa.
- */
-export function onThisDayGroups(tracks, now = new Date()) {
-  const byYear = new Map();
-  for (const tr of tracks) {
-    const d = addedDate(tr);
-    if (!d || d.getMonth() !== now.getMonth() || d.getFullYear() >= now.getFullYear()) continue;
-    const y = d.getFullYear();
-    if (!byYear.has(y)) byYear.set(y, []);
-    byYear.get(y).push(tr);
-  }
-  return [...byYear.entries()].sort((a, b) => b[0] - a[0])
-    .map(([year, list]) => ({ year, yearsAgo: now.getFullYear() - year, tracks: uniqueByUri(list) }));
-}
-
-/** El artista que más se repite en un grupo (empate: el que aparece antes). Null si no hay. */
-export function topArtist(tracks) {
-  const count = new Map();
-  for (const tr of tracks) {
-    const a = tr.artists?.[0];
-    if (a) count.set(a, (count.get(a) ?? 0) + 1);
-  }
-  let best = null;
-  for (const [a, n] of count) if (!best || n > best.n) best = { name: a, n };
-  return best?.name ?? null;
-}
 
 export const FORGOTTEN_YEARS = [1, 2, 3, 5];
 
@@ -80,30 +51,6 @@ export function forgottenTracks(tracks, years, now = new Date()) {
     const d = addedDate(tr);
     return d && d < limit;
   }));
-}
-
-// ---------- Barajar por álbumes ----------
-
-const byTrackOrder = (a, b) => (a.discNumber - b.discNumber) || (a.trackNumber - b.trackNumber);
-
-/**
- * Agrupa canciones por álbum. Devuelve [{ id, name, tracks }] en el orden en que aparece cada álbum,
- * con las canciones en su orden original de disco y pista y sin repetidas.
- */
-export function groupAlbums(tracks) {
-  const map = new Map();
-  for (const tr of tracks) {
-    if (tr.type !== 'track' || !tr.albumId) continue;
-    if (!map.has(tr.albumId)) map.set(tr.albumId, { id: tr.albumId, name: tr.album, tracks: [] });
-    map.get(tr.albumId).tracks.push(tr);
-  }
-  return [...map.values()].map((a) => ({ ...a, tracks: uniqueByUri(a.tracks).sort(byTrackOrder) }));
-}
-
-/** Orden uniforme de los álbumes; dentro de cada uno, el orden original. Devuelve la lista plana y el orden. */
-export function shuffleAlbums(albums, rand = randomInt) {
-  const order = shuffle(albums.filter((a) => a.tracks.length), rand);
-  return { albums: order, tracks: order.flatMap((a) => a.tracks) };
 }
 
 // ---------- Descubrir ----------
@@ -167,6 +114,67 @@ export function albumsFromListening(tracks, max = MAX_ARTISTS) {
 export function withoutUris(tracks, exclude) {
   const set = exclude instanceof Set ? exclude : new Set(exclude);
   return uniqueByUri(tracks.filter((tr) => !set.has(tr.uri)));
+}
+
+// ---------- Descubrir: cuántas, de quién y sin lo que ya tienes (v1.3.1) ----------
+
+export const DISCOVER_COUNTS = [15, 30, 50, 100];
+export const DISCOVER_MINUTES = [30, 45, 60, 90];
+export const DEFAULT_DISCOVER_COUNT = 30;
+/** Artistas que se leen de cada vez; «Buscar más» lee el siguiente lote, hasta MAX_DISCOVER_ARTISTS. */
+export const ARTIST_BATCH = 25;
+export const MAX_DISCOVER_ARTISTS = 100;
+
+/**
+ * Toma de `pool` (ya barajado) lo que se pide: `count` canciones o, con `minutes`, las que llenan esa duración
+ * (±2 min, la misma lógica que el shuffle por tiempo, en el orden del pool). Devuelve { taken, rest }.
+ */
+export function takeAmount(pool, { count = DEFAULT_DISCOVER_COUNT, minutes = null } = {}) {
+  if (!minutes) return { taken: pool.slice(0, count), rest: pool.slice(count) };
+  const max = minutes * MINUTE + TIME_MARGIN_MS;
+  const min = minutes * MINUTE - TIME_MARGIN_MS;
+  const taken = [];
+  const rest = [];
+  let total = 0;
+  for (const tr of pool) {
+    if (total < min && tr.durationMs > 0 && total + tr.durationMs <= max) {
+      taken.push(tr);
+      total += tr.durationMs;
+    } else {
+      rest.push(tr);
+    }
+  }
+  return { taken, rest };
+}
+
+/** Los géneros más frecuentes de una lista de artistas (sin vacíos), del más al menos repetido. */
+export function topGenres(artists, max = 8) {
+  const count = new Map();
+  for (const a of artists ?? []) {
+    for (const g of Array.isArray(a?.genres) ? a.genres : []) {
+      if (typeof g === 'string' && g.trim()) count.set(g.trim(), (count.get(g.trim()) ?? 0) + 1);
+    }
+  }
+  return [...count.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, max).map(([g]) => g);
+}
+
+/** Artistas de unas canciones, del más al menos repetido: [{ id, name }]. Para «Como mi playlist…». */
+export function artistsFromTracks(tracks) {
+  const map = new Map();
+  for (const tr of tracks) {
+    (tr.artistIds ?? []).forEach((id, i) => {
+      if (typeof id !== 'string' || !id) return;
+      const cur = map.get(id) ?? { id, name: tr.artists?.[i] ?? '', n: 0 };
+      cur.n++;
+      map.set(id, cur);
+    });
+  }
+  return [...map.values()].sort((a, b) => b.n - a.n).map(({ id, name }) => ({ id, name }));
+}
+
+/** Sin las canciones que ya tienes (ids de tus playlists y de Tus me gusta) ni las repetidas. */
+export function notInLibrary(tracks, libraryIds) {
+  return uniqueByUri(tracks.filter((tr) => !libraryIds.has(tr.id)));
 }
 
 // ---------- Caché de metadatos (24 h) ----------
