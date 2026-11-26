@@ -133,7 +133,8 @@ test('si renombras la generada para conservarla (sin «· Shuffle»), se deja in
 test('si otra pestaña está escribiendo, la baraja espera a que termine (Web Locks)', async ({ page, context }) => {
   await login(page);
   const other = await context.newPage();
-  await other.goto('/');
+  // Mismo origen pero sin la app: así no arranca otra sesión contra el Spotify real.
+  await other.goto('/manifest.webmanifest');
   await other.evaluate(() => { navigator.locks.request('shuffl-write', () => new Promise((ok) => { window.__release = ok; })); });
   await pick(page, 'shuffle', 'Rock');
   await page.locator('#shuffle-go').click();
