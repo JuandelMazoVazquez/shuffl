@@ -518,6 +518,7 @@ Object.assign(es, {
   cleanTitleOne: 'Hemos encontrado {n} copias de «{name}». ¿Dejamos solo una?',
   cleanTitleMany: 'Hay playlists de Shuffl repetidas. ¿Dejamos solo una de cada?',
   cleanGroup: '«{name}»: {n} copias',
+  cleanGroupLegacy: '«{name}»: {n} de la versión anterior, sin etiqueta. Puede que vengan de playlists distintas con el mismo nombre: márcalo solo si son copias.',
   cleanLegacy: 'La antigua «{name}», que ya no se actualiza',
   cleanWhat: 'Se queda la que se barajó más tarde; las demás se quitan de tu biblioteca. Las playlists que renombraste no se tocan nunca.',
   cleanRecover: 'Si te arrepientes, lo quitado se puede recuperar durante 90 días en spotify.com, en Cuenta → Recuperar playlists.',
@@ -563,7 +564,7 @@ Object.assign(es, {
   summaryBtn: 'Crear mi resumen', summaryReading: 'Leyendo tu top…', summaryDrawing: 'Dibujando la tarjeta…',
   summaryEmptyTitle: 'Aún no hay top', summaryEmpty: 'Spotify todavía no tiene un top tuyo en ese periodo. Prueba con «Desde siempre».',
   summaryCardTitle: 'Mi top', summaryArtists: 'Artistas', summaryTracks: 'Canciones',
-  summaryAlt: 'Tarjeta de tu resumen: {range}', summaryNoImages: 'Algunas carátulas no se han podido incluir en la tarjeta.',
+  summaryAlt: 'Tarjeta de tu resumen: {range}', summaryNoLogo: 'No se pudo cargar el logo de Spotify, que la tarjeta debe llevar. Comprueba la conexión e inténtalo otra vez.', summaryNoImages: 'Algunas carátulas no se han podido incluir en la tarjeta.',
   summaryShareStory: 'Compartir historia', summaryShareSquare: 'Compartir cuadrada', summaryMakePlaylist: 'Crear «Mi top · Shuffle»',
   topName: 'Mi top', topDesc: 'Tu top ({range}) barajado con Shuffl.',
 });
@@ -587,6 +588,7 @@ Object.assign(en, {
   cleanTitleOne: 'We found {n} copies of “{name}”. Keep just one?',
   cleanTitleMany: 'Some Shuffl playlists are repeated. Keep just one of each?',
   cleanGroup: '“{name}”: {n} copies',
+  cleanGroupLegacy: '“{name}”: {n} from the previous version, without a tag. They may come from different playlists with the same name: tick it only if they are copies.',
   cleanLegacy: 'The old “{name}”, no longer updated',
   cleanWhat: 'The one shuffled last stays; the others are removed from your library. Playlists you renamed are never touched.',
   cleanRecover: 'If you change your mind, removed playlists can be recovered for 90 days on spotify.com, under Account → Recover playlists.',
@@ -632,7 +634,7 @@ Object.assign(en, {
   summaryBtn: 'Create my summary', summaryReading: 'Reading your top…', summaryDrawing: 'Drawing the card…',
   summaryEmptyTitle: 'No top yet', summaryEmpty: 'Spotify does not have a top for you in that period yet. Try “All time”.',
   summaryCardTitle: 'My top', summaryArtists: 'Artists', summaryTracks: 'Songs',
-  summaryAlt: 'Your summary card: {range}', summaryNoImages: 'Some covers could not be included in the card.',
+  summaryAlt: 'Your summary card: {range}', summaryNoLogo: 'The Spotify logo, which the card must carry, could not be loaded. Check your connection and try again.', summaryNoImages: 'Some covers could not be included in the card.',
   summaryShareStory: 'Share story', summaryShareSquare: 'Share square', summaryMakePlaylist: 'Create “My top · Shuffle”',
   topName: 'My top', topDesc: 'Your top ({range}) shuffled with Shuffl.',
 });

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   sourceKey, generatedName, datedName, generatedDescription, sameDescription, sanitizeTargets, setTarget, removeTarget,
   isGeneratedPlaylist, SHUFFLE_SUFFIX, MAX_NAME, MAX_DESCRIPTION, MAX_TARGETS,
-  isTargetKey, tagFor, withTag, readTag, findCandidates, pickKeep, duplicateGroups, findLegacyBaraja, isManagedName,
+  isTargetKey, tagFor, withTag, readTag, findCandidates, pickKeep, duplicateGroups, findLegacyBaraja, isManagedName, groupKeyOf,
 } from '../../js/targets.js';
 
 const es = { liked: 'Tus me gusta', library: 'Toda mi música' };
@@ -123,6 +123,24 @@ test('findCandidates: propias, con la etiqueta y con el nombre «· Shuffle»; l
   assert.deepEqual(findCandidates(list, { meId: 'me', tag, name: 'Rock · Shuffle', legacyDescription: null }).map((p) => p.id), ['a']);
 });
 
+test('findCandidates: con varias v1.2 iguales sin etiqueta no adivina (pueden ser de dos «Rock» distintas)', () => {
+  const tag = '0123456789';
+  const list = [pl('x', 'Rock · Shuffle', 'Desde: Rock'), pl('y', 'Rock · Shuffle', 'Desde: Rock')];
+  const opts = { meId: 'me', tag, name: 'Rock · Shuffle', legacyDescription: 'Desde: Rock' };
+  assert.deepEqual(findCandidates(list, opts), [], 'dos iguales: ninguna');
+  assert.deepEqual(findCandidates(list, { ...opts, preferredId: 'y' }).map((p) => p.id), ['y'], 'la que ya usaba este dispositivo');
+  assert.deepEqual(findCandidates([list[0]], opts).map((p) => p.id), ['x'], 'una sola: esa');
+});
+
+test('groupKeyOf y duplicateGroups marcan como legacy los grupos sin etiqueta', () => {
+  assert.equal(groupKeyOf(pl('a', 'Rock · Shuffle', 'd · shuffl:src=0123456789'), 'me'), 'tag:0123456789');
+  assert.equal(groupKeyOf(pl('a', 'Rock · Shuffle', 'd'), 'me'), 'legacy:Rock · Shuffle\nd');
+  assert.equal(groupKeyOf(pl('a', 'Renombrada', 'd · shuffl:src=0123456789'), 'me'), null);
+  assert.equal(groupKeyOf(pl('a', 'Rock · Shuffle', 'd', other), 'me'), null);
+  const g = duplicateGroups([pl('1', 'A · Shuffle', 'd'), pl('2', 'A · Shuffle', 'd')], 'me');
+  assert.equal(g[0].legacy, true);
+});
+
 test('pickKeep se queda con la escrita más tarde; en empate, con la que ya usaba el dispositivo', () => {
   const cands = [pl('a', 'x · Shuffle'), pl('b', 'x · Shuffle'), pl('c', 'x · Shuffle')];
   assert.equal(pickKeep(cands, new Map([['a', 10], ['b', 30], ['c', 20]])).id, 'b');
@@ -147,9 +165,9 @@ test('duplicateGroups agrupa copias por etiqueta o (sin etiqueta) por nombre y d
   assert.deepEqual(groups.map((g) => g.playlists.map((p) => p.id)), [['1', '2'], ['5', '6']]);
 });
 
-test('findLegacyBaraja encuentra la antigua propia por nombre o id', () => {
+test('findLegacyBaraja solo encuentra la antigua propia que sigue llamándose «🔀 Baraja»', () => {
   assert.equal(findLegacyBaraja([pl('z', '🔀 Baraja')], 'me').id, 'z');
-  assert.equal(findLegacyBaraja([pl('z', 'Otra')], 'me', 'z').id, 'z');
+  assert.equal(findLegacyBaraja([pl('z', 'Gym · Shuffle')], 'me'), null, 'renombrada: es tuya');
   assert.equal(findLegacyBaraja([pl('z', '🔀 Baraja', '', other)], 'me'), null);
   assert.equal(isManagedName('Rock · Shuffle'), true);
   assert.equal(isManagedName('Rock · Shuffle · 26/11'), false);

@@ -67,7 +67,7 @@ test('tres copias: pide confirmación, deja la más reciente y quita las demás 
   const t = tag('pl:pl_rock');
   addList('dupA', 'Rock · Shuffle', `${DESC_ROCK} · shuffl:src=${t}`, { writtenAt: '2026-03-01T10:00:00Z' });
   addList('dupB', 'Rock · Shuffle', `${DESC_ROCK} · shuffl:src=${t}`, { writtenAt: '2026-09-01T10:00:00Z' });
-  addList('dupC', 'Rock · Shuffle', DESC_ROCK, { writtenAt: '2025-01-01T10:00:00Z' });
+  addList('dupC', 'Rock · Shuffle', `${DESC_ROCK} · shuffl:src=${t}`, { writtenAt: '2025-01-01T10:00:00Z' });
   addList('renamed', 'Mi Rock de siempre', `${DESC_ROCK} · shuffl:src=${t}`, { writtenAt: '2026-10-01T10:00:00Z' });
   await login(page);
   await shuffleRock(page);
@@ -111,6 +111,82 @@ test('«Ahora no» no borra nada y «siempre» activa la limpieza automática', 
   await idle(page);
   await expect(page.locator('#clean-sheet')).toHaveCount(0);
   expect(state.unfollowCalls.at(-1)).toEqual(['spotify:playlist:dupC']);
+});
+
+test('marcar «siempre» y cancelar no activa la limpieza automática', async ({ page }) => {
+  const t = tag('pl:pl_rock');
+  addList('dupA', 'Rock · Shuffle', `${DESC_ROCK} · shuffl:src=${t}`, { writtenAt: '2026-03-01T10:00:00Z' });
+  addList('dupB', 'Rock · Shuffle', `${DESC_ROCK} · shuffl:src=${t}`, { writtenAt: '2026-09-01T10:00:00Z' });
+  await login(page);
+  await shuffleRock(page);
+  await page.locator('#clean-always').check();
+  await page.locator('#clean-no').click();
+  await done(page);
+  await idle(page);
+  expect(await page.evaluate(() => localStorage.getItem('baraja.autoClean'))).toBeNull();
+  expect(state.unfollowCalls).toEqual([]);
+});
+
+test('si una copia cambia entre el aviso y «Revisar» (renombrada o con otra dueña) no se quita', async ({ page }) => {
+  const t = tag('pl:pl_rock');
+  addList('dupA', 'Rock · Shuffle', `${DESC_ROCK} · shuffl:src=${t}`, { writtenAt: '2026-03-01T10:00:00Z' });
+  addList('dupB', 'Rock · Shuffle', `${DESC_ROCK} · shuffl:src=${t}`, { writtenAt: '2026-09-01T10:00:00Z' });
+  await login(page);
+  await page.locator('#tab-home').click();
+  await expect(page.locator('#clean-notice')).toBeVisible();
+  state.lists.get('dupA').name = 'Rock para el coche';
+  await page.locator('#clean-notice').getByRole('button', { name: 'Revisar' }).click();
+  await page.locator('#clean-ok').click();
+  await page.waitForTimeout(500);
+  expect(state.unfollowCalls).toEqual([]);
+  expect(state.lists.has('dupA')).toBe(true);
+});
+
+test('si otra pestaña escribe en otra copia antes de «Revisar», la que se iba a quitar ahora es la buena y se salta', async ({ page }) => {
+  const t = tag('pl:pl_rock');
+  addList('dupA', 'Rock · Shuffle', `${DESC_ROCK} · shuffl:src=${t}`, { writtenAt: '2026-03-01T10:00:00Z' });
+  addList('dupB', 'Rock · Shuffle', `${DESC_ROCK} · shuffl:src=${t}`, { writtenAt: '2026-09-01T10:00:00Z' });
+  await login(page);
+  await page.locator('#tab-home').click();
+  await expect(page.locator('#clean-notice')).toBeVisible();
+  state.lists.get('dupA').writtenAt = '2026-11-20T10:00:00Z';
+  await page.locator('#clean-notice').getByRole('button', { name: 'Revisar' }).click();
+  await page.locator('#clean-ok').click();
+  await page.waitForTimeout(500);
+  expect(state.unfollowCalls).toEqual([]);
+});
+
+test('copias v1.2 sin etiqueta: solo con confirmación y sin marcar por defecto; nunca en automático', async ({ page }) => {
+  addList('old1', 'Rock · Shuffle', DESC_ROCK, { writtenAt: '2025-03-01T10:00:00Z' });
+  addList('old2', 'Rock · Shuffle', DESC_ROCK, { writtenAt: '2025-09-01T10:00:00Z' });
+  await page.addInitScript(() => localStorage.setItem('baraja.autoClean', 'true'));
+  await login(page);
+  await page.locator('#tab-home').click();
+  await expect(page.locator('#clean-notice')).toBeVisible();
+  expect(state.unfollowCalls).toEqual([]);
+  await page.locator('#clean-notice').getByRole('button', { name: 'Revisar' }).click();
+  const box = page.locator('#clean-sheet input[data-group]');
+  await expect(box).not.toBeChecked();
+  await expect(page.locator('#clean-sheet')).toContainText('sin etiqueta');
+  await box.check();
+  await page.locator('#clean-ok').click();
+  await expect.poll(() => state.unfollowCalls).toEqual([['spotify:playlist:old1']]);
+  // Barajar Rock con dos v1.2 iguales no adivina cuál es: crea una nueva con etiqueta.
+});
+
+test('barajar no reutiliza nunca un origen aunque tenga la etiqueta (por tiempo desde «35 min · Shuffle»)', async ({ page }) => {
+  addList('src35', '35 min · Shuffle', `x · shuffl:src=${tag('time:35')}`);
+  await login(page);
+  await page.locator('label[for="sh-kind-time"]').click();
+  await page.locator('label[for="sh-minutes-custom"]').click();
+  await pick(page, 'shuffle', '35 min · Shuffle');
+  await pick(page, 'shuffle', 'Rock');
+  await page.locator('#shuffle-go').click();
+  await done(page);
+  await idle(page);
+  expect(state.writes.some((w) => w.id === 'src35')).toBe(false);
+  expect(state.writes.filter((w) => w.op === 'create')).toHaveLength(1);
+  expect(state.unfollowCalls).toEqual([]);
 });
 
 test('si quitar falla no se pierde nada: la baraja está escrita y se avisa', async ({ page }) => {

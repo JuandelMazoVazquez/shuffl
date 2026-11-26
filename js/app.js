@@ -7,8 +7,8 @@ import {
 import { sanitizeMix, sanitizeMixes, upsertMix, removeMix, newMixId, mixSources } from './mixes.js';
 import {
   sourceKey, generatedName, datedName, generatedDescription, sameDescription, sanitizeTargets, setTarget,
-  isGeneratedPlaylist, LEGACY_PLAYLIST, tagFor, withTag, findCandidates, pickKeep, duplicateGroups,
-  findLegacyBaraja, isManagedName,
+  isGeneratedPlaylist, tagFor, withTag, readTag, findCandidates, pickKeep, duplicateGroups,
+  findLegacyBaraja, groupKeyOf,
 } from './targets.js';
 import { SpotifyApi, ApiError } from './api.js';
 import * as auth from './auth.js';
@@ -272,6 +272,9 @@ function saveUndo(playlistId, name, uris, { soft = false } = {}) {
   if (soft && prev) return;
   if (prev?.pending) throw new UserError(t('errPending', { name: prev.name || prev.playlistId }));
   const entry = { playlistId, name, uris, pending: true, date: new Date().toISOString() };
+  if (setItem(KEYS.undo, entry, { strict: true })) return;
+  // La caché de Descubrir puede haber llenado el almacenamiento: Deshacer va antes.
+  dropMetaCache();
   if (!setItem(KEYS.undo, entry, { strict: true })) throw new UserError(t('errUndoStorage'));
 }
 
@@ -315,8 +318,11 @@ async function applyUndo(status, expectedId) {
   if (expectedId && u.playlistId !== expectedId) throw new UserError(t('errUndoOther'));
   if (!u.pending && Number.isInteger(u.after)) await assertUnchanged(u.playlistId, u.after);
   if (!confirm(t('confirmUndo', { name: u.name || u.playlistId, date: new Date(u.date).toLocaleString(getLang()) }))) return false;
-  markUndoPending(u.playlistId);
-  await S.api.replaceItems(u.playlistId, u.uris, (d, tot) => status.progress('saving', d, tot));
+  await withWriteLock(async () => {
+    if (!u.pending && Number.isInteger(u.after)) await assertUnchanged(u.playlistId, u.after);
+    markUndoPending(u.playlistId);
+    await S.api.replaceItems(u.playlistId, u.uris, (d, tot) => status.progress('saving', d, tot));
+  });
   removeItem(KEYS.undo);
   await loadPlaylists();
   return true;
@@ -334,24 +340,34 @@ async function lastWrites(list) {
   return map;
 }
 
+/** Playlists que nunca se quitan: los orígenes de las mezclas guardadas y de la última mezcla (atajos, agitar). */
+function sourceIds() {
+  const last = getItem(KEYS.lastMix);
+  return [...getMixes().flatMap((m) => m.ids), ...(Array.isArray(last?.ids) ? last.ids : [])];
+}
+
 /**
- * Escribe `uris` en la «· Shuffle» de `key`: la busca por su etiqueta en tus playlists (o, sin etiqueta, por el nombre
- * y la descripción de la v1.2), reutiliza la más reciente y le pone nombre, descripción y etiqueta; si no hay, la crea.
- * `protect`: ids que nunca se quitan (los orígenes de esta baraja). Devuelve { id, notes }.
+ * Escribe `uris` en la «· Shuffle» de `key`: la busca por su etiqueta en tus playlists (o, sin etiqueta, la de la v1.2
+ * que este dispositivo ya usaba o la única con ese nombre y descripción), reutiliza la más reciente y le pone nombre,
+ * descripción y etiqueta; si no hay, la crea. `protect`: los orígenes de esta baraja, que nunca se sobrescriben ni se
+ * quitan. Devuelve { id, notes }.
  */
 async function writeGenerated({ key, name, description, uris, protect = [] }, status) {
   const tag = await tagFor(key);
   const full = withTag(description, tag);
   const result = await withWriteLock(async () => {
     const raw = await S.api.getMyPlaylists();
-    const cands = findCandidates(raw, { meId: S.me.id, tag, name, legacyDescription: description });
+    const cands = findCandidates(raw, { meId: S.me.id, tag, name, legacyDescription: description, preferredId: getTargets()[key] })
+      .filter((p) => !protect.includes(p.id));
     const keep = pickKeep(cands, await lastWrites(cands), getTargets()[key]);
     const notes = [];
     let id;
     if (keep) {
       id = keep.id;
-      const current = normalizeEntries(await S.api.getPlaylistItems(id)).tracks;
-      saveUndo(id, keep.name, current.map((x) => x.uri), { soft: true });
+      if (!getItem(KEYS.undo)) {
+        const current = normalizeEntries(await S.api.getPlaylistItems(id)).tracks;
+        saveUndo(id, keep.name, current.map((x) => x.uri), { soft: true });
+      }
       if (keep.name !== name || !sameDescription(keep.description, full)) {
         try {
           await S.api.updatePlaylistDetails(id, { name, description: full });
@@ -365,29 +381,41 @@ async function writeGenerated({ key, name, description, uris, protect = [] }, st
     }
     setItem(KEYS.targets, setTarget(getTargets(), key, id));
     await overwritePlaylist(id, uris, status);
-    const extra = cands.filter((p) => p.id !== id && !protect.includes(p.id));
-    return { id, notes, group: extra.length ? { key: `tag:${tag}`, name, keepId: id, remove: extra } : null };
+    const tagged = cands.filter((p) => p.id !== id && readTag(p.description) === tag);
+    return { id, notes, group: tagged.length ? { key: `tag:${tag}`, name, keepId: id, legacy: false, count: tagged.length + 1 } : null };
   });
-  if (result.group) result.notes.push(...await offerCleanup([result.group], { protect: [...protect, result.id] }));
+  if (result.group) result.notes.push(...await offerCleanup([result.group], { protect }));
   return { id: result.id, notes: result.notes };
 }
 
-/** Hoja de confirmación de la limpieza. Devuelve { ok, always }. */
+/** Hoja de confirmación de la limpieza, con una casilla por grupo. Devuelve { ok, always, keys, legacy }. */
 function confirmCleanup(groups, legacy) {
   return new Promise((resolve) => {
     const always = h('input', { type: 'checkbox', id: 'clean-always' });
     always.checked = autoClean();
+    // Las de la v1.2 sin etiqueta pueden venir de orígenes distintos con el mismo nombre: sin marcar por defecto.
+    const boxes = groups.map((g) => {
+      const box = h('input', { type: 'checkbox', 'data-group': g.key });
+      box.checked = !g.legacy;
+      return { g, box };
+    });
+    const legacyBox = legacy ? h('input', { type: 'checkbox', id: 'clean-legacy' }) : null;
+    if (legacyBox) legacyBox.checked = true;
     const onKey = (e) => { if (e.key === 'Escape') close(false); };
-    const close = (ok) => { document.removeEventListener('keydown', onKey); sheet.remove(); resolve({ ok, always: always.checked }); };
-    const title = groups.length === 1 && !legacy
-      ? t('cleanTitleOne', { n: fmt(groups[0].remove.length + 1), name: groups[0].name })
-      : t('cleanTitleMany');
+    const close = (ok) => {
+      document.removeEventListener('keydown', onKey);
+      sheet.remove();
+      resolve({ ok, always: always.checked, keys: boxes.filter((b) => b.box.checked).map((b) => b.g.key), legacy: !!legacyBox?.checked });
+    };
+    const single = groups.length === 1 && !legacy && !groups[0].legacy;
+    const title = single ? t('cleanTitleOne', { n: fmt(groups[0].count), name: groups[0].name }) : t('cleanTitleMany');
     const sheet = h('div', { class: 'sheet-backdrop', onclick: (e) => { if (e.target === sheet) close(false); } },
       h('div', { class: 'sheet', id: 'clean-sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
         h('h2', { class: 'sheet-title' }, title),
-        groups.length > 1 || legacy ? h('ul', { class: 'clean-list' },
-          groups.map((g) => h('li', {}, t('cleanGroup', { name: g.name, n: fmt(g.remove.length + 1) }))),
-          legacy ? h('li', {}, t('cleanLegacy', { name: legacy.name })) : null) : null,
+        single ? null : h('div', { class: 'clean-list' },
+          boxes.map(({ g, box }) => h('label', { class: 'check' }, box,
+            h('span', {}, t(g.legacy ? 'cleanGroupLegacy' : 'cleanGroup', { name: g.name, n: fmt(g.count) })))),
+          legacyBox ? h('label', { class: 'check' }, legacyBox, h('span', {}, t('cleanLegacy', { name: legacy.name }))) : null),
         h('p', {}, t('cleanWhat')),
         h('p', { class: 'muted small' }, t('cleanRecover')),
         groups.length ? h('label', { class: 'check' }, always, h('span', {}, t('cleanAlways'))) : null,
@@ -401,40 +429,51 @@ function confirmCleanup(groups, legacy) {
 
 /**
  * Quita (deja de seguir) las copias repetidas de cada grupo y, si se pasa, la antigua «🔀 Baraja».
- * Antes de borrar vuelve a comprobar en Spotify que cada una sigue siendo tuya y llamándose «… · Shuffle»
- * (la renombrada no se toca). Si falla, no se pierde nada: la baraja ya está escrita. Devuelve avisos.
+ * `groups`: [{ key, name, keepId, legacy, count }]. Pregunta salvo en automático; los grupos sin etiqueta (v1.2)
+ * y la antigua «🔀 Baraja» siempre se preguntan. Antes de quitar, con el candado de escritura y la biblioteca recién
+ * leída, se vuelve a calcular cada grupo: si la que se conserva ya no es la misma (otra pestaña o dispositivo escribió
+ * en otra, o la renombraste), ese grupo se salta. Nunca se quita un origen. Si falla, no se pierde nada. Devuelve avisos.
  */
 async function offerCleanup(groups, { protect = [], legacy = null, ask = !autoClean() } = {}) {
-  const pending = groups.filter((g) => !S.cleanDeclined.has(g.key));
-  const legacyLeft = legacy && !S.cleanDeclined.has('legacy') ? legacy : null;
+  let pending = groups.filter((g) => !S.cleanDeclined.has(g.key));
+  let legacyLeft = legacy && !getItem(KEYS.migrationNotice) ? legacy : null;
   if (!pending.length && !legacyLeft) return [];
-  if (ask || legacyLeft) {
-    const answer = await confirmCleanup(pending, legacyLeft);
-    if (pending.length) setItem(KEYS.autoClean, answer.always);
+  if (ask || legacyLeft || pending.some((g) => g.legacy)) {
+    const answer = await confirmCleanup(pending.map((g) => ({ ...g, count: g.count ?? 2 })), legacyLeft);
     if (!answer.ok) {
       pending.forEach((g) => S.cleanDeclined.add(g.key));
       // Quien quiere conservar la antigua «🔀 Baraja» no vuelve a ver la pregunta.
       if (legacyLeft) setItem(KEYS.migrationNotice, true);
       return [];
     }
+    if (pending.length) setItem(KEYS.autoClean, answer.always);
+    pending.filter((g) => !answer.keys.includes(g.key)).forEach((g) => S.cleanDeclined.add(g.key));
+    pending = pending.filter((g) => answer.keys.includes(g.key));
+    if (legacyLeft && !answer.legacy) { setItem(KEYS.migrationNotice, true); legacyLeft = null; }
   }
+  const keepSafe = new Set([...protect, ...sourceIds()]);
   try {
-    const fresh = await S.api.getMyPlaylists();
-    const keepIds = new Set([...protect, ...pending.map((g) => g.keepId)]);
-    const ok = (id, legacyOk) => {
-      const p = fresh.find((x) => x?.id === id);
-      return p && p.owner?.id === S.me.id && !keepIds.has(id) && (isManagedName(p.name) || (legacyOk && p.name === LEGACY_PLAYLIST));
-    };
-    const ids = [...new Set([
-      ...pending.flatMap((g) => g.remove.map((p) => p.id)).filter((id) => ok(id, false)),
-      ...(legacyLeft && ok(legacyLeft.id, true) ? [legacyLeft.id] : []),
-    ])];
-    if (!ids.length) return [];
-    await S.api.unfollowPlaylists(ids);
+    const removed = await withWriteLock(async () => {
+      const fresh = (await S.api.getMyPlaylists()).filter(Boolean);
+      const ids = [];
+      for (const g of pending) {
+        const members = fresh.filter((p) => groupKeyOf(p, S.me.id) === g.key);
+        if (members.length < 2 || !members.some((p) => p.id === g.keepId)) continue;
+        const keep = pickKeep(members, await lastWrites(members), g.keepId);
+        if (keep.id !== g.keepId) continue;
+        ids.push(...members.filter((p) => p.id !== keep.id && !keepSafe.has(p.id)).map((p) => p.id));
+      }
+      const old = legacyLeft && findLegacyBaraja(fresh, S.me.id);
+      if (old && old.id === legacyLeft.id && !keepSafe.has(old.id)) ids.push(old.id);
+      if (legacyLeft) setItem(KEYS.migrationNotice, true);
+      const unique = [...new Set(ids)];
+      if (unique.length) await S.api.unfollowPlaylists(unique);
+      return unique.length;
+    });
     document.getElementById('clean-notice')?.remove();
-    if (legacyLeft) setItem(KEYS.migrationNotice, true);
+    if (!removed) return [];
     await loadPlaylists();
-    return [t('cleanRemoved', { n: fmt(ids.length) })];
+    return [t('cleanRemoved', { n: fmt(removed) })];
   } catch (e) {
     console.warn('Copias no quitadas:', e?.status ?? e?.message);
     return [t('cleanFailed', { reason: errorMessage(e) })];
@@ -446,20 +485,23 @@ async function checkLibraryDuplicates() {
   const groups = [];
   for (const g of duplicateGroups(S.raw, S.me.id)) {
     const keep = pickKeep(g.playlists, await lastWrites(g.playlists), Object.values(getTargets()).find((id) => g.playlists.some((p) => p.id === id)));
-    groups.push({ key: g.key, name: g.name, keepId: keep.id, remove: g.playlists.filter((p) => p.id !== keep.id) });
+    groups.push({ key: g.key, name: g.name, legacy: g.legacy, keepId: keep.id, count: g.playlists.length });
   }
-  const legacy = getItem(KEYS.migrationNotice) ? null : findLegacyBaraja(S.raw, S.me.id, getItem(KEYS.barajaId));
+  const legacy = getItem(KEYS.migrationNotice) ? null : findLegacyBaraja(S.raw, S.me.id);
   if (!groups.length && !legacy) return;
-  if (autoClean() && groups.length) {
-    const notes = await offerCleanup(groups, { ask: false });
+  // En automático solo se limpian sin preguntar las copias con etiqueta.
+  const autoGroups = autoClean() ? groups.filter((g) => !g.legacy) : [];
+  if (autoGroups.length) {
+    const notes = await offerCleanup(autoGroups, { ask: false });
     if (notes.length) showNotice('clean-notice', notes.join(' '));
-    if (!legacy) return;
   }
-  const legacyOnly = legacy && (!groups.length || autoClean());
-  showNotice('clean-notice', legacyOnly ? t('legacyFound', { name: legacy.name }) : t('dupsInLibrary', { n: fmt(groups.length) }), {
+  const left = groups.filter((g) => !autoGroups.includes(g));
+  if (!left.length && !legacy) return;
+  const legacyOnly = legacy && !left.length;
+  showNotice('clean-notice', legacyOnly ? t('legacyFound', { name: legacy.name }) : t('dupsInLibrary', { n: fmt(left.length) }), {
     label: t('review'),
     run: async () => {
-      const notes = await offerCleanup(autoClean() ? [] : groups, { legacy, ask: true });
+      const notes = await offerCleanup(left, { legacy, ask: true });
       if (notes.length) showNotice('clean-notice', notes.join(' '));
     },
     // «Entendido» sobre la antigua «🔀 Baraja» es definitivo; sobre copias repetidas, solo por esta vez.
@@ -479,6 +521,7 @@ function showNotice(id, text, action = null) {
       h('button', { class: 'btn', type: 'button', onclick: () => { box.remove(); action?.dismiss?.(); } }, t('gotIt'))));
   home.prepend(box);
 }
+
 
 // ---------- Selector de playlists ----------
 
@@ -683,8 +726,10 @@ function renderResult(container, status, o) {
 }
 
 const prefersReducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
-/** Web Locks: si dos pestañas (por ejemplo, dos órdenes de Siri seguidas) barajan a la vez, escriben una detrás de otra. */
-/** Espera como mucho 30 s: iOS congela pestañas en segundo plano y una podría no soltar nunca el candado. */
+/**
+ * Web Locks: si dos pestañas (por ejemplo, dos órdenes de Siri seguidas) barajan a la vez, escriben una detrás de otra.
+ * Espera como mucho 30 s: iOS congela pestañas en segundo plano y una podría no soltar nunca el candado.
+ */
 async function withWriteLock(fn) {
   if (!navigator.locks) return fn();
   try {
@@ -785,7 +830,13 @@ function segmented(name, label, options, onChange) {
 let metaCache = null;
 const loadCache = () => (metaCache ??= pruneCache(getItem(KEYS.metaCache, {})));
 /** Lee de la caché o pide a Spotify y guarda. Si el almacenamiento está lleno, sigue sin caché. */
-async function cached(key, fetcher) {
+function dropMetaCache() {
+  metaCache = null;
+  removeItem(KEYS.metaCache);
+}
+/** Las claves llevan el id de la cuenta: otra cuenta en el mismo navegador no ve ni usa los datos de la anterior. */
+async function cached(rawKey, fetcher) {
+  const key = `${S.me.id}:${rawKey}`;
   const hit = cacheGet(loadCache(), key);
   if (hit !== undefined) return hit;
   const data = await fetcher();
@@ -1237,9 +1288,11 @@ function shufflePanel() {
   function reshuffle() {
     task(status, async () => {
       const { order, truncated, notes: kindNotes } = arrange(last.kind, last.base, last);
-      await assertUnchanged(last.playlistId, last.order.length, last.order);
-      saveUndo(last.playlistId, '', last.order.map((x) => x.uri), { soft: true });
-      await overwritePlaylist(last.playlistId, order.map((x) => x.uri), status);
+      await withWriteLock(async () => {
+        await assertUnchanged(last.playlistId, last.order.length, last.order);
+        saveUndo(last.playlistId, '', last.order.map((x) => x.uri), { soft: true });
+        await overwritePlaylist(last.playlistId, order.map((x) => x.uri), status);
+      });
       const coverNotes = last.mode === 'self' ? [] : await uploadCover(last.playlistId, last.title);
       status.clear();
       showResult({ ...last, order, truncated, kindNotes, coverNotes });
@@ -1509,9 +1562,11 @@ function snapPanel() {
       let id;
       if (existing) {
         id = existing.id;
-        const current = normalizeEntries(await S.api.getPlaylistItems(id)).tracks;
-        saveUndo(id, existing.name, current.map((x) => x.uri), { soft: true });
-        await overwritePlaylist(id, uris, status);
+        await withWriteLock(async () => {
+          const current = normalizeEntries(await S.api.getPlaylistItems(id)).tracks;
+          saveUndo(id, existing.name, current.map((x) => x.uri), { soft: true });
+          await overwritePlaylist(id, uris, status);
+        });
       } else {
         id = (await S.api.createPlaylist(name, t('snapDesc'))).id;
         setItem(KEYS.snaps, { ...snaps, [kind]: id });
@@ -2266,6 +2321,7 @@ function summaryPanel() {
   const empty = h('div', { class: 'empty', id: 'summary-empty', hidden: true, role: 'status' });
   const go = h('button', { class: 'btn primary big', type: 'button', id: 'summary-go', onclick: () => run() }, t('summaryBtn'));
   let topTracks = [];
+  let previewUrl = null;
 
   const itemRow = (img, title, sub) => h('li', { class: 'row' },
     img ? h('img', { class: 'cover', src: img, alt: '', loading: 'lazy' }) : h('span', { class: 'cover', 'aria-hidden': 'true' }, '♪'),
@@ -2278,7 +2334,8 @@ function summaryPanel() {
       const r = range.value;
       status.say(t('summaryReading'));
       const artists = (await S.api.getTopArtists(r, 5)).slice(0, 5);
-      topTracks = normalizeEntries((await S.api.getTopTracks(r)).map((track) => ({ track }))).tracks;
+      const rawTop = await S.api.getTopTracks(r);
+      topTracks = normalizeEntries(rawTop.map((track) => ({ track }))).tracks;
       if (!artists.length && !topTracks.length) {
         status.clear();
         setKids(empty, h('p', { class: 'empty-title' }, t('summaryEmptyTitle')), h('p', { class: 'muted' }, t('summaryEmpty')));
@@ -2289,14 +2346,17 @@ function summaryPanel() {
         title: t('summaryCardTitle'), range: t(SUMMARY_RANGES.find(([k]) => k === r)[1]),
         artistsLabel: t('summaryArtists'), tracksLabel: t('summaryTracks'),
         artists: artists.map((a) => ({ name: a.name ?? '', image: pickImage(a.images) })),
-        tracks: topTracks.slice(0, 5).map((tr) => ({ name: tr.name, sub: artistsOf(tr), image: tr.image })),
+        tracks: rawTop.filter((x) => x?.uri).slice(0, 5).map((x) => ({ name: x.name ?? '', sub: (x.artists ?? []).map((a) => a.name).join(', '), image: pickImage(x.album?.images) })),
         footer: `${APP_NAME} · ${new Date().toLocaleDateString(getLang(), { dateStyle: 'medium' })}`,
       };
       status.say(t('summaryDrawing'));
-      const [story, square] = await Promise.all([renderSummary(data, 'story'), renderSummary(data, 'square')]);
+      const [story, square] = await Promise.all([renderSummary(data, 'story'), renderSummary(data, 'square')])
+        .catch((e) => { throw e?.message === 'spotifyLogo' ? new UserError(t('summaryNoLogo')) : e; });
       status.clear();
       const stamp = new Date().toISOString().slice(0, 10);
-      const preview = h('img', { class: 'summary-preview', id: 'summary-preview', src: URL.createObjectURL(story.blob), alt: t('summaryAlt', { range: data.range }), width: '270', height: '480' });
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      previewUrl = URL.createObjectURL(story.blob);
+      const preview = h('img', { class: 'summary-preview', id: 'summary-preview', src: previewUrl, alt: t('summaryAlt', { range: data.range }), width: '270', height: '480' });
       setKids(out,
         story.missingImages ? h('p', { class: 'note' }, t('summaryNoImages')) : null,
         preview,

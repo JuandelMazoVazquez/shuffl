@@ -112,7 +112,7 @@ test('un enlace sin la clave de este navegador (por ejemplo, desde otra web) pre
   state.dismissNext = true;
   await page.goto('/?origen=__liked__&play=1');
   await expect(page.getByText('Enlace cancelado: no se ha cambiado nada.')).toBeVisible();
-  expect(dialogs).toEqual(['Un enlace quiere barajar «Tus me gusta» en su playlist «· Shuffle» y reproducirla. ¿Seguir?']);
+  expect(dialogs).toEqual(['Un enlace quiere barajar «Tus me gusta» en su playlist «· Shuffle» y reproducirla. ¿Seguir?']);
   expect(state.writes).toEqual([]);
   expect(state.playerCalls).toEqual([]);
 
@@ -124,6 +124,6 @@ test('un enlace sin la clave de este navegador (por ejemplo, desde otra web) pre
 
   await page.goto('/?origen=pl_chill');
   await expect(page.locator('#panel-shuffle .result-title')).toContainText('Listo: 80');
-  expect(dialogs[2]).toBe('Un enlace quiere barajar «Chill» en su playlist «· Shuffle». ¿Seguir?');
+  expect(dialogs[2]).toBe('Un enlace quiere barajar «Chill» en su playlist «· Shuffle». ¿Seguir?');
   expect(byName('Chill · Shuffle')).toHaveLength(1);
 });

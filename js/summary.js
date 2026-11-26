@@ -8,28 +8,30 @@ export const SUMMARY_COLORS = { bg: '#0B0B0B', title: '#C6FF3D', text: '#F5F5F5'
 const FONT = '"Arial Black", "Helvetica Neue", system-ui, -apple-system, "Segoe UI", sans-serif';
 const BODY = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 const MONO = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
-/** Proporción del logo completo de Spotify (viewBox del SVG oficial) y su zona de seguridad (media altura del icono). */
+/** Proporción del logo completo de Spotify (viewBox del SVG oficial). */
 export const SPOTIFY_LOGO_RATIO = 88 / 24;
 
 /**
  * Posiciones de todo lo que se dibuja. Pura, para poder comprobar en tests que ningún texto pisa una carátula
  * y que el logo de Spotify respeta su tamaño mínimo y su zona de seguridad.
  */
-export function summaryLayout(format) {
+export function summaryLayout(format, counts = { artists: 5, tracks: 5 }) {
   const { w, h } = FORMATS[format];
   const pad = 72;
+  const n = (k) => Math.max(1, Math.min(5, counts[k] ?? 5));
   if (format === 'story') {
     const img = 100;
     const rowH = 120;
     const rows = [];
     const section = (top, kind) => {
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < n(kind); i++) {
         const y = top + 60 + i * rowH;
         rows.push({ kind, i, img: { x: pad, y, s: img }, text: { x: pad + img + 32, y, w: w - pad * 2 - img - 32, h: img } });
       }
       return { kind, x: pad, y: top, size: 34 };
     };
-    const heads = [section(380, 'artists'), section(380 + 60 + 5 * rowH + 20, 'tracks')];
+    // Con menos de 5 artistas, las canciones suben para no dejar un hueco en medio.
+    const heads = [section(380, 'artists'), section(380 + 60 + n('artists') * rowH + 20, 'tracks')];
     const logoW = 300;
     return {
       w, h, pad,
@@ -90,7 +92,7 @@ function loadImage(src, cors) {
  * nunca se sustituye por otra imagen ni se dibuja texto encima.
  */
 export async function renderSummary(data, format) {
-  const L = summaryLayout(format);
+  const L = summaryLayout(format, { artists: data.artists.length, tracks: data.tracks.length });
   const canvas = document.createElement('canvas');
   canvas.width = L.w;
   canvas.height = L.h;
@@ -99,6 +101,8 @@ export async function renderSummary(data, format) {
   ctx.fillRect(0, 0, L.w, L.h);
 
   const [brand, logo] = await Promise.all([loadImage('icons/icon.svg'), loadImage('icons/spotify/full-logo-white.svg')]);
+  // Sin el logo de Spotify la tarjeta incumpliría las normas de marca: mejor no darla.
+  if (!logo) throw new Error('spotifyLogo');
   if (brand) ctx.drawImage(brand, L.brand.x, L.brand.y, L.brand.s, L.brand.s);
   ctx.textBaseline = 'alphabetic';
   ctx.textAlign = 'left';
@@ -149,7 +153,7 @@ export async function renderSummary(data, format) {
     }
   });
 
-  if (logo) ctx.drawImage(logo, L.logo.x, L.logo.y, L.logo.w, L.logo.h);
+  ctx.drawImage(logo, L.logo.x, L.logo.y, L.logo.w, L.logo.h);
   ctx.font = `700 ${L.footer.size}px ${MONO}`;
   ctx.fillStyle = SUMMARY_COLORS.muted;
   ctx.textBaseline = 'middle';

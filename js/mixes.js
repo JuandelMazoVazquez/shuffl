@@ -15,7 +15,7 @@ const str = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '');
 /** Valida una mezcla venida de fuera (almacenamiento o copia de seguridad). Devuelve null si no sirve. */
 export function sanitizeMix(raw) {
   if (!raw || typeof raw !== 'object') return null;
-  const id = str(raw.id, 40);
+  const id = ID_RE.test(String(raw.id ?? '')) ? str(raw.id, 40) : '';
   const name = str(raw.name, 60).trim();
   if (!id || !name) return null;
   const kind = SHUFFLE_KINDS.includes(raw.kind) ? raw.kind : 'songs';

@@ -32,6 +32,14 @@ for (const format of Object.keys(FORMATS)) {
   });
 }
 
+test('con menos de 5 artistas la tarjeta vertical no deja hueco antes de las canciones', () => {
+  const L = summaryLayout('story', { artists: 2, tracks: 5 });
+  assert.equal(L.rows.filter((r) => r.kind === 'artists').length, 2);
+  const lastArtist = L.rows.filter((r) => r.kind === 'artists').at(-1);
+  assert.ok(L.heads[1].y - (lastArtist.img.y + lastArtist.img.s) <= 40);
+  assert.equal(summaryLayout('story', { artists: 0, tracks: 0 }).rows.length, 2, 'al menos un hueco por sección');
+});
+
 test('containRect encaja la imagen entera sin deformarla ni recortarla', () => {
   const slot = { x: 10, y: 20, s: 100 };
   assert.deepEqual(containRect(slot, 640, 640), { x: 10, y: 20, w: 100, h: 100 });

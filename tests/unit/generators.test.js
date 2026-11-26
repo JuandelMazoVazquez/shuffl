@@ -140,3 +140,12 @@ test('caché de 24 h: caduca, rechaza formatos raros y tiene tope', () => {
   assert.equal(Object.keys(c).length, MAX_CACHE_ENTRIES);
   assert.equal(cacheGet(c, `k${MAX_CACHE_ENTRIES + 19}`, now + MAX_CACHE_ENTRIES + 20), MAX_CACHE_ENTRIES + 19);
 });
+
+test('la caché tiene tope de tamaño: se quitan las más antiguas y nunca pasa del máximo', () => {
+  const now = 1_000_000_000_000;
+  let c = {};
+  for (let i = 0; i < 50; i++) c = cacheSet(c, `album:${i}`, 'x'.repeat(1000), now + i, 10_000);
+  assert.ok(JSON.stringify(c).length <= 10_000);
+  assert.ok('album:49' in c && !('album:0' in c));
+  assert.deepEqual(cacheSet({}, 'enorme', 'x'.repeat(20_000), now, 10_000), {}, 'una entrada que no cabe no se guarda');
+});

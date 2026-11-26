@@ -105,16 +105,24 @@ export const isManagedName = (name) => typeof name === 'string' && name.endsWith
 
 /**
  * Playlists (tal como las devuelve GET /me/playlists) que son la «· Shuffle» de este origen: propias, con el nombre
- * acabado en « · Shuffle» y con su etiqueta; o, sin etiqueta (v1.2), con el mismo nombre y la misma descripción.
- * Las renombradas no aparecen nunca.
+ * acabado en « · Shuffle» y con su etiqueta. Sin etiqueta (v1.2) el nombre y la descripción no bastan para saber el
+ * origen (dos playlists «Rock» dan lo mismo), así que solo cuenta la que este dispositivo ya usaba para esa clave
+ * (`preferredId`) o, si no, la única que coincida. Las renombradas no aparecen nunca.
  */
-export function findCandidates(playlists, { meId, tag, name, legacyDescription }) {
-  return playlists.filter((p) => {
-    if (!p || p.owner?.id !== meId || !isManagedName(p.name)) return false;
-    const found = readTag(p.description);
-    if (found) return found === tag;
-    return legacyDescription != null && p.name === name && sameDescription(p.description, legacyDescription);
-  });
+export function findCandidates(playlists, { meId, tag, name, legacyDescription, preferredId = null }) {
+  const mine = playlists.filter((p) => p && p.owner?.id === meId && isManagedName(p.name));
+  const tagged = mine.filter((p) => readTag(p.description) === tag);
+  const legacy = legacyDescription == null ? []
+    : mine.filter((p) => !readTag(p.description) && p.name === name && sameDescription(p.description, legacyDescription));
+  const known = legacy.filter((p) => p.id === preferredId);
+  return [...tagged, ...(known.length ? known : legacy.length === 1 ? legacy : [])];
+}
+
+/** Clave de grupo de una «· Shuffle» propia: su etiqueta o, sin etiqueta (v1.2), nombre y descripción. Null si no se gestiona. */
+export function groupKeyOf(p, meId) {
+  if (!p || p.owner?.id !== meId || !isManagedName(p.name)) return null;
+  const tag = readTag(p.description);
+  return tag ? `tag:${tag}` : `legacy:${p.name}\n${decodeEntities(p.description)}`;
 }
 
 /**
@@ -132,24 +140,24 @@ export function pickKeep(candidates, lastWrite = new Map(), preferredId = null) 
 }
 
 /**
- * Grupos de copias repetidas en toda la biblioteca: por etiqueta y, sin etiqueta, por nombre y descripción
- * iguales (v1.2). Solo playlists propias con nombre «… · Shuffle». Devuelve [{ key, name, playlists }] con 2 o más.
+ * Grupos de copias repetidas en toda la biblioteca: por etiqueta y, sin etiqueta, por nombre y descripción iguales
+ * (v1.2, marcados `legacy`: pueden venir de orígenes distintos con el mismo nombre, así que nunca se quitan sin
+ * preguntar). Solo playlists propias con nombre «… · Shuffle». Devuelve [{ key, name, legacy, playlists }] con 2 o más.
  */
 export function duplicateGroups(playlists, meId) {
   const groups = new Map();
   for (const p of playlists) {
-    if (!p || p.owner?.id !== meId || !isManagedName(p.name)) continue;
-    const tag = readTag(p.description);
-    const key = tag ? `tag:${tag}` : `legacy:${p.name}\n${decodeEntities(p.description)}`;
-    if (!groups.has(key)) groups.set(key, { key, name: p.name, playlists: [] });
+    const key = groupKeyOf(p, meId);
+    if (!key) continue;
+    if (!groups.has(key)) groups.set(key, { key, name: p.name, legacy: key.startsWith('legacy:'), playlists: [] });
     groups.get(key).playlists.push(p);
   }
   return [...groups.values()].filter((g) => g.playlists.length > 1);
 }
 
-/** La antigua «🔀 Baraja» propia, si sigue en la biblioteca. */
-export function findLegacyBaraja(playlists, meId, legacyId = null) {
-  return playlists.find((p) => p && p.owner?.id === meId && (p.id === legacyId || p.name === LEGACY_PLAYLIST)) ?? null;
+/** La antigua «🔀 Baraja» propia, solo si sigue con ese nombre (si la renombraste, es tuya y no se toca). */
+export function findLegacyBaraja(playlists, meId) {
+  return playlists.find((p) => p && p.owner?.id === meId && p.name === LEGACY_PLAYLIST) ?? null;
 }
 
 /** Playlists que crea la app (las de ahora, las de antes del cambio de nombre e instantáneas). */

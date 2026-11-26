@@ -192,6 +192,7 @@ test('migración: la antigua «🔀 Baraja» no se escribe ni se quita sin pregu
   expect(state.lists.get('pl_old').tracks).toHaveLength(5);
   expect(state.writes.some((w) => w.id === 'pl_old')).toBe(false);
   expect(state.unfollowCalls).toEqual([]);
+  await page.locator('#tab-home').click();
   await notice.getByRole('button', { name: 'Entendido' }).click();
   await expect(notice).toHaveCount(0);
   await page.reload();

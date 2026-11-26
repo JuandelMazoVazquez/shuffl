@@ -186,9 +186,19 @@ export const cacheGet = (cache, key, now = Date.now()) => {
   return v && now - v.t < CACHE_TTL_MS && now >= v.t ? v.d : undefined;
 };
 
-export function cacheSet(cache, key, data, now = Date.now()) {
-  const next = { ...cache, [key]: { t: now, d: data } };
-  const keys = Object.keys(next);
-  if (keys.length <= MAX_CACHE_ENTRIES) return next;
-  return pruneCache(next, now);
+/** Tope en caracteres del JSON guardado: deja sitio en localStorage (unos 5 MB) para Deshacer y lo demás. */
+export const MAX_CACHE_CHARS = 1_500_000;
+
+/** Añade una entrada; si se pasa de entradas o de tamaño, quita primero las más antiguas. */
+export function cacheSet(cache, key, data, now = Date.now(), maxChars = MAX_CACHE_CHARS) {
+  let next = { ...cache, [key]: { t: now, d: data } };
+  if (Object.keys(next).length > MAX_CACHE_ENTRIES) next = pruneCache(next, now);
+  let size = JSON.stringify(next).length;
+  if (size <= maxChars) return next;
+  const entries = Object.entries(next).sort((a, b) => a[1].t - b[1].t);
+  while (entries.length && size > maxChars) {
+    const [k, v] = entries.shift();
+    size -= JSON.stringify(k).length + JSON.stringify(v).length + 2;
+  }
+  return Object.fromEntries(entries);
 }
