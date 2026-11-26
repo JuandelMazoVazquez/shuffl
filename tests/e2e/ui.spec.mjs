@@ -51,20 +51,20 @@ test('Inicio: tarjetas de atajo, y «volver a barajar mi última mezcla» aparec
 test('tema oscuro por defecto, se cambia en Ajustes, se recuerda y «como el sistema» respeta el sistema', async ({ page }) => {
   await login(page);
   expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe('dark');
-  expect(await bg(page)).toBe('#0f0e17');
+  expect(await bg(page)).toBe('#0b0b0b');
   await page.locator('#open-settings').click();
   await page.locator('#theme-select').selectOption('light');
-  expect(await bg(page)).toBe('#fff8ee');
+  expect(await bg(page)).toBe('#ffffff');
   await page.locator('#tab-shuffle').click();
   await shot(page, 'docs/capturas/09-tema-claro.png');
   await page.reload();
-  expect(await bg(page)).toBe('#fff8ee');
+  expect(await bg(page)).toBe('#ffffff');
   await page.locator('#open-settings').click();
   await page.locator('#theme-select').selectOption('auto');
   await page.emulateMedia({ colorScheme: 'dark' });
-  expect(await bg(page)).toBe('#0f0e17');
+  expect(await bg(page)).toBe('#0b0b0b');
   await page.emulateMedia({ colorScheme: 'light' });
-  expect(await bg(page)).toBe('#fff8ee');
+  expect(await bg(page)).toBe('#ffffff');
 });
 
 test('el fondo toma el color dominante de la portada de la playlist seleccionada', async ({ page }) => {

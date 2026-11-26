@@ -1,35 +1,26 @@
 // Genera los iconos de icons/ (SVG, favicon.ico y PNG con Chromium de Playwright). Uso: npm run icons
-// Logo «abanico de tres naipes»: índigo a sangre, naipes ámbar, coral y crema, y dos flechas cruzadas.
+// Logo «tres naipes en abanico» (opción B): negro a sangre, dos naipes de contorno lima detrás (−18° y +18°)
+// y uno relleno de lima delante con una X negra.
 import { writeFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 
 const out = fileURLToPath(new URL('../icons/', import.meta.url));
-const INDIGO = '#2E2A6B';
-const CARDS = [['-14', '#FFB627'], ['14', '#FF5A4E'], ['0', '#FFF3E3']];
-const PIVOT = [256, 400];
-
-/** Flecha recta de a a b: cuerpo con extremos cuadrados y punta triangular. */
-function arrow([ax, ay], [bx, by]) {
-  const len = Math.hypot(bx - ax, by - ay);
-  const u = [(bx - ax) / len, (by - ay) / len];
-  const n = [-u[1], u[0]];
-  const headLen = 34;
-  const half = 24;
-  const base = [bx - u[0] * headLen, by - u[1] * headLen];
-  const pt = (p) => p.map((v) => +v.toFixed(2)).join(' ');
-  return `<path d="M${pt([ax, ay])} L${pt([base[0] + u[0] * 2, base[1] + u[1] * 2])}" stroke="${INDIGO}" stroke-width="18" stroke-linecap="butt" fill="none"/>`
-    + `<path d="M${pt([bx, by])} L${pt([base[0] + n[0] * half, base[1] + n[1] * half])} L${pt([base[0] - n[0] * half, base[1] - n[1] * half])} Z" fill="${INDIGO}"/>`;
-}
+const BLACK = '#0B0B0B';
+const LIME = '#C6FF3D';
+const PIVOT = [256, 420];
+const card = (angle, paint) => `<rect x="166" y="126" width="180" height="250" rx="20" transform="rotate(${angle} ${PIVOT.join(' ')})" ${paint}/>`;
+const outline = `fill="${BLACK}" stroke="${LIME}" stroke-width="16"`;
 
 const artwork = () => `
-  ${CARDS.map(([angle, fill]) => `<rect x="166" y="130" width="180" height="250" rx="22" fill="${fill}" transform="rotate(${angle} ${PIVOT.join(' ')})"/>`).join('\n  ')}
-  ${arrow([208, 199], [304, 311])}
-  ${arrow([208, 311], [304, 199])}`;
+  ${card(-18, outline)}
+  ${card(18, outline)}
+  ${card(0, `fill="${LIME}" stroke="${BLACK}" stroke-width="14"`)}
+  <path d="M214 209 L298 293 M298 209 L214 293" stroke="${BLACK}" stroke-width="30" stroke-linecap="square" fill="none"/>`;
 
 /** `shift`/`scale` solo para la variante maskable (dibujo dentro del 80 % central). */
 const svg = ({ shift = 0, scale = 1 } = {}) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" fill="${INDIGO}"/>
+  <rect width="512" height="512" fill="${BLACK}"/>
   <g transform="translate(256 256) scale(${scale}) translate(-256 ${-256 + shift})">${artwork()}
   </g>
 </svg>
