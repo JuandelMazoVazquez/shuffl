@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { installMock, login, idle, pick, shot } from './helpers.mjs';
+import { installMock, login, idle, pick, shot, openPanel } from './helpers.mjs';
 
 let state;
 
@@ -24,11 +24,10 @@ test('Inicio: tarjetas de atajo, y «volver a barajar mi última mezcla» aparec
   await login(page);
   await page.locator('#tab-home').click();
   await expect(page.locator('#card-last-mix')).toHaveCount(0);
-  for (const [card, panel] of [['sort', 'sort'], ['dups', 'dups'], ['backup', 'backup'], ['shuffle', 'shuffle']]) {
-    await page.locator('#tab-home').click();
-    await page.locator(`#card-${card}`).click();
-    await expect(page.locator(`#panel-${panel}`)).toBeVisible();
-  }
+  for (const panel of ['sort', 'dups', 'backup']) await openPanel(page, panel);
+  await page.locator('#tab-home').click();
+  await page.locator('#hero-start').click();
+  await expect(page.locator('#panel-shuffle')).toBeVisible();
 
   await pick(page, 'shuffle', 'Rock');
   await pick(page, 'shuffle', 'Chill');
@@ -37,7 +36,7 @@ test('Inicio: tarjetas de atajo, y «volver a barajar mi última mezcla» aparec
   await idle(page);
 
   await page.locator('#tab-home').click();
-  await expect(page.locator('#card-last-mix')).toContainText('Volver a barajar mi última mezcla');
+  await expect(page.locator('#card-last-mix')).toContainText('Otra vez: Rock + Chill');
   await expect(page.locator('#card-last-mix')).toContainText('Rock + Chill');
   await shot(page, 'docs/capturas/08-inicio.png');
   const before = state.writes.length;
@@ -52,14 +51,14 @@ test('tema oscuro por defecto, se cambia en Ajustes, se recuerda y «como el sis
   await login(page);
   expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe('dark');
   expect(await bg(page)).toBe('#0b0b0b');
-  await page.locator('#open-settings').click();
+  await openPanel(page, 'settings');
   await page.locator('#theme-select').selectOption('light');
   expect(await bg(page)).toBe('#ffffff');
   await page.locator('#tab-shuffle').click();
   await shot(page, 'docs/capturas/09-tema-claro.png');
   await page.reload();
   expect(await bg(page)).toBe('#ffffff');
-  await page.locator('#open-settings').click();
+  await openPanel(page, 'settings');
   await page.locator('#theme-select').selectOption('auto');
   await page.emulateMedia({ colorScheme: 'dark' });
   expect(await bg(page)).toBe('#0b0b0b');
@@ -133,7 +132,7 @@ test('deslizar a los lados cambia de pestaña, pero no sobre la lista de playlis
   await gesture(page, [300, 400], [100, 410]);
   await expect(page.locator('#panel-shuffle')).toBeVisible();
   await gesture(page, [300, 400], [100, 410]);
-  await expect(page.locator('#panel-sort')).toBeVisible();
+  await expect(page.locator('#panel-discover')).toBeVisible();
   await gesture(page, [100, 400], [300, 405]);
   await expect(page.locator('#panel-shuffle')).toBeVisible();
 

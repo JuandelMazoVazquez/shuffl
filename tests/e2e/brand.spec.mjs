@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { installMock, login, idle, pick } from './helpers.mjs';
+import { installMock, login, idle, pick, openPanel } from './helpers.mjs';
 
 let state;
 
@@ -47,7 +47,7 @@ test('el logo oficial de Spotify acompaña a carátulas y metadatos: selector, r
   expectLogo(await measure(resultLogo), 'white', /^https:\/\/open\.spotify\.com\/playlist\//);
 
   state.lists.get('pl_rock').tracks.push(state.lists.get('pl_rock').tracks[0]);
-  await page.locator('#tab-dups').click();
+  await openPanel(page, 'dups');
   await pick(page, 'dups', 'Rock');
   await page.locator('#panel-dups button.primary').first().click();
   await idle(page);

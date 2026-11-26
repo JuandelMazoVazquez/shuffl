@@ -20,7 +20,24 @@ export async function login(page) {
   await page.locator('#connect').click();
   await expect(page.locator('#tab-home')).toBeVisible();
   await page.locator('#tab-shuffle').click();
-  await expect(page.locator('#panel-shuffle label.row', { hasText: 'Rock' })).toBeVisible();
+  await expect(page.locator('#panel-shuffle label.row', { hasText: 'Rock' }).first()).toBeVisible();
+}
+
+const PARENT_TAB = {
+  sort: 'more', dups: 'more', backup: 'more', snap: 'more', orphans: 'more', split: 'more', proof: 'more', pin: 'more', settings: 'more',
+  roulette: 'shuffle', new: 'discover', explore: 'discover', ago: 'discover', forgotten: 'discover', summary: 'discover',
+};
+/** Abre una pantalla secundaria desde su pestaña (Más, Descubrir o Shuffle), como lo haría una persona. */
+export async function openPanel(page, key) {
+  await page.locator(`#tab-${PARENT_TAB[key]}`).click();
+  await page.locator(`#card-${key}`).click();
+  await expect(page.locator(`#panel-${key}`)).toBeVisible();
+}
+
+/** Despliega «Más opciones» de Shuffle (quitar repetidas, filtros, destino, enlace, guardar mezcla) si está plegado. */
+export async function moreOptions(page) {
+  const box = page.locator('#shuffle-more');
+  if (await box.getAttribute('open') === null) await box.locator(':scope > summary').click();
 }
 
 /** La app marca `body.busy` de forma síncrona al empezar una tarea; esperar a que se quite es esperar a que termine. */

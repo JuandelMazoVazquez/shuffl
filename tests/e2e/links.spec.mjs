@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { installMock, login, idle, shot } from './helpers.mjs';
+import { installMock, login, idle, shot, openPanel } from './helpers.mjs';
 
 let state;
 
@@ -94,11 +94,11 @@ test('«Crear atajo de Siri» muestra el enlace de la mezcla, los pasos y el avi
 
 test('la ayuda explica CarPlay y el atajo sale en inglés', async ({ page }) => {
   await login(page);
-  await page.locator('#open-settings').click();
-  await page.locator('#open-pin').click();
+  await openPanel(page, 'settings');
+  await openPanel(page, 'pin');
   await expect(page.locator('#panel-pin')).toContainText('CarPlay no admite apps web');
   await expect(page.locator('#panel-pin')).toContainText('«· Shuffle» dentro de Spotify');
-  await page.locator('#open-settings').click();
+  await openPanel(page, 'settings');
   await page.locator('#lang-select').selectOption('en');
   await page.locator('#tab-home').click();
   await page.getByRole('button', { name: 'Create Siri shortcut for Coche' }).click();

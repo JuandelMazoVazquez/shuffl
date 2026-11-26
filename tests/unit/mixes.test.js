@@ -45,7 +45,7 @@ test('sanitizeFilters descarta valores con formato raro', () => {
 
 test('sanitizeMix valida y recorta', () => {
   const ok = sanitizeMix({ id: 'm1', name: '  Coche  ', ids: ['a', 'b'], names: ['A', 'B'], dedupe: false, mode: 'new', filters: { explicit: 'none' } });
-  assert.deepEqual(ok, { id: 'm1', name: 'Coche', library: false, ids: ['a', 'b'], names: ['A', 'B'], filters: { ...emptyFilters(), explicit: 'none' }, dedupe: false, mode: 'new' });
+  assert.deepEqual(ok, { id: 'm1', name: 'Coche', library: false, ids: ['a', 'b'], names: ['A', 'B'], filters: { ...emptyFilters(), explicit: 'none' }, dedupe: false, mode: 'new', kind: 'songs' });
   assert.equal(sanitizeMix({ id: 'm', name: 'x', ids: [] }), null, 'sin fuentes');
   assert.equal(sanitizeMix({ id: 'm', name: '', ids: ['a'] }), null, 'sin nombre');
   assert.equal(sanitizeMix('hola'), null);

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { CLIENT_ID } from './mock.mjs';
-import { installMock, login, idle, pick, names, shot } from './helpers.mjs';
+import { installMock, login, idle, pick, names, shot, openPanel, moreOptions } from './helpers.mjs';
 
 const SHOTS = 'docs/capturas';
 mkdirSync(SHOTS, { recursive: true });
@@ -55,7 +55,9 @@ test('barajar dos playlists combinadas en «Mix · Shuffle», volver a barajar y
   const baraja = [...state.lists.values()].find((l) => l.name === 'Mix · Shuffle');
   expect(baraja).toBeTruthy();
   expect(new Set(baraja.tracks.map((t) => t.uri)).size).toBe(180);
-  expect(baraja.description).toBe('Barajada con Shuffl (aleatorio uniforme; reprodúcela con el aleatorio de Spotify apagado). Origen: Rock, Chill');
+  expect(baraja.description).toMatch(/ · shuffl:src=[a-f0-9]{10}$/);
+
+  expect(baraja.description.replace(/ · shuffl:src=[a-f0-9]{10}$/, '')).toBe('Barajada con Shuffl (aleatorio uniforme; reprodúcela con el aleatorio de Spotify apagado). Origen: Rock, Chill');
   const natural = [...state.lists.get('pl_rock').tracks, ...state.lists.get('pl_chill').tracks].map((t) => t.name);
   expect(names(baraja)).not.toEqual(natural.slice(0, 180));
   expect(state.writes.filter((w) => w.op === 'put' && w.id === baraja.id)).toHaveLength(1);
@@ -100,6 +102,7 @@ test('barajar la propia playlist pide confirmación y se puede deshacer', async 
   await login(page);
   await pick(page, 'shuffle', 'Rock');
   const before = names(state.lists.get('pl_rock')).join();
+  await moreOptions(page);
   await page.locator('#panel-shuffle label.choice', { hasText: 'La propia playlist' }).click();
   state.dismissNext = true;
   await page.locator('#panel-shuffle .btn.primary.big').click();
@@ -118,7 +121,7 @@ test('barajar la propia playlist pide confirmación y se puede deshacer', async 
 
 test('ordenar «Tus me gusta» por título a una playlist nueva y atajo de copia', async ({ page }) => {
   await login(page);
-  await page.locator('#tab-sort').click();
+  await openPanel(page, 'sort');
   await shot(page, `${SHOTS}/04-ordenar.png`);
   await pick(page, 'sort', 'Tus me gusta');
   await page.locator('#sort-key').selectOption('title');
@@ -139,7 +142,7 @@ test('ordenar «Tus me gusta» por título a una playlist nueva y atajo de copia
 
 test('ordenar por fecha de lanzamiento descendente', async ({ page }) => {
   await login(page);
-  await page.locator('#tab-sort').click();
+  await openPanel(page, 'sort');
   await pick(page, 'sort', 'Rock');
   await page.locator('#sort-key').selectOption('release-desc');
   await page.locator('#panel-sort .btn.primary.big').click();
@@ -150,7 +153,7 @@ test('ordenar por fecha de lanzamiento descendente', async ({ page }) => {
 
 test('duplicados: analizar, quitar del original y deshacer', async ({ page }) => {
   await login(page);
-  await page.locator('#tab-dups').click();
+  await openPanel(page, 'dups');
   await expect(page.locator('#panel-dups label.row', { hasText: 'Tus me gusta' })).toContainText('No se puede modificar');
   await pick(page, 'dups', 'Con repetidas');
   await page.getByRole('button', { name: 'Analizar' }).click();
@@ -172,7 +175,7 @@ test('duplicados: analizar, quitar del original y deshacer', async ({ page }) =>
 
 test('duplicados: modo exacto y copia limpia sin tocar el original', async ({ page }) => {
   await login(page);
-  await page.locator('#tab-dups').click();
+  await openPanel(page, 'dups');
   await pick(page, 'dups', 'Con repetidas');
   await page.locator('input[name=dup-mode][value=exact]').check();
   await page.getByRole('button', { name: 'Analizar' }).click();
@@ -185,7 +188,7 @@ test('duplicados: modo exacto y copia limpia sin tocar el original', async ({ pa
 
 test('copia de seguridad: exportar JSON y CSV y restaurar', async ({ page }) => {
   await login(page);
-  await page.locator('#tab-backup').click();
+  await openPanel(page, 'backup');
   await pick(page, 'backup', 'Rock');
   await pick(page, 'backup', 'Tus me gusta');
   await page.getByRole('button', { name: 'Preparar copia' }).click();
@@ -215,7 +218,7 @@ test('copia de seguridad: exportar JSON y CSV y restaurar', async ({ page }) => 
 
 test('ajustes: Redirect URI, idioma e inglés, cerrar sesión', async ({ page }) => {
   await login(page);
-  await page.locator('#open-settings').click();
+  await openPanel(page, 'settings');
   await expect(page.locator('#panel-settings .copybox input')).toHaveValue('http://127.0.0.1:5173/');
   await expect(page.locator('#settings-client-id')).toHaveValue(CLIENT_ID);
   await shot(page, `${SHOTS}/07-ajustes.png`, { fullPage: true });
@@ -229,7 +232,7 @@ test('ajustes: Redirect URI, idioma e inglés, cerrar sesión', async ({ page })
 
 test('sin horizontal scroll y objetivos táctiles de 44 px', async ({ page }) => {
   await login(page);
-  for (const tab of ['home', 'shuffle', 'sort', 'dups', 'backup']) {
+  for (const tab of ['home', 'shuffle', 'discover', 'more']) {
     await page.locator(`#tab-${tab}`).click();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow, tab).toBeLessThanOrEqual(0);
@@ -243,6 +246,7 @@ test('escritura a medias: reintentar no pisa el Deshacer y Deshacer recupera el 
   await login(page);
   await pick(page, 'shuffle', 'Rock');
   const original = state.lists.get('pl_rock').tracks.map((t) => t.uri);
+  await moreOptions(page);
   await page.locator('#panel-shuffle label.choice', { hasText: 'La propia playlist' }).click();
   state.failNextPost = true;
   await page.locator('#panel-shuffle .btn.primary.big').click();
@@ -254,7 +258,7 @@ test('escritura a medias: reintentar no pisa el Deshacer y Deshacer recupera el 
   await expect(page.getByRole('alert')).toContainText('no terminó');
   expect(state.writes).toHaveLength(writesBefore);
 
-  await page.locator('#open-settings').click();
+  await openPanel(page, 'settings');
   await page.getByRole('button', { name: 'Deshacer último cambio' }).click();
   await expect(page.getByText('Cambio deshecho.')).toBeVisible();
   expect(state.lists.get('pl_rock').tracks.map((t) => t.uri)).toEqual(original);
@@ -262,7 +266,7 @@ test('escritura a medias: reintentar no pisa el Deshacer y Deshacer recupera el 
 
 test('duplicados: si el orden cambió en Spotify con el mismo total no se escribe', async ({ page }) => {
   await login(page);
-  await page.locator('#tab-dups').click();
+  await openPanel(page, 'dups');
   await pick(page, 'dups', 'Con repetidas');
   await page.getByRole('button', { name: 'Analizar' }).click();
   await expect(page.getByText('3 canciones repetidas')).toBeVisible();
@@ -277,6 +281,7 @@ test('duplicados: si el orden cambió en Spotify con el mismo total no se escrib
 test('Deshacer no se aplica si la playlist cambió después de la operación', async ({ page }) => {
   await login(page);
   await pick(page, 'shuffle', 'Rock');
+  await moreOptions(page);
   await page.locator('#panel-shuffle label.choice', { hasText: 'La propia playlist' }).click();
   await page.locator('#panel-shuffle .btn.primary.big').click();
   await expect(page.getByText('Listo: 120 canciones barajadas')).toBeVisible();
@@ -292,6 +297,7 @@ test('volver a barajar a medias: Deshacer sigue recuperando el original y otra p
   await login(page);
   await pick(page, 'shuffle', 'Rock');
   const original = state.lists.get('pl_rock').tracks.map((t) => t.uri);
+  await moreOptions(page);
   await page.locator('#panel-shuffle label.choice', { hasText: 'La propia playlist' }).click();
   await page.locator('#panel-shuffle .btn.primary.big').click();
   await expect(page.getByText('Listo: 120 canciones barajadas')).toBeVisible();
@@ -300,7 +306,7 @@ test('volver a barajar a medias: Deshacer sigue recuperando el original y otra p
   await expect(page.getByRole('alert')).toBeVisible();
   expect(state.lists.get('pl_rock').tracks).toHaveLength(100);
 
-  await page.locator('#tab-dups').click();
+  await openPanel(page, 'dups');
   await pick(page, 'dups', 'Con repetidas');
   await page.getByRole('button', { name: 'Analizar' }).click();
   await expect(page.getByText('3 canciones repetidas')).toBeVisible();
@@ -309,7 +315,7 @@ test('volver a barajar a medias: Deshacer sigue recuperando el original y otra p
   await expect(page.getByRole('alert')).toContainText('no terminó');
   expect(state.writes).toHaveLength(writesBefore);
 
-  await page.locator('#open-settings').click();
+  await openPanel(page, 'settings');
   await page.getByRole('button', { name: 'Deshacer último cambio' }).click();
   await expect(page.getByText('Cambio deshecho.')).toBeVisible();
   expect(state.lists.get('pl_rock').tracks.map((t) => t.uri)).toEqual(original);
@@ -327,19 +333,19 @@ test('ninguna pantalla de resultado muestra «null», «undefined» ni «false»
   await expect(page.getByText('Listo: 80 canciones barajadas')).toBeVisible();
   await clean('barajar');
 
-  await page.locator('#tab-sort').click();
+  await openPanel(page, 'sort');
   await pick(page, 'sort', 'Chill');
   await page.locator('#panel-sort .btn.primary.big').click();
   await expect(page.locator('#panel-sort .result-title')).toBeVisible();
   await clean('ordenar');
 
-  await page.locator('#tab-dups').click();
+  await openPanel(page, 'dups');
   await pick(page, 'dups', 'Rock');
   await page.getByRole('button', { name: 'Analizar' }).click();
   await expect(page.locator('#panel-dups .result-title')).toBeVisible();
   await clean('duplicados');
 
-  await page.locator('#tab-backup').click();
+  await openPanel(page, 'backup');
   await pick(page, 'backup', 'Rock');
   await page.getByRole('button', { name: 'Preparar copia' }).click();
   await expect(page.getByText('Copia lista: 120 canciones en 1 listas')).toBeVisible();
@@ -357,7 +363,7 @@ test('ninguna pantalla de resultado muestra «null», «undefined» ni «false»
 
 test('importar: archivo enorme se rechaza sin leerlo', async ({ page }) => {
   await login(page);
-  await page.locator('#tab-backup').click();
+  await openPanel(page, 'backup');
   await page.locator('#restore-file').setInputFiles({ name: 'big.json', mimeType: 'application/json', buffer: Buffer.alloc(21 * 1024 * 1024, 32) });
   await expect(page.getByRole('alert')).toContainText('demasiado grande');
 });
