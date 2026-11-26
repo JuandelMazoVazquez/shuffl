@@ -14,7 +14,7 @@ test.beforeEach(async ({ page }) => {
 
 test('pantalla inicial, guía y login completo con PKCE', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Baraja' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Shuffl' })).toBeVisible();
   await expect(page.locator('.copybox input')).toHaveValue('http://127.0.0.1:5173/');
   await shot(page, `${SHOTS}/01-bienvenida.png`, { fullPage: true });
 
@@ -43,7 +43,7 @@ test('state incorrecto en el callback cierra el intento sin iniciar sesión', as
   expect(page.url()).toBe('http://127.0.0.1:5173/');
 });
 
-test('barajar dos playlists combinadas en «🔀 Baraja», volver a barajar y deshacer', async ({ page }) => {
+test('barajar dos playlists combinadas en «Mix · Shuffle», volver a barajar y deshacer', async ({ page }) => {
   await login(page);
   await pick(page, 'shuffle', 'Rock');
   await pick(page, 'shuffle', 'Chill');
@@ -52,9 +52,10 @@ test('barajar dos playlists combinadas en «🔀 Baraja», volver a barajar y de
   await expect(page.getByText('20 repetidas quitadas.')).toBeVisible();
   await shot(page, `${SHOTS}/03-resultado-barajar.png`);
 
-  const baraja = [...state.lists.values()].find((l) => l.name === '🔀 Baraja');
+  const baraja = [...state.lists.values()].find((l) => l.name === 'Mix · Shuffle');
   expect(baraja).toBeTruthy();
   expect(new Set(baraja.tracks.map((t) => t.uri)).size).toBe(180);
+  expect(baraja.description).toBe('Barajada con Shuffl (aleatorio uniforme; reprodúcela con el aleatorio de Spotify apagado). Origen: Rock, Chill');
   const natural = [...state.lists.get('pl_rock').tracks, ...state.lists.get('pl_chill').tracks].map((t) => t.name);
   expect(names(baraja)).not.toEqual(natural.slice(0, 180));
   expect(state.writes.filter((w) => w.op === 'put' && w.id === baraja.id)).toHaveLength(1);
@@ -67,7 +68,7 @@ test('barajar dos playlists combinadas en «🔀 Baraja», volver a barajar y de
   expect(baraja.tracks).toHaveLength(180);
   expect(names(baraja).join()).not.toBe(first);
   expect(new Set(baraja.tracks.map((t) => t.uri)).size).toBe(180);
-  expect([...state.lists.values()].filter((l) => l.name === '🔀 Baraja')).toHaveLength(1);
+  expect([...state.lists.values()].filter((l) => l.name === 'Mix · Shuffle')).toHaveLength(1);
 
   await page.getByRole('button', { name: 'Deshacer último cambio' }).click();
   await expect(page.getByText('Cambio deshecho.')).toBeVisible();
@@ -77,20 +78,20 @@ test('barajar dos playlists combinadas en «🔀 Baraja», volver a barajar y de
   await page.locator('#panel-shuffle .btn.primary.big').click();
   await idle(page);
   await expect(page.getByText('Listo: 180 canciones barajadas')).toBeVisible();
-  expect([...state.lists.values()].filter((l) => l.name === '🔀 Baraja')).toHaveLength(1);
+  expect([...state.lists.values()].filter((l) => l.name === 'Mix · Shuffle')).toHaveLength(1);
 });
 
-test('si «🔀 Baraja» desaparece se crea una nueva', async ({ page }) => {
+test('si la playlist «· Shuffle» desaparece se crea una nueva', async ({ page }) => {
   await login(page);
   await pick(page, 'shuffle', 'Rock');
   await page.locator('#panel-shuffle .btn.primary.big').click();
   await expect(page.getByText('Listo: 120 canciones barajadas')).toBeVisible();
-  const old = [...state.lists.values()].find((l) => l.name === '🔀 Baraja');
+  const old = [...state.lists.values()].find((l) => l.name === 'Rock · Shuffle');
   state.lists.delete(old.id);
   await page.getByRole('button', { name: 'Volver', exact: true }).click();
   await page.locator('#panel-shuffle .btn.primary.big').click();
   await expect(page.getByText('Listo: 120 canciones barajadas')).toBeVisible();
-  const now = [...state.lists.values()].filter((l) => l.name === '🔀 Baraja');
+  const now = [...state.lists.values()].filter((l) => l.name === 'Rock · Shuffle');
   expect(now).toHaveLength(1);
   expect(now[0].id).not.toBe(old.id);
 });
@@ -193,9 +194,9 @@ test('copia de seguridad: exportar JSON y CSV y restaurar', async ({ page }) => 
 
   const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('#save-json').click()]);
   const path = await dl.path();
-  expect(dl.suggestedFilename()).toMatch(/^baraja-\d{4}-\d{2}-\d{2}\.json$/);
+  expect(dl.suggestedFilename()).toMatch(/^shuffl-\d{4}-\d{2}-\d{2}\.json$/);
   const data = JSON.parse(readFileSync(path, 'utf8'));
-  expect(data).toMatchObject({ app: 'baraja', version: 1 });
+  expect(data).toMatchObject({ app: 'shuffl', version: 1 });
   expect(data.playlists).toHaveLength(2);
   expect(data.playlists.find((p) => p.isLiked).tracks).toHaveLength(60);
 
@@ -203,7 +204,7 @@ test('copia de seguridad: exportar JSON y CSV y restaurar', async ({ page }) => 
   expect(readFileSync(await dl2.path(), 'utf8')).toContain('playlist,uri,name');
 
   await page.locator('#restore-file').setInputFiles({ name: 'b.json', mimeType: 'application/json', buffer: Buffer.from('{"hola":1}') });
-  await expect(page.getByRole('alert')).toContainText('no es una copia de Baraja');
+  await expect(page.getByRole('alert')).toContainText('no es una copia de Shuffl');
   await page.locator('#restore-file').setInputFiles(path);
   await expect(page.getByRole('button', { name: 'Restaurar' })).toBeVisible();
   await page.getByRole('button', { name: 'Restaurar' }).click();

@@ -11,7 +11,8 @@ const openFilters = async (page) => {
   await page.locator('#filters-box summary').click();
   await expect(page.locator('#filters-box')).toHaveAttribute('open', '');
 };
-const baraja = () => [...state.lists.values()].find((l) => l.name === '🔀 Baraja');
+/** La última playlist escrita por la app (la generada «· Shuffle»). */
+const baraja = () => state.lists.get(state.writes.filter((w) => w.op === 'put').at(-1).id);
 const yearOf = (t) => Number(t.album.release_date.slice(0, 4));
 
 test('filtros: contador en vivo, barajado solo del subconjunto y la propia playlist queda bloqueada', async ({ page }) => {
@@ -57,6 +58,7 @@ test('toda la biblioteca: resumen, salta las de otros y no se lee a sí misma', 
   await expect(page.locator('#panel-shuffle .result-title')).toContainText('Listo:');
   await idle(page);
   const unique = new Set([...state.lists.get('pl_rock').tracks, ...state.lists.get('pl_chill').tracks, ...state.lists.get('pl_dupes').tracks, ...state.liked].map((t) => t.uri));
+  expect(baraja().name).toBe('Toda mi música · Shuffle');
   expect(baraja().tracks).toHaveLength(unique.size);
   expect(requested.some((u) => u.includes('pl_top'))).toBe(false);
 
@@ -84,6 +86,7 @@ test('mezclas guardadas: guardar con filtros, reutilizar desde Inicio, editar, b
   await expect(page.getByText('Listo: 80 canciones barajadas')).toBeVisible();
   await idle(page);
   expect(baraja().tracks.every((t) => yearOf(t) >= 2000)).toBe(true);
+  expect(baraja().name).toBe('Coche · Shuffle');
 
   await page.locator('#tab-home').click();
   await page.getByRole('button', { name: 'Editar mezcla Coche' }).click();

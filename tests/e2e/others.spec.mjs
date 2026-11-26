@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => {
 
 const ANA = 'AbCdEfGhIjKlMnOpQrStUv';
 const owner = (id) => ({ id, display_name: id === 'ana' ? 'Ana' : id });
-const baraja = () => [...state.lists.values()].find((l) => l.name === '🔀 Baraja');
+const baraja = () => state.lists.get(state.writes.filter((w) => w.op === 'put').at(-1).id);
 
 test('«Playlists que sigues»: sección propia, marcadas y con guía para hacerse una copia', async ({ page }) => {
   await login(page);

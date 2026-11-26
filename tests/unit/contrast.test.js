@@ -27,10 +27,30 @@ for (const [name, t] of Object.entries(themes)) {
   });
 }
 
-test('la paleta oscura usa los colores de la marca', () => {
-  assert.equal(themes.oscuro.bg.toLowerCase(), '#0f0e17');
-  assert.equal(themes.oscuro.surface.toLowerCase(), '#1a1927');
-  assert.equal(themes.oscuro.accent.toLowerCase(), '#ff5a4e');
-  assert.equal(themes.oscuro['accent-2'].toLowerCase(), '#ffb627');
-  assert.equal(themes.oscuro.text.toLowerCase(), '#fff3e3');
+test('las paletas usan los colores de la marca Shuffl', () => {
+  const o = themes.oscuro;
+  assert.deepEqual([o.bg, o.surface, o['surface-2'], o.accent, o.text, o.muted].map((c) => c.toLowerCase()),
+    ['#0b0b0b', '#161616', '#1f1f1f', '#c6ff3d', '#f5f5f5', '#a3a3a3']);
+  const c = themes.claro;
+  assert.deepEqual([c.bg, c.surface, c.accent, c.lime].map((x) => x.toLowerCase()), ['#ffffff', '#f4f6f0', '#3d6b00', '#c6ff3d']);
+  assert.ok(ratio(c.accent, '#ffffff') >= 4.5, 'verde oscuro AA sobre blanco');
+});
+
+test('el texto sobre la lima (botón principal, tarjeta destacada) cumple AA en los dos temas', () => {
+  for (const t of Object.values(themes)) assert.ok(ratio(t['on-lime'], t.lime) >= 4.5);
+});
+
+test('ningún color de la paleta es el verde de Spotify ni se le parece', () => {
+  const hue = (hex) => {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+    const max = Math.max(r, g, b); const d = max - Math.min(r, g, b);
+    if (d === 0) return null;
+    const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return (h * 60 + 360) % 360;
+  };
+  for (const hex of css.match(/#[0-9a-fA-F]{6}\b/g)) {
+    assert.ok(!['#1db954', '#1ed760'].includes(hex.toLowerCase()), hex);
+    const h = hue(hex);
+    assert.ok(h === null || h < 100 || h > 170, `${hex} tiene matiz ${h?.toFixed(0)}, demasiado cerca del de Spotify`);
+  }
 });

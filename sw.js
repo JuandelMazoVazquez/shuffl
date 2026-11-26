@@ -1,12 +1,12 @@
-// Service worker de Baraja. `__BUILD__` lo sustituye el despliegue por el hash corto del commit;
+// Service worker de Shuffl. `__BUILD__` lo sustituye el despliegue por el hash corto del commit;
 // en desarrollo vale 'dev' y el worker no intercepta nada (siempre se ve lo último del disco).
 // Nunca toca otros orígenes (api y accounts de Spotify).
 const VERSION = '__BUILD__';
-const CACHE = `baraja-${VERSION}`;
+const CACHE = `shuffl-${VERSION}`;
 const DEV = VERSION === 'dev';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/styles.css',
-  'js/app.js', 'js/api.js', 'js/auth.js', 'js/config.js', 'js/core.js', 'js/i18n.js', 'js/storage.js', 'js/update.js', 'js/cover.js', 'js/color.js', 'js/mixes.js',
+  'js/app.js', 'js/api.js', 'js/auth.js', 'js/config.js', 'js/core.js', 'js/i18n.js', 'js/storage.js', 'js/update.js', 'js/cover.js', 'js/color.js', 'js/mixes.js', 'js/targets.js',
   'icons/icon.svg', 'icons/favicon.svg', 'icons/favicon.ico', 'icons/icon-maskable-512.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
   'icons/spotify/full-logo-white.svg', 'icons/spotify/full-logo-black.svg',
 ];

@@ -13,21 +13,22 @@ function hue(hex) {
   return (h * 60 + 360) % 360;
 }
 
-test('el logo respeta las reglas de marca: sin verde, sin círculos ni arcos', () => {
+test('el logo es la opción B (naipes lima sobre negro) y no se parece al de Spotify', () => {
   for (const name of ['icon.svg', 'favicon.svg']) {
     const svg = file(name).toString('utf8');
-    const colors = [...svg.matchAll(/#[0-9a-fA-F]{6}\b/g)].map((m) => m[0].toUpperCase());
-    assert.ok(colors.length >= 4, 'tiene la paleta');
-    assert.ok(colors.includes('#2E2A6B') && colors.includes('#FFB627') && colors.includes('#FF5A4E') && colors.includes('#FFF3E3'));
+    const colors = new Set([...svg.matchAll(/#[0-9a-fA-F]{6}\b/g)].map((m) => m[0].toUpperCase()));
+    assert.deepEqual([...colors].sort(), ['#0B0B0B', '#C6FF3D']);
     for (const c of colors) {
-      assert.notEqual(c, '#1DB954');
-      assert.notEqual(c, '#1ED760');
       const h = hue(c);
-      assert.ok(h === null || h < 90 || h > 160, `${c} tiene un matiz verde (${h})`);
+      assert.ok(h === null || h < 90 || h > 170, `${c} se parece al verde de Spotify (${h})`);
     }
+    assert.match(svg, /<rect width="512" height="512" fill="#0B0B0B"\/>/, 'fondo negro a sangre');
     assert.doesNotMatch(svg, /<(circle|ellipse)\b/);
     for (const d of svg.matchAll(/\bd="([^"]*)"/g)) assert.doesNotMatch(d[1], /[ACQSTacqst]/, 'sin curvas ni arcos');
-    assert.equal((svg.match(/<rect\b[^>]*width="180"[^>]*height="250"/g) ?? []).length, 3);
+    const cards = [...svg.matchAll(/<rect\b[^>]*width="180"[^>]*height="250"[^>]*rotate\((-?\d+)[^>]*>/g)];
+    assert.deepEqual(cards.map((m) => m[1]), ['-18', '18', '0']);
+    assert.equal(cards.filter((m) => /fill="#0B0B0B" stroke="#C6FF3D"/.test(m[0])).length, 2, 'dos naipes de contorno');
+    assert.match(cards[2][0], /fill="#C6FF3D"/, 'el delantero relleno de lima');
   }
 });
 

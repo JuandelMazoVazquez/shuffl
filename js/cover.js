@@ -1,7 +1,7 @@
-// Portada de «🔀 Baraja»: logo sobre un color de la paleta y la fecha de la baraja, en JPEG de 640x640.
+// Portada de las playlists «· Shuffle»: icono de Shuffl, nombre del origen y fecha sobre negro, en JPEG de 640x640.
 const SIZE = 640;
-const INK = '#2E2A6B';
-const BACKGROUNDS = ['#FF5A4E', '#FFB627', '#FFF3E3'];
+export const COVER_COLORS = { bg: '#0B0B0B', title: '#C6FF3D', label: '#A3A3A3' };
+const FONT = '"Arial Black", "Helvetica Neue", system-ui, -apple-system, "Segoe UI", sans-serif';
 /** Spotify admite un JPEG de hasta 256 KB (en base64). */
 export const MAX_IMAGE_B64 = 256 * 1024;
 
@@ -14,40 +14,44 @@ export function encodeUnderLimit(encode, maxLen = MAX_IMAGE_B64 - 1024, qualitie
   throw new Error('imageTooBig');
 }
 
-/** Color de fondo: cambia cada día, de forma determinista. */
-export const coverColor = (date) => BACKGROUNDS[Math.floor(date.getTime() / 86400000) % BACKGROUNDS.length];
+/**
+ * Tamaño de letra para que `text` quepa en `maxWidth` (`measure(text, size)` devuelve el ancho).
+ * Si ni con `min` cabe, recorta con «…».
+ */
+export function fitText(measure, text, maxWidth, { start = 64, min = 28, step = 2 } = {}) {
+  let size = start;
+  while (size > min && measure(text, size) > maxWidth) size -= step;
+  if (measure(text, size) <= maxWidth) return { size, text };
+  const chars = [...text];
+  while (chars.length > 1 && measure(`${chars.join('')}…`, size) > maxWidth) chars.pop();
+  return { size, text: `${chars.join('').trimEnd()}…` };
+}
 
-export async function makeCover({ label, date = new Date(), iconUrl = 'icons/icon.svg' }) {
+export async function makeCover({ title, label, iconUrl = 'icons/icon.svg' }) {
   const canvas = document.createElement('canvas');
   canvas.width = SIZE;
   canvas.height = SIZE;
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = coverColor(date);
+  ctx.fillStyle = COVER_COLORS.bg;
   ctx.fillRect(0, 0, SIZE, SIZE);
 
   const img = new Image();
   img.src = iconUrl;
   await img.decode();
-  const logo = 400;
-  const x = (SIZE - logo) / 2;
-  const y = 70;
-  ctx.save();
-  ctx.beginPath();
-  ctx.roundRect(x, y, logo, logo, 72);
-  ctx.clip();
-  ctx.drawImage(img, x, y, logo, logo);
-  ctx.restore();
+  const logo = 320;
+  ctx.drawImage(img, (SIZE - logo) / 2, 48, logo, logo);
 
-  ctx.fillStyle = INK;
+  const measure = (text, size) => { ctx.font = `900 ${size}px ${FONT}`; return ctx.measureText(text).width; };
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  let size = 48;
-  ctx.font = `700 ${size}px system-ui, -apple-system, "Segoe UI", sans-serif`;
-  while (ctx.measureText(label).width > SIZE - 80 && size > 20) {
-    size -= 2;
-    ctx.font = `700 ${size}px system-ui, -apple-system, "Segoe UI", sans-serif`;
-  }
-  ctx.fillText(label, SIZE / 2, 560);
+  const fitted = fitText(measure, title, SIZE - 80);
+  ctx.font = `900 ${fitted.size}px ${FONT}`;
+  ctx.fillStyle = COVER_COLORS.title;
+  ctx.fillText(fitted.text, SIZE / 2, 450);
+
+  ctx.font = `700 30px ui-monospace, "SF Mono", Menlo, Consolas, monospace`;
+  ctx.fillStyle = COVER_COLORS.label;
+  ctx.fillText(label, SIZE / 2, 545);
 
   return encodeUnderLimit((q) => canvas.toDataURL('image/jpeg', q).split(',')[1]);
 }
