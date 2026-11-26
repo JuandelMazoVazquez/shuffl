@@ -2,6 +2,28 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). El proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 
+## [1.2.0] - 2026-11-26
+
+**Baraja pasa a llamarse Shuffl.** El repositorio y la dirección de GitHub Pages no cambian, así que la Redirect URI sigue siendo la misma. En iPhone, para ver el icono nuevo hay que quitar la app de la pantalla de inicio y volver a añadirla (la app lo avisa una vez).
+
+### Cambiado
+
+- **Nombre, icono y aspecto**: icono de tres naipes en abanico, lima sobre negro, en todos los tamaños. Paleta negro y verde lima (#C6FF3D) en el tema oscuro y blanco con verde oscuro (#3D6B00, AA) en el claro, con la lima solo en superficies grandes. Componentes propios: esquinas rectas, botón principal con sombra dura y brillo, etiquetas en monoespaciada. El color dinámico de la portada es más sutil.
+- **Playlists generadas**: ya no se usa «🔀 Baraja». Cada origen tiene su propia playlist, que se reutiliza y se sobrescribe: «Reggaeton · Shuffle», «Tus me gusta · Shuffle», «Mix · Shuffle» (varias playlists; la descripción las lista), «Coche · Shuffle» (mezcla guardada) y «Toda mi música · Shuffle». La correspondencia origen → playlist se guarda en el dispositivo; si el origen cambia de nombre, la generada se renombra en la siguiente baraja (`PUT /playlists/{id}`), y si desaparece se crea otra.
+- **Portada** de las playlists generadas: icono de Shuffl, nombre del origen y fecha.
+- Las copias de seguridad se guardan como `shuffl-…json`; las de Baraja se siguen pudiendo restaurar.
+
+### Añadido
+
+- **Migración**: la antigua «🔀 Baraja» no se borra ni se vuelve a escribir; un aviso único explica que se puede borrar a mano.
+- **Siri y atajos**: enlaces `?mezcla=<id>&play=1` y `?origen=<id de playlist>&play=1` que rebarajan y reproducen. Solo con sesión válida, si la mezcla o la playlist existen en ese navegador, y siempre en la playlist «· Shuffle»; sin la clave del navegador que llevan los atajos, piden confirmación. Cada mezcla guardada tiene «Crear atajo de Siri» con el enlace y los pasos para la app Atajos.
+- **Coche**: la ayuda explica que CarPlay no admite apps web y que las playlists «· Shuffle» aparecen en Spotify dentro de CarPlay.
+- **Agitar para barajar** en Inicio (siempre con confirmación; permiso del acelerómetro con un toque en iOS; se desactiva en Ajustes).
+- **Elige por mí**: una ruleta elige de forma uniforme una de tus playlists y la baraja.
+- **¿Es aleatorio de verdad?**: simulación de 10.000 barajas en el dispositivo con gráfico de barras animado y tabla, comparando el barajado de Shuffl con uno sesgado.
+- **Animaciones**: transiciones entre pantallas con View Transitions, celebración discreta al terminar; nada de ello con «reducir movimiento».
+- Test que exige que todos los módulos de `js/` estén en la caché del service worker.
+
 ## [1.1.1] - 2026-11-24
 
 ### Añadido

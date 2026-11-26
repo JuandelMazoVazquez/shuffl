@@ -1,4 +1,4 @@
-# Contribuir a Baraja
+# Contribuir a Shuffl
 
 ## Preparar el entorno
 
