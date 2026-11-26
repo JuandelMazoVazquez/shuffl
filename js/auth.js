@@ -8,6 +8,8 @@ export const SCOPE_LIST = [
   'playlist-modify-private', 'playlist-modify-public', 'user-library-read',
   'user-read-playback-state', 'user-modify-playback-state',
   'ugc-image-upload', 'user-top-read', 'user-read-recently-played', 'user-follow-read',
+  // DELETE /me/library (quitar las playlists antiguas de Shuffl) exige estos dos además de playlist-modify-public.
+  'user-library-modify', 'user-follow-modify',
 ];
 export const SCOPES = SCOPE_LIST.join(' ');
 
@@ -140,4 +142,7 @@ export function logout() {
   removeItem(KEYS.tokens);
   removeItem(KEYS.pkce);
   removeItem(KEYS.metaCache);
+  removeItem(KEYS.libIndex);
+  removeItem(KEYS.purgeOk);
+  removeItem(KEYS.lastTarget);
 }

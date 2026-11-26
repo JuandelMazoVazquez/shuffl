@@ -43,7 +43,7 @@ const CORS = {
 export function makeTrack(i, o = {}) {
   return {
     id: `t${String(i).padStart(21, '0')}`, uri: `spotify:track:t${String(i).padStart(21, '0')}`, type: 'track', name: o.name ?? `Canción ${String(i).padStart(3, '0')}`,
-    artists: [{ name: o.artist ?? `Artista ${i % 7}` }], duration_ms: 120000 + i * 1000,
+    artists: [{ id: o.artistId ?? `artist${i % 7}`, name: o.artist ?? `Artista ${i % 7}` }], duration_ms: 120000 + i * 1000,
     explicit: o.explicit ?? i % 5 === 0, disc_number: 1, track_number: (i % 12) + 1, external_ids: o.isrc ? { isrc: o.isrc } : {},
     album: { id: `al${i % 9}`, name: `Álbum ${i % 9}`, release_date: o.release ?? `${1990 + (i % 30)}-0${1 + (i % 9)}-01`, release_date_precision: 'day', images: [] },
   };
@@ -98,7 +98,7 @@ export function createState() {
   for (let i = 0; i < 7; i++) albumOf(`alb${i}`, 6000 + i * 20, 5);
   return {
     catalog, lists, liked, created: 0, writes: [], tokens: 0, authorizeParams: null, devices, playerCalls: [], images: [], itemRequests: [], metaRequests: [], top, recent, topRequests: [], albums, artists,
-    topArtists, releases, albumTracks, savedUris: new Set([albumTracks.rel_new[0].uri]), containsCalls: [], unfollowCalls: [], artistAlbumCalls: [], albumTrackCalls: [],
+    topArtists, releases, albumTracks, savedUris: new Set([albumTracks.rel_new[0].uri]), containsCalls: [], unfollowCalls: [], artistAlbumCalls: [], albumTrackCalls: [], searchCalls: [], genreArtists: {},
   };
 }
 
@@ -136,6 +136,7 @@ export async function mockSpotify(page, state) {
   const toEntries = (tracks) => tracks.map(entry);
   const metaOf = (l) => ({
     id: l.id, name: l.name, description: l.description ?? '', owner: l.owner, collaborative: !!l.collaborative, items: { total: l.tracks.length },
+    snapshot_id: `snap-${l.tracks.length}-${l.writtenAt ?? ''}`,
     images: l.cover ? [{ url: `https://i.scdn.co/image/${l.id}`, height: 64, width: 64 }] : [],
   });
 
@@ -159,19 +160,32 @@ export async function mockSpotify(page, state) {
       state.containsCalls.push(uris.length);
       if (uris.length > 40) return json(route, { error: { status: 400, message: 'Too many ids' } }, 400);
       const saved = new Set([...state.liked.map((t) => t.uri), ...state.savedUris]);
-      return json(route, uris.map((u) => saved.has(u)));
+      // Una playlist está en tu biblioteca mientras la sigas (en el mock, mientras exista).
+      return json(route, uris.map((u) => (u.startsWith('spotify:playlist:') ? state.lists.has(u.slice(17)) : saved.has(u))));
     }
     if (method === 'DELETE' && path === '/me/library') {
       const uris = (url.searchParams.get('uris') ?? '').split(',').filter(Boolean);
       state.unfollowCalls.push(uris);
       if (state.failUnfollow) return json(route, { error: { status: 403, message: 'Forbidden' } }, 403);
-      for (const u of uris) state.lists.delete(u.replace('spotify:playlist:', ''));
+      // Como Spotify: sin user-library-modify y user-follow-modify, 403 «Insufficient client scope».
+      const granted = String(state.grantedScope ?? state.authorizeParams?.scope ?? '').split(' ');
+      if (!['user-library-modify', 'user-follow-modify'].every((x) => granted.includes(x))) return json(route, { error: { status: 403, message: 'Insufficient client scope' } }, 403);
+      if (!state.unfollowNoop) for (const u of uris) state.lists.delete(u.replace('spotify:playlist:', ''));
       return route.fulfill({ status: 200, headers: CORS });
     }
     if (method === 'GET' && path === '/me/top/artists') {
       state.topRequests.push({ artists: true, ...Object.fromEntries(url.searchParams) });
       const all = state.topArtists[url.searchParams.get('time_range')] ?? [];
       return json(route, { items: all.slice(0, Number(url.searchParams.get('limit') ?? 20)) });
+    }
+    if (method === 'GET' && path === '/search') {
+      const q = url.searchParams.get('q') ?? '';
+      state.searchCalls.push(Object.fromEntries(url.searchParams));
+      if (Number(url.searchParams.get('limit')) > 10) return json(route, { error: { status: 400, message: 'Invalid limit' } }, 400);
+      const genre = /^genre:"(.+)"$/.exec(q)?.[1];
+      const all = (genre && state.genreArtists[genre]) || [];
+      const offset = Number(url.searchParams.get('offset') ?? 0);
+      return json(route, { artists: { items: all.slice(offset, offset + 10), total: all.length } });
     }
     const artistAlbums = /^\/artists\/([^/]+)\/albums$/.exec(path);
     if (artistAlbums && method === 'GET') {
@@ -210,9 +224,17 @@ export async function mockSpotify(page, state) {
       return route.fulfill({ status: 204, headers: CORS });
     }
     if (method === 'GET' && path === '/me') return json(route, { id: 'me', display_name: 'Usuaria Prueba' });
-    if (method === 'GET' && path === '/me/playlists') return json(route, page_([...state.lists.values()].map(metaOf), url));
+    if (method === 'GET' && path === '/me/playlists') {
+      const body = page_([...state.lists.values()].map(metaOf), url);
+      // Para simular otra pestaña o dispositivo que cambia la biblioteca justo después de una lectura.
+      const after = state.afterPlaylists;
+      state.afterPlaylists = null;
+      after?.();
+      return json(route, body);
+    }
     if (method === 'GET' && path === '/me/tracks') return json(route, page_(state.likedDates ? state.liked.map((item, i) => ({ added_at: state.likedDates(i), item })) : toEntries(state.liked), url));
     if (method === 'POST' && path === '/me/playlists') {
+      if (state.failCreate) return json(route, { error: { status: 500, message: 'boom' } }, 500);
       const id = `new${++state.created}`;
       state.lists.set(id, { id, name: body.name, description: body.description, owner: { id: 'me' }, tracks: [] });
       state.writes.push({ op: 'create', id, name: body.name, public: body.public, description: body.description });

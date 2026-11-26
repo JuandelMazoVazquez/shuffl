@@ -10,11 +10,12 @@ test.beforeEach(async ({ page }) => {
 const open = (page, card) => openPanel(page, card);
 const byName = (name) => [...state.lists.values()].filter((l) => l.name === name);
 
-test('instantáneas: Top 4 semanas pide limit 50, crea «📸 Top 4 semanas» y la siguiente vez la actualiza', async ({ page }) => {
+test('instantáneas: Top 4 semanas pide limit 50, crea «📸 Top 4 semanas» y la siguiente vez crea otra y quita la anterior', async ({ page }) => {
   await login(page);
   await open(page, 'snap');
   await page.locator('#snap-go').click();
-  await expect(page.getByText('«📸 Top 4 semanas» lista: 30 canciones.')).toBeVisible();
+  await expect(page.locator('#result-meta:visible')).toContainText('30 canciones');
+  await expect(page.locator('#result-playlist:visible')).toHaveText('📸 Top 4 semanas');
   await idle(page);
   expect(state.topRequests).toEqual([{ limit: '50', time_range: 'short_term' }]);
   const [snap] = byName('📸 Top 4 semanas');
@@ -24,24 +25,27 @@ test('instantáneas: Top 4 semanas pide limit 50, crea «📸 Top 4 semanas» y 
   state.top.short_term = state.top.short_term.slice(0, 10);
   await page.getByRole('button', { name: 'Volver', exact: true }).first().click();
   await page.locator('#snap-go').click();
-  await expect(page.getByText('«📸 Top 4 semanas» lista: 10 canciones.')).toBeVisible();
+  await expect(page.locator('#result-meta:visible')).toContainText('10 canciones');
+  await expect(page.locator('#result-playlist:visible')).toHaveText('📸 Top 4 semanas');
   await idle(page);
   expect(byName('📸 Top 4 semanas')).toHaveLength(1);
   expect(byName('📸 Top 4 semanas')[0].tracks).toHaveLength(10);
-  const undo = await page.evaluate(() => JSON.parse(localStorage.getItem('baraja.undo')));
-  expect(undo.uris).toHaveLength(30);
+  expect(byName('📸 Top 4 semanas')[0].id).not.toBe(snap.id);
+  expect(state.unfollowCalls).toEqual([[`spotify:playlist:${snap.id}`]]);
 });
 
 test('actualizar una instantánea no pisa el Deshacer de otra playlist', async ({ page }) => {
   await login(page);
   await open(page, 'snap');
   await page.locator('#snap-go').click();
-  await expect(page.getByText('«📸 Top 4 semanas» lista: 30 canciones.')).toBeVisible();
+  await expect(page.locator('#result-meta:visible')).toContainText('30 canciones');
+  await expect(page.locator('#result-playlist:visible')).toHaveText('📸 Top 4 semanas');
   await idle(page);
   await page.evaluate(() => localStorage.setItem('baraja.undo', JSON.stringify({ playlistId: 'pl_rock', name: 'Rock', uris: ['spotify:track:x'], pending: false, after: 1, date: new Date().toISOString() })));
   await page.getByRole('button', { name: 'Volver', exact: true }).first().click();
   await page.locator('#snap-go').click();
-  await expect(page.getByText('«📸 Top 4 semanas» lista: 30 canciones.')).toBeVisible();
+  await expect(page.locator('#result-meta:visible')).toContainText('30 canciones');
+  await expect(page.locator('#result-playlist:visible')).toHaveText('📸 Top 4 semanas');
   await idle(page);
   const undo = await page.evaluate(() => JSON.parse(localStorage.getItem('baraja.undo')));
   expect(undo.playlistId).toBe('pl_rock');
@@ -53,18 +57,21 @@ test('instantáneas: 6 meses, siempre y últimas escuchas (sin repetidas) con op
   await open(page, 'snap');
   await page.locator('#snap-top_medium').check();
   await page.locator('#snap-go').click();
-  await expect(page.getByText('«📸 Top 6 meses» lista: 50 canciones.')).toBeVisible();
+  await expect(page.locator('#result-meta:visible')).toContainText('50 canciones');
+  await expect(page.locator('#result-playlist:visible')).toHaveText('📸 Top 6 meses');
   await idle(page);
   await page.getByRole('button', { name: 'Volver', exact: true }).first().click();
   await page.locator('#snap-top_long').check();
   await page.locator('#snap-go').click();
-  await expect(page.getByText('«📸 Top siempre» lista: 50 canciones.')).toBeVisible();
+  await expect(page.locator('#result-meta:visible')).toContainText('50 canciones');
+  await expect(page.locator('#result-playlist:visible')).toHaveText('📸 Top siempre');
   await idle(page);
   await page.getByRole('button', { name: 'Volver', exact: true }).first().click();
   await page.locator('#snap-recent').check();
   await page.locator('#snap-shuffle').check();
   await page.locator('#snap-go').click();
-  await expect(page.getByText('«📸 Últimas escuchas» lista: 10 canciones.')).toBeVisible();
+  await expect(page.locator('#result-meta:visible')).toContainText('10 canciones');
+  await expect(page.locator('#result-playlist:visible')).toHaveText('📸 Últimas escuchas');
   await idle(page);
   expect(state.topRequests.map((r) => r.time_range ?? 'recent')).toEqual(['medium_term', 'long_term', 'recent']);
   expect(state.topRequests[2].limit).toBe('50');
@@ -89,7 +96,7 @@ test('Me gusta sin playlist: encuentra las que no están en ninguna playlist pro
 });
 
 test('Me gusta sin playlist: no cuenta las playlists que genera Baraja y avisa si no hay ninguna', async ({ page }) => {
-  state.lists.set('pl_baraja', { id: 'pl_baraja', name: '🔀 Baraja', owner: { id: 'me' }, tracks: state.liked.slice(0, 5) });
+  state.lists.set('pl_baraja', { id: 'pl_baraja', name: '🔀 Baraja', description: 'Barajada con Baraja · aleatorio uniforme · reprodúcela con el aleatorio de Spotify apagado', owner: { id: 'me' }, tracks: state.liked.slice(0, 5) });
   state.liked = state.liked.slice(0, 5);
   await login(page);
   await open(page, 'orphans');

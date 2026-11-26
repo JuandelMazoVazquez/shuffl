@@ -20,7 +20,7 @@ async function shuffleRock(page) {
   await login(page);
   await pick(page, 'shuffle', 'Rock');
   await page.locator('#shuffle-go').click();
-  await expect(page.locator('#panel-shuffle .result-title')).toContainText('Listo');
+  await expect(page.locator('#panel-shuffle .result-kicker')).toContainText('Listo');
   await idle(page);
 }
 
@@ -55,7 +55,7 @@ test('«Elige por mí»: la ruleta se para en una de tus playlists (nunca en una
     const name = await page.locator('#reel').textContent();
     expect(valid).toContain(name);
     // El resultado anterior sigue en la página: se espera a la escritura de esta baraja.
-    await expect.poll(() => state.writes.filter((w) => w.op === 'put').length).toBe(i + 2);
+    await expect.poll(() => state.writes.filter((w) => w.op === 'create').length).toBe(i + 2);
     await idle(page);
     expect(byName(`${name} · Shuffle`)).toHaveLength(1);
   }
@@ -71,7 +71,7 @@ test('la ruleta anima los nombres antes de pararse (sin movimiento reducido)', a
   await expect(page.locator('#roulette-go')).toBeDisabled();
   await shot(page, 'docs/capturas/20-ruleta.png');
   await expect(page.locator('#reel')).toHaveClass(/landed/, { timeout: 8000 });
-  await expect(page.locator('#panel-shuffle .result-title')).toContainText('Listo');
+  await expect(page.locator('#panel-shuffle .result-kicker')).toContainText('Listo');
 });
 
 test('agitar en Inicio rebaraja la última mezcla tras confirmar; cancelar o estar en otra pantalla no hace nada', async ({ page }) => {
@@ -84,12 +84,12 @@ test('agitar en Inicio rebaraja la última mezcla tras confirmar; cancelar o est
   state.dismissNext = true;
   await shake(page);
   await page.waitForTimeout(300);
-  const puts = () => state.writes.filter((w) => w.op === 'put' && w.id === gen.id).length;
+  const puts = () => state.writes.filter((w) => w.op === 'create').length;
   expect(puts()).toBe(1);
 
   await page.waitForTimeout(3100);
   await shake(page);
-  await expect(page.locator('#panel-shuffle .result-title')).toContainText('Listo');
+  await expect(page.locator('#panel-shuffle .result-kicker')).toContainText('Listo');
   await idle(page);
   expect(puts()).toBe(2);
   expect(byName('Rock · Shuffle')).toHaveLength(1);
@@ -110,7 +110,7 @@ test('agitar se puede desactivar en Ajustes', async ({ page }) => {
   await expect(page.locator('#shake-hint')).toHaveCount(0);
   await shake(page);
   await page.waitForTimeout(300);
-  expect(state.writes.filter((w) => w.op === 'put')).toHaveLength(1);
+  expect(state.writes.filter((w) => w.op === 'create')).toHaveLength(1);
   expect(await page.evaluate(() => localStorage.getItem('baraja.shake'))).toBe('false');
 });
 
@@ -131,14 +131,14 @@ test('en iOS pide el permiso del acelerómetro con un toque antes de escuchar', 
   await page.waitForTimeout(900);
   await shake(page);
   await page.waitForTimeout(300);
-  expect(state.writes.filter((w) => w.op === 'put')).toHaveLength(1);
+  expect(state.writes.filter((w) => w.op === 'create')).toHaveLength(1);
   await page.locator('#shake-enable').click();
   await expect(page.locator('#shake-hint')).toBeVisible();
   expect(await page.evaluate(() => window.__asked)).toBe(1);
   await shake(page);
-  await expect(page.locator('#panel-shuffle .result-title')).toContainText('Listo');
+  await expect(page.locator('#panel-shuffle .result-kicker')).toContainText('Listo');
   await idle(page);
-  expect(state.writes.filter((w) => w.op === 'put')).toHaveLength(2);
+  expect(state.writes.filter((w) => w.op === 'create')).toHaveLength(2);
 });
 
 test('agitar tras barajar «la propia playlist» escribe en su «· Shuffle», nunca en la original', async ({ page }) => {
@@ -148,7 +148,7 @@ test('agitar tras barajar «la propia playlist» escribe en su «· Shuffle», n
   await moreOptions(page);
   await page.locator('#panel-shuffle label.choice', { hasText: 'La propia playlist' }).click();
   await page.locator('#shuffle-go').click();
-  await expect(page.locator('#panel-shuffle .result-title')).toContainText('Listo');
+  await expect(page.locator('#panel-shuffle .result-kicker')).toContainText('Listo');
   await idle(page);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('baraja.lastMix')).mode)).toBe('self');
   const ownPuts = () => state.writes.filter((w) => w.op === 'put' && w.id === 'pl_rock').length;

@@ -3,9 +3,10 @@ import { sanitizeFilters } from './core.js';
 import { sanitizeMinutes } from './generators.js';
 
 export const MAX_MIXES = 50;
-export const MIX_MODES = ['reuse', 'new', 'self'];
-/** Canciones (lo de siempre), a medida de tiempo o por álbumes. */
-export const SHUFFLE_KINDS = ['songs', 'time', 'albums'];
+/** «reuse»: una playlist de Shuffl nueva (sustituye a la anterior); «self»: la propia playlist. */
+export const MIX_MODES = ['reuse', 'self'];
+/** Canciones (lo de siempre) o a medida de tiempo. Las de antes («new», «albums») se convierten al leerlas. */
+export const SHUFFLE_KINDS = ['songs', 'time'];
 const MAX_IDS = 500;
 /** Ids de playlist: solo letras, números, «_» y «-». Evita `..`, `/` o `%` que alterarían la ruta de la API. */
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
@@ -18,13 +19,11 @@ export function sanitizeMix(raw) {
   const id = ID_RE.test(String(raw.id ?? '')) ? str(raw.id, 40) : '';
   const name = str(raw.name, 60).trim();
   if (!id || !name) return null;
-  const kind = SHUFFLE_KINDS.includes(raw.kind) ? raw.kind : 'songs';
-  const savedAlbums = kind === 'albums' && raw.savedAlbums === true;
-  const library = !savedAlbums && raw.library === true;
-  const ids = savedAlbums ? [] : Array.isArray(raw.ids) ? raw.ids.filter((x) => typeof x === 'string' && ID_RE.test(x)).slice(0, MAX_IDS) : [];
-  if (!library && !savedAlbums && ids.length === 0) return null;
+  const library = raw.library === true;
+  const ids = Array.isArray(raw.ids) ? raw.ids.filter((x) => typeof x === 'string' && ID_RE.test(x)).slice(0, MAX_IDS) : [];
+  if (!library && ids.length === 0) return null;
   const minutes = sanitizeMinutes(raw.minutes);
-  if (kind === 'time' && !minutes) return null;
+  const kind = raw.kind === 'time' && minutes ? 'time' : 'songs';
   const names = Array.isArray(raw.names) ? raw.names.map((x) => str(x, 100)).slice(0, MAX_IDS) : [];
   const mode = MIX_MODES.includes(raw.mode) ? raw.mode : 'reuse';
   return {
@@ -32,10 +31,9 @@ export function sanitizeMix(raw) {
     names: names.length ? names : ids.map(() => ''),
     filters: sanitizeFilters(raw.filters),
     dedupe: raw.dedupe !== false,
-    mode: kind !== 'songs' && mode === 'self' ? 'reuse' : mode,
+    mode: kind === 'time' && mode === 'self' ? 'reuse' : mode,
     kind,
     ...(kind === 'time' ? { minutes } : {}),
-    ...(savedAlbums ? { savedAlbums } : {}),
   };
 }
 
@@ -62,4 +60,4 @@ export function upsertMix(list, mix) {
 export const removeMix = (list, id) => list.filter((m) => m.id !== id);
 
 /** Texto de resumen de las fuentes de una mezcla. */
-export const mixSources = (mix, libraryLabel, albumsLabel = '') => (mix.savedAlbums ? [albumsLabel] : mix.library ? [libraryLabel] : mix.names.filter(Boolean)).join(' + ');
+export const mixSources = (mix, libraryLabel) => (mix.library ? [libraryLabel] : mix.names.filter(Boolean)).join(' + ');

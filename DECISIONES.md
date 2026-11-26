@@ -2,6 +2,59 @@
 
 Trabajo hecho sin supervisión el 2026-11-23. Todo lo reversible lo decidí yo; lo demás está en [docs/bandeja.md](docs/bandeja.md).
 
+## v1.3.1 (2026-11-27): correcciones tras probar con Spotify real en el iPhone
+
+- **Por qué no se borraba nada**:
+  1. La v1.3 solo quitaba copias repetidas del mismo origen, así que «Spanish Rap · Shuffle», «12 years ago · Shuffle» y «📸 Top 4 weeks» se quedaban por diseño.
+  2. `DELETE /me/library` exige los scopes `user-library-modify` y `user-follow-modify` además de `playlist-modify-public` ([docs/specs/spotify-v1.3.1.md](docs/specs/spotify-v1.3.1.md)), y la app no los pedía: el borrado habría fallado con 403.
+  - Se añaden los dos scopes. Quien ya tenía sesión ve «vuelve a conectar» una vez, con el mecanismo de scopes que faltan de la v1.1.
+  - `DELETE /playlists/{id}/followers` está obsoleto y no existe en Development Mode.
+  - Un error al borrar ya no se queda en un aviso: detiene la creación y muestra el mensaje real de Spotify.
+  - «Comprobar conexión» crea una playlist vacía de prueba y la quita, así que el fallo se ve sin barajar nada.
+- **Solo una playlist de Shuffl a la vez** (lo pide el encargo y sustituye a «una por origen» de la v1.3). Al crear cualquier playlist de Shuffl (shuffle, Descubrir, Olvidadas, Instantáneas y Mi top), se siguen estos pasos:
+  1. Se leen y barajan las canciones en memoria.
+  2. Dentro del candado de escritura se vuelve a leer la biblioteca y se quitan todas las de Shuffl.
+  3. Se crea la nueva.
+  - **Quedan fuera** las herramientas que crean playlists que la persona quiere conservar: Ordenar, Copia limpia de Duplicados, Dividir, Restaurar y Me gusta sin playlist. Sus nombres no son de la app y su descripción («Creada con Shuffl») no está en la lista, así que tampoco se reconocen como de Shuffl.
+  - **«Volver a barajar»** en el resultado reordena la misma playlist recién creada, porque no crea otra. **«Buscar más»** añade a la playlist en curso.
+- **Qué es una playlist de Shuffl** (`isAppPlaylist`): propia, no colaborativa (otras personas pueden escribir en ella) y con un nombre de los que pone la app. Además debe cumplir una de dos cosas:
+  - llevar la etiqueta `shuffl:src=` al final de la descripción;
+  - o, sin etiqueta, tener una descripción de las que generaron las versiones anteriores, sacadas del historial de git de `js/i18n.js`: exactas (instantáneas Baraja/Shuffl y la de «🔀 Baraja») o, las que acababan con la lista de orígenes, como prefijo con algo detrás.
+  - Nombres de la app: termina en « · Shuffle», empieza por «📸 » o es exactamente «🔀 Baraja». Se añade también «… · Shuffle · fecha» (el «una nueva cada vez» de la v1.2), que lleva la misma descripción. Se deja fuera «Baraja · fecha», que no estaba en el encargo.
+  - Descripción vacía, propia o con solo el prefijo: no se borra. Una renombrada (otro nombre aunque conserve la etiqueta) es tuya y no se toca.
+- **No se ofrecen como origen**: `loadPlaylists` quita las de Shuffl de todos los selectores (también de «toda mi biblioteca», «Elige por mí» y los enlaces `?origen=`). Además, los orígenes de la baraja en curso nunca se borran.
+- **Primera vez**: hoja con la lista y un único botón, «Borrar y no volver a preguntar», más «Cancelar», que no borra ni crea nada y explica cómo desactivarlo. Después es automático, con el aviso «Se han quitado N playlists antiguas de Shuffl» en el resultado. Se desactiva en Ajustes; desactivado, se acumulan como antes.
+- **Errores**: si falla borrar o crear, error con el motivo real y «Reintentar», que repite solo ese paso con las canciones en memoria (no se vuelve a leer), y «Volver».
+- **Pin**: como cada shuffle crea una playlist nueva, el pin de Tu biblioteca no se conserva. «Tenerla siempre a mano» lo explica y propone ordenar Tu biblioteca por «Recientes».
+- **Transiciones**:
+  - Las causas: `document.startViewTransition` en cada cambio (en iOS, y sobre todo en la app instalada, captura y anima toda la pantalla), la entrada de 280 ms con desplazamiento lateral, el repintado de Inicio en cada cambio y que `main` se movía 3 px porque el margen del primer elemento de cada pantalla «salía» de él (margin collapsing).
+  - El arreglo: cambio síncrono sin View Transitions, fundido de opacidad de 120 ms, `main { display: flow-root }`, solo se refresca la pantalla que se muestra y cada pantalla recuerda su scroll.
+  - Un e2e comprueba que no se llama a View Transitions, que el cambio tarda menos de 100 ms y que el CLS es menor de 0,01.
+- **Inicio**:
+  - Con historial, una tarjeta con la carátula del primer origen (entera), su nombre, la fecha de la última baraja (hoy, ayer o la fecha), «Volver a barajar» (botón principal normal) y «Barajar otra cosa».
+  - Sin historial, «Empezar».
+  - El aviso de icono nuevo sale solo en Inicio y no vuelve tras «Entendido»; es el único aviso de un solo uso que queda.
+- **«Barajando…»**: el formulario se oculta y la pantalla de trabajo sale antes de la primera petición. Pasos visibles: leyendo canciones (con progreso), barajando, quitando las antiguas, creando y guardando (con progreso).
+- **Resultado**:
+  - Arriba: nombre de la playlist, canciones y duración, «▶ Reproducir ahora» y «Abrir en Spotify».
+  - Lista de 30 canciones con carátula de 48 px. Se usa la imagen mediana (300 px) para que se vea nítida en pantallas 3x, encajada sin recortar (`object-fit: contain`) y sin nada encima.
+  - El logo de Spotify sigue como atribución.
+- **Quitados**:
+  - «Tal día como hoy»: la API no da historial por fecha. La idea del archivo de datos de Spotify queda en el ROADMAP.
+  - «Barajar por álbumes».
+  - Las mezclas guardadas de esos tipos o con «una nueva cada vez» se convierten al leerlas.
+- **Novedades y Descubre**:
+  - Por defecto, 30 canciones. En «Más opciones» se elige número (15/30/50/100) o duración (30/45/60/90 min, ±2 min, como el shuffle por tiempo).
+  - Los artistas se leen en lotes de 25, hasta 100, solo cuando hacen falta. «Buscar más» lee el siguiente lote si se acaban y añade otra tanda a la misma playlist.
+  - Estilos: tus artistas (tops y seguidos), «Como mi playlist…» (artistas de esa playlist ordenados por apariciones; se añaden ids de artista a la normalización de canciones) y un género.
+  - Los géneros salen del objeto Artist, que Spotify marca como obsoleto y en muchas cuentas llega vacío: si ninguno de tus artistas trae géneros, la opción no aparece.
+  - Con un género, `/search?type=artist&q=genre:"…"` con `limit=10` y hasta 3 páginas, más tus artistas de ese género.
+  - Una línea en la pantalla dice de dónde salen las canciones.
+- **Sin lo que ya tienes**: un índice local con los ids de todas tus playlists propias y colaborativas y de Tus me gusta, guardado por playlist con su `snapshot_id`.
+  - Solo se vuelve a leer la playlist que cambió o lleva más de 24 h, y Tus me gusta si cambió su total.
+  - Se valida al leerlo, es por cuenta y se borra al cerrar sesión, igual que la caché de metadatos. Si Deshacer no cabe en el almacenamiento, también se vacía.
+  - Sustituye a `GET /me/library/contains`, que solo miraba lo guardado y gastaba una petición por cada 40 canciones.
+
 ## v1.3 (2026-11-26): una sola «· Shuffle», Descubrir y funciones nuevas
 
 - **Navegación en 4 pestañas: Inicio · Shuffle · Descubrir · Más.**

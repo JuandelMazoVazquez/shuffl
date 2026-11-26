@@ -2,6 +2,46 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). El proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 
+## [1.3.1] - 2026-11-27
+
+Correcciones tras probar con Spotify real en el iPhone. **Hay que volver a conectar con Spotify una vez**: quitar playlists necesita dos permisos nuevos.
+
+### Cambiado
+
+- **Solo una playlist de Shuffl en tu cuenta.** Cada shuffle, Descubrir, Olvidadas, Instantánea o «Mi top» primero lee las canciones, después quita todas las playlists anteriores de Shuffl y por último crea la nueva.
+  - Se reconocen por su etiqueta o, las antiguas, por su nombre y una descripción de una versión anterior.
+  - Nunca se tocan las renombradas, las de otras personas, las colaborativas ni las que no tienen esa descripción.
+  - Las playlists de Shuffl ya no se ofrecen como origen.
+  - La primera vez se enseña la lista con «Borrar y no volver a preguntar»; después es automático, con un aviso. Se desactiva en Ajustes.
+  - Lo quitado se recupera durante 90 días en spotify.com.
+- **Cambio de pestaña limpio en iPhone**: sin View Transitions ni desplazamientos (solo un fundido de 120 ms), sin saltos de layout, y cada pestaña recuerda su scroll.
+- **Inicio**: tarjeta con la carátula, el nombre y la fecha de la última baraja, con «Volver a barajar» y «Barajar otra cosa» (o «Empezar» la primera vez). El aviso de icono nuevo sale solo en Inicio y una vez.
+- **Shuffle**: un solo modo; «Por tiempo» pasa a «Más opciones».
+- **Novedades y Descubre**:
+  - 30 canciones por defecto y «Buscar más» para añadir otras 30.
+  - En «Más opciones», número (15-100) o duración (30-90 min).
+  - Estilo: tus artistas, «Como mi playlist…» o un género (si Spotify da géneros).
+  - Nunca salen canciones que ya tienes en tus playlists o en Tus me gusta.
+- «Tenerla siempre a mano» explica que el pin no pasa a la playlist nueva.
+
+### Añadido
+
+- Pantalla «Barajando…» al instante, con los naipes y el paso real (leyendo, barajando, quitando las antiguas, creando, guardando).
+- Resultado rediseñado:
+  - Arriba, nombre de la playlist, canciones y duración, con «▶ Reproducir ahora» y «Abrir en Spotify».
+  - La lista de canciones con la carátula del álbum, entera y a 48 px.
+- Si quitar o crear falla, se ve el error real con «Reintentar» (las canciones siguen en memoria).
+- «Comprobar conexión» prueba también que Shuffl puede quitar playlists.
+
+### Corregido
+
+- No se borraban las playlists antiguas: `DELETE /me/library` exige los permisos `user-library-modify` y `user-follow-modify`, que la app no pedía.
+
+### Quitado
+
+- «Tal día como hoy»: la API solo da las últimas 50 escuchas. En el ROADMAP queda hacerlo con el archivo de datos de Spotify.
+- «Barajar por álbumes».
+
 ## [1.3.0] - 2026-11-26
 
 ### Cambiado

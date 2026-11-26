@@ -12,7 +12,7 @@ async function shuffleChill(page) {
   await login(page);
   await pick(page, 'shuffle', 'Chill');
   await page.locator('#panel-shuffle .btn.primary.big').click();
-  await expect(page.getByText('Listo: 80 canciones barajadas')).toBeVisible();
+  await expect(page.locator('#result-meta:visible', { hasText: /^80 (canciones|songs) ·/ })).toBeVisible();
   await idle(page);
 }
 

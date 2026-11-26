@@ -2,15 +2,17 @@ import { expect } from '@playwright/test';
 import { CLIENT_ID, createState, mockSpotify } from './mock.mjs';
 
 /** Estado simulado nuevo + rutas de Spotify + idioma y diálogos. Devuelve el estado. */
-export async function installMock(page, { lang = 'es', logoNotice = false } = {}) {
+export async function installMock(page, { lang = 'es', logoNotice = false, purgeAsk = false } = {}) {
   const state = createState();
   await mockSpotify(page, state);
   page.on('dialog', (d) => (state.dismissNext ? ((state.dismissNext = false), d.dismiss()) : d.accept()));
-  await page.addInitScript(({ l, notice }) => {
+  await page.addInitScript(({ l, notice, ask }) => {
     if (!localStorage.getItem('baraja.lang')) localStorage.setItem('baraja.lang', JSON.stringify(l));
+    // Por defecto el borrado de las playlists antiguas ya está aceptado; los tests de la hoja pasan purgeAsk.
+    if (!ask && localStorage.getItem('baraja.purgeOk') === null) localStorage.setItem('baraja.purgeOk', JSON.stringify({ me: 'me' }));
     if (!notice && localStorage.getItem('baraja.logoNotice.v12') === null) localStorage.setItem('baraja.logoNotice.v12', 'true');
     delete navigator.canShare;
-  }, { l: lang, notice: logoNotice });
+  }, { l: lang, notice: logoNotice, ask: purgeAsk });
   return state;
 }
 

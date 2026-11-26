@@ -6,13 +6,11 @@ import {
 } from './core.js';
 import { sanitizeMix, sanitizeMixes, upsertMix, removeMix, newMixId, mixSources } from './mixes.js';
 import {
-  sourceKey, generatedName, datedName, generatedDescription, sameDescription, sanitizeTargets, setTarget,
-  isGeneratedPlaylist, tagFor, withTag, readTag, findCandidates, pickKeep, duplicateGroups,
-  findLegacyBaraja, groupKeyOf,
+  sourceKey, generatedName, snapshotName, generatedDescription, tagFor, withTag, isAppPlaylist,
 } from './targets.js';
 import { SpotifyApi, ApiError } from './api.js';
 import * as auth from './auth.js';
-import { KEYS, getItem, setItem, removeItem } from './storage.js';
+import { KEYS, OBSOLETE_KEYS, getItem, setItem, removeItem } from './storage.js';
 import { t, setLang, getLang, LANGS } from './i18n.js';
 import { REPO_URL, APP_NAME } from './config.js';
 import { registerUpdates } from './update.js';
@@ -23,16 +21,16 @@ import {
 } from './random.js';
 import { imageDominantColor, rgbCss } from './color.js';
 import {
-  MINUTE, TIME_PRESETS, MIN_MINUTES, MAX_MINUTES, sanitizeMinutes, fitDuration, groupAlbums, shuffleAlbums,
-  onThisDayGroups, topArtist, forgottenTracks, FORGOTTEN_YEARS, pickArtists, recentAlbums, RELEASE_DAYS, albumsFromListening,
-  withoutUris, pruneCache, cacheGet, cacheSet,
+  MINUTE, TIME_PRESETS, MIN_MINUTES, MAX_MINUTES, sanitizeMinutes, fitDuration, forgottenTracks, FORGOTTEN_YEARS,
+  pickArtists, recentAlbums, RELEASE_DAYS, albumsFromListening, withoutUris, pruneCache, cacheGet, cacheSet,
+  DISCOVER_COUNTS, DISCOVER_MINUTES, DEFAULT_DISCOVER_COUNT, ARTIST_BATCH, MAX_DISCOVER_ARTISTS, takeAmount, topGenres,
+  artistsFromTracks, notInLibrary,
 } from './generators.js';
-import { SHUFFLE_KINDS } from './mixes.js';
 import { renderSummary } from './summary.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 const root = document.getElementById('app');
-const S = { api: null, me: null, playlists: [], raw: [], sourceCache: new Map(), loaded: false, busy: false, tab: 'home', pickers: [], cleanDeclined: new Set() };
+const S = { api: null, me: null, playlists: [], raw: [], sourceCache: new Map(), loaded: false, busy: false, tab: 'home', pickers: [], scroll: {} };
 let pickerSeq = 0;
 
 // ---------- DOM ----------
@@ -129,11 +127,15 @@ function errorMessage(e) {
 
 // ---------- Estado de tarea (progreso y errores) ----------
 
-/** Con `loader` muestra los naipes mezclándose; su barra sigue el progreso real. */
+/**
+ * Con `loader` muestra los naipes mezclándose; su barra sigue el progreso real. `phase(clave)` enseña un paso sin cifras
+ * (barajando, quitando las antiguas…), y `fail(e, retry)` añade «Reintentar».
+ */
 function createStatus({ loader = false } = {}) {
   const bar = h('progress', { hidden: true, max: '1', value: '0' });
   const live = h('p', { class: 'live', role: 'status', 'aria-live': 'polite' });
-  const err = h('p', { class: 'error', role: 'alert', hidden: true });
+  const retryBtn = h('button', { class: 'btn primary', type: 'button', hidden: true }, t('retry'));
+  const err = h('div', { class: 'error-box', role: 'alert', hidden: true }, h('p', { class: 'error' }), retryBtn);
   const cards = loader
     ? h('div', { class: 'loader', 'aria-hidden': 'true' }, h('div', { class: 'deck' }, h('div', { class: 'lcard' }), h('div', { class: 'lcard' }), h('div', { class: 'lcard' })), h('div', { class: 'loader-bar' }))
     : null;
@@ -141,6 +143,12 @@ function createStatus({ loader = false } = {}) {
   return {
     el: h('div', { class: 'status' }, cards, live, bar, err),
     say(msg) { live.textContent = msg; err.hidden = true; showCards(false); },
+    phase(key) {
+      live.textContent = t(`phase_${key}`);
+      err.hidden = true;
+      bar.hidden = true;
+      showCards(true);
+    },
     progress(key, done, total) {
       live.textContent = t(key, { done: fmt(done), total: fmt(total) });
       bar.hidden = false;
@@ -150,12 +158,14 @@ function createStatus({ loader = false } = {}) {
     },
     stop() { bar.hidden = true; showCards(false); },
     clear() { live.textContent = ''; bar.hidden = true; err.hidden = true; showCards(false); },
-    fail(e) {
+    fail(e, retry = null) {
       console.error(e);
       live.textContent = '';
       bar.hidden = true;
       showCards(false);
-      err.textContent = errorMessage(e);
+      err.firstChild.textContent = errorMessage(e);
+      retryBtn.hidden = !retry;
+      retryBtn.onclick = retry;
       err.hidden = false;
     },
   };
@@ -187,7 +197,8 @@ const likedEntry = (prev) => ({
 async function loadPlaylists() {
   const raw = (await S.api.getMyPlaylists()).filter(Boolean);
   S.raw = raw;
-  S.playlists = organizePlaylists([likedEntry(S.playlists.find((p) => p.isLiked)), ...raw.map((p) => normalizePlaylist(p, S.me.id))]);
+  // Las playlists de Shuffl se borran antes de crear la siguiente: no se ofrecen como origen en ningún selector.
+  S.playlists = organizePlaylists([likedEntry(S.playlists.find((p) => p.isLiked)), ...raw.filter((p) => !isAppPlaylist(p, S.me.id)).map((p) => normalizePlaylist(p, S.me.id))]);
   S.loaded = true;
   S.sourceCache.clear();
   S.pickers.forEach((p) => p.update());
@@ -195,9 +206,6 @@ async function loadPlaylists() {
 
 const getMixes = () => sanitizeMixes(getItem(KEYS.mixes, []));
 const setMixes = (list) => setItem(KEYS.mixes, list);
-const getTargets = () => sanitizeTargets(getItem(KEYS.targets, {}));
-/** Playlists que crea la app: no cuentan como origen de «toda mi biblioteca» ni de «Me gusta sin playlist». */
-const isGenerated = (pl) => isGeneratedPlaylist(pl, getTargets(), getItem(KEYS.barajaId));
 const nameLabels = () => ({ liked: t('liked'), library: t('allMyMusic') });
 
 /** Hoja inferior con un campo de texto. Devuelve el texto o null si se cancela. */
@@ -275,6 +283,7 @@ function saveUndo(playlistId, name, uris, { soft = false } = {}) {
   if (setItem(KEYS.undo, entry, { strict: true })) return;
   // La caché de Descubrir puede haber llenado el almacenamiento: Deshacer va antes.
   dropMetaCache();
+  removeItem(KEYS.libIndex);
   if (!setItem(KEYS.undo, entry, { strict: true })) throw new UserError(t('errUndoStorage'));
 }
 
@@ -328,199 +337,172 @@ async function applyUndo(status, expectedId) {
   return true;
 }
 
-// ---------- Playlists «· Shuffle»: una por origen en cualquier dispositivo (v1.3) ----------
+// ---------- Playlists de Shuffl: solo una en tu cuenta, la última (v1.3.1) ----------
 
-const autoClean = () => getItem(KEYS.autoClean) === true;
+/** Borrar las antiguas antes de crear (por defecto sí; se desactiva en Ajustes). */
+const purgeEnabled = () => getItem(KEYS.purge) !== false;
+/** La primera vez se enseña la lista y se pide confirmación; el «no volver a preguntar» es de esta cuenta. */
+const purgeConfirmed = () => getItem(KEYS.purgeOk)?.me === S.me?.id;
 
-/** Ms de la última escritura de cada playlist (solo hace falta si hay más de una candidata). */
-async function lastWrites(list) {
-  const map = new Map();
-  if (list.length < 2) return map;
-  for (const p of list) map.set(p.id, await S.api.lastWriteTime(p.id));
-  return map;
-}
-
-/** Playlists que nunca se quitan: los orígenes de las mezclas guardadas y de la última mezcla (atajos, agitar). */
-function sourceIds() {
-  const last = getItem(KEYS.lastMix);
-  return [...getMixes().flatMap((m) => m.ids), ...(Array.isArray(last?.ids) ? last.ids : [])];
-}
-
-/**
- * Escribe `uris` en la «· Shuffle» de `key`: la busca por su etiqueta en tus playlists (o, sin etiqueta, la de la v1.2
- * que este dispositivo ya usaba o la única con ese nombre y descripción), reutiliza la más reciente y le pone nombre,
- * descripción y etiqueta; si no hay, la crea. `protect`: los orígenes de esta baraja, que nunca se sobrescriben ni se
- * quitan. Devuelve { id, notes }.
- */
-async function writeGenerated({ key, name, description, uris, protect = [] }, status) {
-  const tag = await tagFor(key);
-  const full = withTag(description, tag);
-  const result = await withWriteLock(async () => {
-    const raw = await S.api.getMyPlaylists();
-    const cands = findCandidates(raw, { meId: S.me.id, tag, name, legacyDescription: description, preferredId: getTargets()[key] })
-      .filter((p) => !protect.includes(p.id));
-    const keep = pickKeep(cands, await lastWrites(cands), getTargets()[key]);
-    const notes = [];
-    let id;
-    if (keep) {
-      id = keep.id;
-      if (!getItem(KEYS.undo)) {
-        const current = normalizeEntries(await S.api.getPlaylistItems(id)).tracks;
-        saveUndo(id, keep.name, current.map((x) => x.uri), { soft: true });
-      }
-      if (keep.name !== name || !sameDescription(keep.description, full)) {
-        try {
-          await S.api.updatePlaylistDetails(id, { name, description: full });
-        } catch (e) {
-          console.warn('Nombre no actualizado:', e?.status ?? e?.message);
-          notes.push(t('renameFailed'));
-        }
-      }
-    } else {
-      id = (await S.api.createPlaylist(name, full)).id;
-    }
-    setItem(KEYS.targets, setTarget(getTargets(), key, id));
-    await overwritePlaylist(id, uris, status);
-    const tagged = cands.filter((p) => p.id !== id && readTag(p.description) === tag);
-    return { id, notes, group: tagged.length ? { key: `tag:${tag}`, name, keepId: id, legacy: false, count: tagged.length + 1 } : null };
-  });
-  if (result.group) result.notes.push(...await offerCleanup([result.group], { protect }));
-  return { id: result.id, notes: result.notes };
-}
-
-/** Hoja de confirmación de la limpieza, con una casilla por grupo. Devuelve { ok, always, keys, legacy }. */
-function confirmCleanup(groups, legacy) {
+/** Hoja con lo que se va a borrar y un único botón «Borrar y no volver a preguntar» (y Cancelar). Devuelve si se acepta. */
+function confirmPurge(list) {
   return new Promise((resolve) => {
-    const always = h('input', { type: 'checkbox', id: 'clean-always' });
-    always.checked = autoClean();
-    // Las de la v1.2 sin etiqueta pueden venir de orígenes distintos con el mismo nombre: sin marcar por defecto.
-    const boxes = groups.map((g) => {
-      const box = h('input', { type: 'checkbox', 'data-group': g.key });
-      box.checked = !g.legacy;
-      return { g, box };
-    });
-    const legacyBox = legacy ? h('input', { type: 'checkbox', id: 'clean-legacy' }) : null;
-    if (legacyBox) legacyBox.checked = true;
     const onKey = (e) => { if (e.key === 'Escape') close(false); };
-    const close = (ok) => {
-      document.removeEventListener('keydown', onKey);
-      sheet.remove();
-      resolve({ ok, always: always.checked, keys: boxes.filter((b) => b.box.checked).map((b) => b.g.key), legacy: !!legacyBox?.checked });
-    };
-    const single = groups.length === 1 && !legacy && !groups[0].legacy;
-    const title = single ? t('cleanTitleOne', { n: fmt(groups[0].count), name: groups[0].name }) : t('cleanTitleMany');
+    const close = (ok) => { document.removeEventListener('keydown', onKey); sheet.remove(); resolve(ok); };
     const sheet = h('div', { class: 'sheet-backdrop', onclick: (e) => { if (e.target === sheet) close(false); } },
-      h('div', { class: 'sheet', id: 'clean-sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
-        h('h2', { class: 'sheet-title' }, title),
-        single ? null : h('div', { class: 'clean-list' },
-          boxes.map(({ g, box }) => h('label', { class: 'check' }, box,
-            h('span', {}, t(g.legacy ? 'cleanGroupLegacy' : 'cleanGroup', { name: g.name, n: fmt(g.count) })))),
-          legacyBox ? h('label', { class: 'check' }, legacyBox, h('span', {}, t('cleanLegacy', { name: legacy.name }))) : null),
-        h('p', {}, t('cleanWhat')),
-        h('p', { class: 'muted small' }, t('cleanRecover')),
-        groups.length ? h('label', { class: 'check' }, always, h('span', {}, t('cleanAlways'))) : null,
-        h('button', { class: 'btn primary', type: 'button', id: 'clean-ok', onclick: () => close(true) }, t('cleanOk')),
-        h('button', { class: 'btn', type: 'button', id: 'clean-no', onclick: () => close(false) }, t('notNow'))));
+      h('div', { class: 'sheet', id: 'purge-sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('purgeTitle') },
+        h('h2', { class: 'sheet-title' }, t('purgeTitle')),
+        h('p', {}, t('purgeLead')),
+        h('ul', { class: 'purge-list', id: 'purge-list' }, list.map((p) => h('li', {}, p.name))),
+        h('p', { class: 'muted small' }, t('purgeRecover')),
+        h('button', { class: 'btn primary', type: 'button', id: 'purge-ok', onclick: () => close(true) }, t('purgeOk')),
+        h('button', { class: 'btn', type: 'button', id: 'purge-cancel', onclick: () => close(false) }, t('cancel'))));
     document.addEventListener('keydown', onKey);
     document.body.append(sheet);
-    sheet.querySelector('#clean-ok').focus();
+    sheet.querySelector('#purge-ok').focus();
   });
+}
+
+class CancelledError extends UserError {}
+
+class RetryableError extends Error {
+  constructor(cause, retry) {
+    super(cause?.message, { cause });
+    this.retry = retry;
+  }
+}
+
+/** Las playlists de Shuffl de tu biblioteca ahora mismo (lectura fresca), salvo las de `exclude` (los orígenes). */
+async function appPlaylistsNow(exclude) {
+  return (await S.api.getMyPlaylists()).filter((p) => isAppPlaylist(p, S.me.id) && !exclude.includes(p.id));
 }
 
 /**
- * Quita (deja de seguir) las copias repetidas de cada grupo y, si se pasa, la antigua «🔀 Baraja».
- * `groups`: [{ key, name, keepId, legacy, count }]. Pregunta salvo en automático; los grupos sin etiqueta (v1.2)
- * y la antigua «🔀 Baraja» siempre se preguntan. Antes de quitar, con el candado de escritura y la biblioteca recién
- * leída, se vuelve a calcular cada grupo: si la que se conserva ya no es la misma (otra pestaña o dispositivo escribió
- * en otra, o la renombraste), ese grupo se salta. Nunca se quita un origen. Si falla, no se pierde nada. Devuelve avisos.
+ * Quita `ids` de tu biblioteca y comprueba con GET /me/library/contains que de verdad se han quitado: si Spotify
+ * respondiera bien sin quitar nada, se vería el error en vez de ir acumulando playlists. Si un Deshacer apuntaba a una
+ * de ellas, se descarta (ya no se puede aplicar). Lanza un error con el motivo real si algo falla.
  */
-async function offerCleanup(groups, { protect = [], legacy = null, ask = !autoClean() } = {}) {
-  let pending = groups.filter((g) => !S.cleanDeclined.has(g.key));
-  let legacyLeft = legacy && !getItem(KEYS.migrationNotice) ? legacy : null;
-  if (!pending.length && !legacyLeft) return [];
-  if (ask || legacyLeft || pending.some((g) => g.legacy)) {
-    const answer = await confirmCleanup(pending, legacyLeft);
-    if (!answer.ok) {
-      pending.forEach((g) => S.cleanDeclined.add(g.key));
-      // Quien quiere conservar la antigua «🔀 Baraja» no vuelve a ver la pregunta.
-      if (legacyLeft) setItem(KEYS.migrationNotice, true);
-      return [];
-    }
-    if (pending.length) setItem(KEYS.autoClean, answer.always);
-    pending.filter((g) => !answer.keys.includes(g.key)).forEach((g) => S.cleanDeclined.add(g.key));
-    pending = pending.filter((g) => answer.keys.includes(g.key));
-    if (legacyLeft && !answer.legacy) { setItem(KEYS.migrationNotice, true); legacyLeft = null; }
-  }
-  const keepSafe = new Set([...protect, ...sourceIds()]);
+async function removePlaylists(ids) {
   try {
-    const removed = await withWriteLock(async () => {
-      const fresh = (await S.api.getMyPlaylists()).filter(Boolean);
-      const ids = [];
-      for (const g of pending) {
-        const members = fresh.filter((p) => groupKeyOf(p, S.me.id) === g.key);
-        if (members.length < 2 || !members.some((p) => p.id === g.keepId)) continue;
-        const keep = pickKeep(members, await lastWrites(members), g.keepId);
-        if (keep.id !== g.keepId) continue;
-        ids.push(...members.filter((p) => p.id !== keep.id && !keepSafe.has(p.id)).map((p) => p.id));
-      }
-      const old = legacyLeft && findLegacyBaraja(fresh, S.me.id);
-      if (old && old.id === legacyLeft.id && !keepSafe.has(old.id)) ids.push(old.id);
-      const unique = [...new Set(ids)];
-      if (unique.length) await S.api.unfollowPlaylists(unique);
-      // Solo tras quitarla de verdad: si el borrado falla, la antigua «🔀 Baraja» se vuelve a ofrecer.
-      if (legacyLeft) setItem(KEYS.migrationNotice, true);
-      return unique.length;
-    });
-    document.getElementById('clean-notice')?.remove();
-    if (!removed) return [];
-    await loadPlaylists();
-    return [t('cleanRemoved', { n: fmt(removed) })];
+    await S.api.unfollowPlaylists(ids);
+    const uris = ids.map((id) => `spotify:playlist:${id}`);
+    // Spotify puede tardar un momento en reflejar el borrado: se mira otra vez antes de dar el error.
+    let still = await S.api.libraryContains(uris);
+    if (still.some(Boolean)) {
+      await wait(1500);
+      still = await S.api.libraryContains(uris);
+    }
+    if (still.some(Boolean)) throw new UserError(t('purgeStillThere'));
   } catch (e) {
-    console.warn('Copias no quitadas:', e?.status ?? e?.message);
-    return [t('cleanFailed', { reason: errorMessage(e) })];
+    throw new UserError(t('purgeFailed', { reason: errorMessage(e) }));
   }
+  if (ids.includes(getItem(KEYS.undo)?.playlistId)) removeItem(KEYS.undo);
 }
 
-/** Al arrancar: copias repetidas en toda la biblioteca y la antigua «🔀 Baraja». Aviso en Inicio, o limpieza si está en automático. */
-async function checkLibraryDuplicates() {
-  const groups = [];
-  for (const g of duplicateGroups(S.raw, S.me.id)) {
-    const keep = pickKeep(g.playlists, await lastWrites(g.playlists), Object.values(getTargets()).find((id) => g.playlists.some((p) => p.id === id)));
-    groups.push({ key: g.key, name: g.name, legacy: g.legacy, keepId: keep.id, count: g.playlists.length });
-  }
-  const legacy = getItem(KEYS.migrationNotice) ? null : findLegacyBaraja(S.raw, S.me.id);
-  if (!groups.length && !legacy) return;
-  // En automático solo se limpian sin preguntar las copias con etiqueta.
-  const autoGroups = autoClean() ? groups.filter((g) => !g.legacy) : [];
-  // El resultado de la limpieza automática va en su propio aviso para que no lo tape el de lo que queda por revisar.
-  if (autoGroups.length) {
-    const notes = await offerCleanup(autoGroups, { ask: false });
-    if (notes.length) showNotice('clean-done', notes.join(' '));
-  }
-  const left = groups.filter((g) => !autoGroups.includes(g));
-  if (!left.length && !legacy) return;
-  const legacyOnly = legacy && !left.length;
-  showNotice('clean-notice', legacyOnly ? t('legacyFound', { name: legacy.name }) : t('dupsInLibrary', { n: fmt(left.length) }), {
-    label: t('review'),
-    run: async () => {
-      const notes = await offerCleanup(left, { legacy, ask: true });
-      if (notes.length) showNotice('clean-notice', notes.join(' '));
-    },
-    // «Entendido» sobre la antigua «🔀 Baraja» es definitivo; sobre copias repetidas, solo por esta vez.
-    dismiss: legacyOnly ? () => setItem(KEYS.migrationNotice, true) : null,
-  });
+/**
+ * Crea una playlist de Shuffl con `uris` (ya leídas y barajadas, en memoria). Antes quita de tu biblioteca TODAS las
+ * playlists de Shuffl (`isAppPlaylist`), salvo `protect` (los orígenes de esta baraja).
+ * - La hoja de la primera vez va fuera del candado; dentro se vuelve a leer la biblioteca y solo se quita lo que sigue
+ *   siendo de Shuffl y estaba en la lista que viste (si renombras una mientras la hoja está abierta, se salva).
+ * - Si borrar o crear falla, lanza un error con «Reintentar», que repite solo lo que falta sin volver a leer: si la
+ *   playlist llegó a crearse, se rellena esa en vez de crear otra.
+ * Devuelve { id, notes }.
+ */
+async function createAppPlaylist({ key, name, description, uris, protect = [] }, status) {
+  const tag = await tagFor(key ?? 'none');
+  const full = withTag(description, tag, name);
+  let createdId = null;
+  const step = async () => {
+    const notes = [];
+    let confirmed = null;
+    if (purgeEnabled() && !purgeConfirmed()) {
+      status.phase('cleaning');
+      // La playlist de un intento anterior se rellena, no se quita: no se enseña en la hoja.
+      const old = await appPlaylistsNow([...protect, createdId].filter(Boolean));
+      if (old.length) {
+        if (!await confirmPurge(old)) throw new CancelledError(t('purgeCancelled'));
+        confirmed = new Set(old.map((p) => p.id));
+      }
+    }
+    const id = await withWriteLock(async () => {
+      // Una sola lectura fresca: sirve para saber si la playlist de un intento anterior sigue ahí y para borrar.
+      // Con el borrado desactivado y sin intento anterior no hace falta leer la biblioteca.
+      const fresh = purgeEnabled() || createdId ? await appPlaylistsNow(protect) : [];
+      if (createdId && !fresh.some((p) => p.id === createdId)) createdId = null;
+      if (purgeEnabled()) {
+        status.phase('cleaning');
+        // Sin la hoja aceptada en esta cuenta solo se borra lo que se enseñó en ella (nada, si no se enseñó).
+        const allowed = confirmed ?? (purgeConfirmed() ? null : new Set());
+        const old = fresh.filter((p) => p.id !== createdId && (allowed === null || allowed.has(p.id)));
+        if (old.length) {
+          await removePlaylists(old.map((p) => p.id));
+          notes.push(t('purgeDone', { n: fmt(old.length) }));
+        }
+        // Solo cuando el borrado ha ido bien: si falla, la próxima vez se vuelve a enseñar la lista.
+        if (confirmed) setItem(KEYS.purgeOk, { me: S.me.id });
+      }
+      status.phase('creating');
+      try {
+        if (createdId) {
+          await S.api.replaceItems(createdId, uris, (d, tot) => status.progress('saving', d, tot));
+        } else {
+          createdId = (await S.api.createPlaylist(name, full)).id;
+          await S.api.addItems(createdId, uris, (d, tot) => status.progress('saving', d, tot));
+        }
+      } catch (e) {
+        throw new UserError(t('createFailed', { reason: errorMessage(e) }));
+      }
+      return createdId;
+    });
+    setItem(KEYS.lastTarget, id);
+    return { id, notes };
+  };
+  const attempt = async () => {
+    try {
+      return await step();
+    } catch (e) {
+      if (e instanceof CancelledError) throw e;
+      throw new RetryableError(e, attempt);
+    }
+  };
+  return attempt();
 }
 
-/** Aviso en lo alto de Inicio con un botón opcional («Revisar») y «Entendido». */
-function showNotice(id, text, action = null) {
+/**
+ * «Buscar más» y «Volver a barajar» escriben en la playlist que se acaba de crear. Si otra pestaña o dispositivo la ha
+ * quitado o la has renombrado, no se toca y se avisa.
+ */
+async function assertStillAppPlaylist(id) {
+  const p = (await S.api.getMyPlaylists()).find((x) => x?.id === id);
+  if (!p || !isAppPlaylist(p, S.me.id)) throw new UserError(t('playlistGone'));
+}
+
+/**
+ * Crea la playlist y sigue con `after(written)`. Si crear falla, enseña el error real con «Reintentar», que repite
+ * solo lo que falló (las canciones siguen en memoria) y después continúa con `after`.
+ */
+async function commitApp(args, status, after, attempt = () => createAppPlaylist(args, status)) {
+  let written;
+  try {
+    written = await attempt();
+  } catch (e) {
+    if (!(e instanceof RetryableError)) throw e;
+    status.fail(e.cause, () => task(status, () => commitApp(args, status, after, e.retry)));
+    return null;
+  }
+  await after(written);
+  return written.id;
+}
+
+/** Aviso en lo alto de Inicio con «Entendido». `once`: clave que lo marca como visto para siempre. */
+function showNotice(id, text, once = null) {
   document.getElementById(id)?.remove();
   const home = document.getElementById('panel-home');
-  if (!home) return;
+  if (!home || (once && getItem(once))) return;
   const box = h('div', { class: 'notice', id, role: 'note' },
     h('p', {}, text),
     h('div', { class: 'notice-actions' },
-      action ? h('button', { class: 'btn primary', type: 'button', onclick: () => { box.remove(); action.run(); } }, action.label) : null,
-      h('button', { class: 'btn', type: 'button', onclick: () => { box.remove(); action?.dismiss?.(); } }, t('gotIt'))));
+      h('button', { class: 'btn', type: 'button', onclick: () => { box.remove(); if (once) setItem(once, true); } }, t('gotIt'))));
   home.prepend(box);
 }
 
@@ -695,6 +677,24 @@ async function playNow(playlistId, info, status) {
 
 // ---------- Resultado compartido ----------
 
+/** «1 h 23 min» o «45 min». */
+function formatDuration(ms) {
+  const min = Math.max(0, Math.round(ms / MINUTE));
+  return min >= 60 ? t('durationHours', { h: Math.floor(min / 60), m: min % 60 }) : t('minutesShort', { n: min });
+}
+
+/** Fila de canción: carátula entera a 48 px (sin recortar ni nada encima), título y artista. */
+const trackRow = (tr, i) => h('li', { class: 'track', style: `--i:${Math.min(i, 12)}` },
+  tr.thumb?.startsWith('https://') ? h('img', { class: 'track-cover', src: tr.thumb, alt: '', loading: 'lazy', width: '48', height: '48' })
+    : h('span', { class: 'track-cover', 'aria-hidden': 'true' }, '♪'),
+  h('span', { class: 'track-text' }, h('span', { class: 'track-name' }, tr.name), h('span', { class: 'track-artist' }, artistsOf(tr))));
+
+const RESULT_ROWS = 30;
+
+/**
+ * Resultado común: arriba el nombre de la playlist, canciones y duración, «▶ Reproducir ahora» y «Abrir en Spotify»;
+ * después avisos, la lista con carátulas y el resto de acciones. `kicker`: línea corta encima del nombre («Listo»).
+ */
 function renderResult(container, status, o) {
   const undoBtn = h('button', { class: 'btn', type: 'button', hidden: true, onclick: () => task(status, async () => {
     if (await applyUndo(status, o.playlistId)) { status.say(t('undone')); undoBtn.hidden = true; }
@@ -702,18 +702,23 @@ function renderResult(container, status, o) {
   const sync = () => { const u = getItem(KEYS.undo); undoBtn.hidden = !(u && u.playlistId === o.playlistId); };
   sync();
   const info = h('div', { class: 'play-info', role: 'status' });
-  const title = h('h2', { class: 'result-title' }, o.titleFn ? o.titleFn(prefersReducedMotion() ? o.count : 0) : o.title);
-  const savedName = S.raw.find((p) => p.id === o.playlistId)?.name;
+  const name = o.name ?? S.raw.find((p) => p.id === o.playlistId)?.name ?? '';
+  const totalMs = o.tracks.reduce((n, tr) => n + (tr.durationMs || 0), 0);
   setKids(container,
-    title,
-    savedName && !o.titleNamesPlaylist ? h('p', { class: 'result-sub', id: 'result-playlist' }, t('savedIn', { name: savedName })) : null,
+    h('header', { class: 'result-head' },
+      h('p', { class: 'result-kicker' }, o.kicker ?? o.title ?? t('resultDone')),
+      h('h2', { class: 'result-title', id: 'result-playlist' }, name),
+      h('p', { class: 'result-meta', id: 'result-meta' }, t('resultMeta', { n: fmt(o.tracks.length), dur: formatDuration(totalMs) })),
+      h('div', { class: 'result-main' },
+        h('button', { class: 'btn primary', type: 'button', id: 'play-now', onclick: () => playNow(o.playlistId, info, status) }, t('playNow')),
+        h('a', { class: 'btn', href: spotifyUrl(o.playlistId), target: '_blank', rel: 'noopener', id: 'open-spotify' }, t('openInSpotify'))),
+      o.headExtra ?? null,
+      info),
     ...o.notes.map((n) => h('p', { class: 'note' }, n)),
-    h('ol', { class: 'preview', 'aria-label': t('preview') }, o.tracks.slice(0, 20).map((tr, i) => h('li', { style: `--i:${i}` }, h('strong', {}, tr.name), ' ', h('span', { class: 'muted' }, artistsOf(tr))))),
+    h('ol', { class: 'tracks', 'aria-label': t('preview') }, o.tracks.slice(0, RESULT_ROWS).map(trackRow)),
+    o.tracks.length > RESULT_ROWS ? h('p', { class: 'muted small' }, t('moreTracks', { n: fmt(o.tracks.length - RESULT_ROWS) })) : null,
     spotifyAttribution(spotifyUrl(o.playlistId)),
     h('div', { class: 'actions' },
-      h('button', { class: 'btn primary', type: 'button', id: 'play-now', onclick: () => playNow(o.playlistId, info, status) }, t('playNow')),
-      info,
-      h('a', { class: 'btn', href: spotifyUrl(o.playlistId), target: '_blank', rel: 'noopener' }, t('openInSpotify')),
       h('button', { class: 'btn', type: 'button', id: 'share-link', onclick: () => shareLink(o.playlistId, info) }, t('share')),
       ...(o.extra ?? []),
       undoBtn,
@@ -723,7 +728,6 @@ function renderResult(container, status, o) {
   container.hidden = false;
   window.scrollTo(0, 0);
   celebrate(container);
-  if (o.titleFn && !prefersReducedMotion()) animateCount(title, o.titleFn, o.count);
   return sync;
 }
 
@@ -748,7 +752,9 @@ function celebrate(container) {
   if (prefersReducedMotion()) return;
   const burst = h('div', { class: 'confetti', 'aria-hidden': 'true' },
     Array.from({ length: 14 }, (_, i) => h('span', { style: `--x:${(i * 37) % 100}%;--r:${(i * 53) % 90 - 45}deg;--d:${(i % 5) * 60}ms` })));
-  container.prepend(burst);
+  // Debajo de la cabecera: los naipes no caen sobre «Reproducir ahora».
+  const head = container.querySelector('.result-head');
+  if (head) head.after(burst); else container.prepend(burst);
   setTimeout(() => burst.remove(), 1600);
 }
 
@@ -780,18 +786,6 @@ async function requestMotion() {
   }
   syncShake();
   return SHAKE.granted;
-}
-
-/** Cuenta de 0 a `target` en ~0,7 s; siempre termina en el texto final. */
-function animateCount(el, textFor, target, ms = 700) {
-  const start = performance.now();
-  const step = (now) => {
-    const k = Math.min(1, (now - start) / ms);
-    el.textContent = textFor(Math.round(target * (1 - (1 - k) ** 3)));
-    if (k < 1 && el.isConnected) requestAnimationFrame(step);
-    else el.textContent = textFor(target);
-  };
-  requestAnimationFrame(step);
 }
 
 const coverEnabled = () => getItem(KEYS.cover) !== false;
@@ -855,48 +849,13 @@ async function cached(rawKey, fetcher) {
   return data;
 }
 
-const albumInfo = (a) => ({ id: a.id, name: a.name ?? '', release_date: a.release_date ?? '', release_date_precision: a.release_date_precision ?? '', images: (a.images ?? []).slice(-1) });
+const albumInfo = (a) => ({ id: a.id, name: a.name ?? '', release_date: a.release_date ?? '', release_date_precision: a.release_date_precision ?? '', images: (a.images ?? []).slice(-2), album_type: a.album_type ?? '' });
 
 /** Canciones completas de un álbum (las devuelve sin datos del álbum: se los añadimos). */
 async function albumTracks(album) {
   const items = await cached(`album:${album.id}`, async () => (await S.api.getAlbumTracks(album.id))
     .map((tr) => ({ id: tr.id, uri: tr.uri, name: tr.name, type: 'track', artists: (tr.artists ?? []).map((x) => ({ name: x.name })), duration_ms: tr.duration_ms, explicit: tr.explicit, disc_number: tr.disc_number, track_number: tr.track_number, is_local: tr.is_local })));
   return normalizeEntries(items.map((tr) => ({ track: { ...tr, album: albumInfo(album) } }))).tracks;
-}
-
-const MAX_ALBUMS = 50;
-
-/** Completa los álbumes de una playlist con todas sus canciones. Si hay más de 50, se eligen 50 al azar (uniforme). */
-async function completeAlbums(groups, status) {
-  const chosen = shuffle(groups).slice(0, MAX_ALBUMS);
-  const out = [];
-  for (const [i, g] of chosen.entries()) {
-    status.progress('readingAlbums', i, chosen.length);
-    const full = await albumTracks({ id: g.id, name: g.name });
-    out.push({ ...g, tracks: full.length ? full : g.tracks });
-  }
-  return groupAlbums(out.flatMap((a) => a.tracks));
-}
-
-/** Canciones de tus álbumes guardados (los de más de 50 canciones se completan aparte). */
-async function readSavedAlbumTracks(status) {
-  status.say(t('backupReadingAlbums'));
-  const saved = await S.api.getSavedAlbums((d, tot) => status.progress('readingAlbums', d, tot));
-  const tracks = [];
-  const skipped = { local: 0, empty: 0 };
-  for (const { album } of saved) {
-    if (!album?.id) continue;
-    const page = album.tracks;
-    if (Array.isArray(page?.items) && page.items.length >= (page.total ?? 0)) {
-      const r = normalizeEntries(page.items.map((tr) => ({ track: { ...tr, album: albumInfo(album) } })));
-      tracks.push(...r.tracks);
-      skipped.local += r.skipped.local;
-      skipped.empty += r.skipped.empty;
-    } else {
-      tracks.push(...await albumTracks(album));
-    }
-  }
-  return { tracks, skipped };
 }
 
 // ---------- Barajar ----------
@@ -912,30 +871,22 @@ function shufflePanel() {
     return h('label', { class: 'choice' }, input, h('span', {}, h('strong', {}, label), h('small', {}, hint)));
   };
   const destBox = h('div', { class: 'choices' },
-    mkRadio('reuse', t('destReuse'), t('destReuseHint')), mkRadio('new', t('destNew'), t('destNewHint')), mkRadio('self', t('destSelf'), t('destSelfHint')));
+    mkRadio('reuse', t('destReuse'), t('destReuseHint')), mkRadio('self', t('destSelf'), t('destSelfHint')));
   radios.reuse.checked = true;
   const go = h('button', { class: 'btn primary big', type: 'button', id: 'shuffle-go', disabled: true, onclick: () => run() }, t('shuffleBtn'));
 
-  // Tipo: canciones (lo de siempre), a medida de tiempo o por álbumes
-  const kindHint = h('p', { class: 'muted small', id: 'kind-hint' });
-  const kindSel = segmented('sh-kind', t('kindLabel'), SHUFFLE_KINDS.map((k) => [k, t(`kind_${k}`)]), () => syncKind());
-  const minutesSel = segmented('sh-minutes', t('timeLabel'), [...TIME_PRESETS.map((m) => [String(m), t('minutesShort', { n: m })]), ['custom', t('timeCustom')]], () => syncKind());
+  // Por tiempo: interruptor dentro de «Más opciones»
+  const timeOn = h('input', { type: 'checkbox', id: 'sh-time', onchange: () => syncTime() });
+  const minutesSel = segmented('sh-minutes', t('timeLabel'), [...TIME_PRESETS.map((m) => [String(m), t('minutesShort', { n: m })]), ['custom', t('timeCustom')]], () => syncTime());
   minutesSel.set('30');
   const customMin = h('input', { type: 'number', class: 'text', id: 'sh-custom-min', inputmode: 'numeric', min: String(MIN_MINUTES), max: String(MAX_MINUTES), value: '35', 'aria-label': t('timeCustomLabel') });
   const customLabel = h('label', { class: 'field-wide', hidden: true }, t('timeCustomLabel'), customMin);
-  const timeBox = h('div', { id: 'time-box', hidden: true }, minutesSel.el, customLabel);
-  const savedAlbums = h('input', { type: 'checkbox', id: 'sh-saved-albums', onchange: () => syncKind() });
-  const albumsBox = h('div', { id: 'albums-box', hidden: true }, h('label', { class: 'check' }, savedAlbums, h('span', {}, t('useSavedAlbums'))));
-  const readMinutes = () => sanitizeMinutes(minutesSel.value === 'custom' ? customMin.value : minutesSel.value);
-  const usingSavedAlbums = () => kindSel.value === 'albums' && savedAlbums.checked;
-  function syncKind() {
-    const k = kindSel.value;
-    timeBox.hidden = k !== 'time';
+  const timeBox = h('div', { id: 'time-box', hidden: true }, h('p', { class: 'muted small' }, t('timeHint')), minutesSel.el, customLabel);
+  const readMinutes = () => (timeOn.checked ? sanitizeMinutes(minutesSel.value === 'custom' ? customMin.value : minutesSel.value) : null);
+  function syncTime() {
+    timeBox.hidden = !timeOn.checked;
     customLabel.hidden = minutesSel.value !== 'custom';
-    albumsBox.hidden = k !== 'albums';
-    sourceBox.hidden = usingSavedAlbums();
-    kindHint.textContent = t(`kindHint_${k}`);
-    syncSelection(picker.getSelected());
+    syncDestination();
   }
 
   // Filtros (se aplican antes de barajar; el barajado sigue siendo uniforme sobre lo que queda)
@@ -965,7 +916,7 @@ function shufflePanel() {
   // Origen: toda la biblioteca, resumen y contador
   let libraryMode = false;
   let programmatic = false;
-  const libraryIds = () => S.playlists.filter((p) => !baseReason(p) && (p.isLiked || !isGenerated(p))).map((p) => p.id);
+  const libraryIds = () => S.playlists.filter((p) => !baseReason(p)).map((p) => p.id);
   const selInfo = h('p', { class: 'muted', id: 'selection-info', role: 'status' });
   const libBtn = h('button', { class: 'btn shortcut', type: 'button', id: 'select-library', onclick: () => {
     libraryMode = true;
@@ -1004,14 +955,13 @@ function shufflePanel() {
   }
   function syncDestination() {
     const sel = picker.getSelected();
-    const selfOk = kindSel.value === 'songs' && !libraryMode && sel.length === 1 && sel[0].owned && !sel[0].isLiked && !hasFilters(readFilters());
+    const selfOk = !timeOn.checked && !libraryMode && sel.length === 1 && sel[0].owned && !sel[0].isLiked && !hasFilters(readFilters());
     radios.self.disabled = !selfOk;
     if (!selfOk && radios.self.checked) radios.reuse.checked = true;
   }
   function syncSelection(sel) {
-    const ready = sel.length > 0 || usingSavedAlbums();
-    go.disabled = !ready;
-    saveMixBtn.disabled = !ready;
+    go.disabled = sel.length === 0;
+    saveMixBtn.disabled = sel.length === 0;
     const songs = sel.reduce((n, p) => n + (p.total ?? 0), 0);
     const unreadable = S.playlists.filter((p) => !p.isLiked && !p.readable).length;
     setKids(selInfo, sel.length ? t('selectionSummary', { n: fmt(sel.length), m: fmt(songs) }) : '',
@@ -1041,16 +991,17 @@ function shufflePanel() {
     if (mix) moreBox.open = true;
   }
   const currentConfig = () => {
-    const sel = usingSavedAlbums() ? [] : picker.getSelected();
+    const sel = picker.getSelected();
+    const minutes = readMinutes();
     return {
-      library: libraryMode && !usingSavedAlbums(), ids: sel.map((p) => p.id), names: sel.map((p) => p.name), filters: readFilters(), dedupe: dedupe.checked, mode: dest(),
-      kind: kindSel.value, minutes: readMinutes() ?? undefined, savedAlbums: usingSavedAlbums(),
+      library: libraryMode, ids: sel.map((p) => p.id), names: sel.map((p) => p.name), filters: readFilters(), dedupe: dedupe.checked, mode: dest(),
+      kind: minutes ? 'time' : 'songs', ...(minutes ? { minutes } : {}),
     };
   };
   async function saveMix() {
     const cfg = currentConfig();
     const existing = getMixes().find((m) => m.id === editingId);
-    const name = await askName({ title: t('mixName'), value: existing?.name ?? (cfg.savedAlbums ? t('yourAlbums') : libraryMode ? t('libraryName') : cfg.names.join(' + ')).slice(0, 60) });
+    const name = await askName({ title: t('mixName'), value: existing?.name ?? (libraryMode ? t('libraryName') : cfg.names.join(' + ')).slice(0, 60) });
     if (!name) return;
     const mix = sanitizeMix({ ...cfg, id: editingId ?? newMixId(), name });
     const { list, ok } = upsertMix(getMixes(), mix);
@@ -1094,6 +1045,7 @@ function shufflePanel() {
   const sourceBox = h('div', {}, h('h2', {}, t('source')), libBtn, picker.el, selInfo);
   const moreBox = h('details', { class: 'more', id: 'shuffle-more' },
     h('summary', {}, t('moreOptions')),
+    h('label', { class: 'check' }, timeOn, h('span', {}, t('timeToggle'))), timeBox,
     h('label', { class: 'check' }, dedupe, h('span', {}, t('dedupeOpt'))),
     filtersBox,
     h('h2', {}, t('destination')), destBox,
@@ -1102,46 +1054,42 @@ function shufflePanel() {
   const form = h('div', {},
     h('h2', { class: 'tool-title' }, t('tabShuffle')),
     h('p', { class: 'lead' }, t('shuffleLead')),
-    kindSel.el, kindHint, timeBox, albumsBox,
     sourceBox, go, moreBox);
   const rouletteCard = h('button', { class: 'card compact', type: 'button', id: 'card-roulette', onclick: () => S.show('roulette') },
     h('span', { class: 'card-icon' }, icon(...ICONS.roulette)),
     h('span', {}, h('span', { class: 'card-title' }, t('rouletteTitle')), h('span', { class: 'card-sub' }, t('cardRouletteSub'))));
-  syncKind();
+  // Mientras se baraja, el formulario se oculta y queda la pantalla «Barajando…» con los naipes y el paso real.
+  const working = h('h2', { class: 'tool-title', id: 'shuffle-working', hidden: true }, t('working'));
+  const showForm = () => { result.hidden = true; working.hidden = true; form.hidden = false; rouletteCard.hidden = false; };
+  const back = h('button', { class: 'btn', type: 'button', id: 'working-back', hidden: true, onclick: () => { status.clear(); back.hidden = true; showForm(); } }, t('back'));
 
   let last = null;
 
   /** Carga una mezcla en el formulario. Devuelve si todas sus playlists siguen disponibles. */
   function applyMix(mix) {
     S.show('shuffle');
-    result.hidden = true;
-    form.hidden = false;
-    kindSel.set(mix.kind ?? 'songs');
-    if (mix.minutes) {
+    showForm();
+    timeOn.checked = mix.kind === 'time' && !!mix.minutes;
+    if (timeOn.checked) {
       const preset = TIME_PRESETS.includes(mix.minutes);
       minutesSel.set(preset ? String(mix.minutes) : 'custom');
       if (!preset) customMin.value = String(mix.minutes);
     }
-    savedAlbums.checked = !!mix.savedAlbums;
-    syncKind();
-    if (mix.savedAlbums) {
-      syncSelection(picker.getSelected());
-      if (radios[mix.mode] && !radios[mix.mode].disabled) radios[mix.mode].checked = true;
-      return true;
-    }
+    syncTime();
     const ids = mix.library ? libraryIds() : mix.ids;
     programmatic = true;
     const n = picker.setSelected(ids);
     programmatic = false;
     libraryMode = !!mix.library;
     setFilters(mix.filters ?? emptyFilters());
-    if (hasFilters(mix.filters)) { filtersBox.open = true; moreBox.open = true; }
+    if (hasFilters(mix.filters) || timeOn.checked) moreBox.open = true;
+    if (hasFilters(mix.filters)) filtersBox.open = true;
     dedupe.checked = mix.dedupe !== false;
     syncSelection(picker.getSelected());
     if (radios[mix.mode] && !radios[mix.mode].disabled) radios[mix.mode].checked = true;
     return mix.library ? n > 0 : n === ids.length;
   }
-  /** `origin.mixId`/`origin.mixName`: la mezcla guardada de la que viene, para que tenga su propia playlist generada. */
+  /** `origin.mixId`/`origin.mixName`: la mezcla guardada de la que viene, para nombrar su playlist. */
   S.runMix = (mix, origin = null, opts = {}) => {
     if (applyMix(mix)) return run(origin, opts);
     status.fail(new UserError(t('mixMissing')));
@@ -1150,7 +1098,7 @@ function shufflePanel() {
 
   /**
    * Enlace profundo (Siri, Atajos): solo con sesión válida (lo garantiza boot) y si la mezcla o la playlist
-   * existen en este dispositivo. Siempre escribe en la playlist generada «· Shuffle», nunca en el origen.
+   * existen en este dispositivo. Siempre crea una playlist de Shuffl, nunca escribe en el origen.
    * Sin la clave de este dispositivo (un enlace de otra web, o el atajo abierto en otro navegador) pide confirmación.
    */
   S.openDeepLink = async (link) => {
@@ -1182,58 +1130,16 @@ function shufflePanel() {
 
   const dest = () => Object.values(radios).find((r) => r.checked).value;
 
-  /** Nombre y clave de la «· Shuffle» según el tipo: «Rock · Shuffle», «35 min · Shuffle» o «Rock · Álbumes · Shuffle». */
-  function targetFor(kind, { sel, origin, minutes, saved }) {
-    const label = saved ? t('yourAlbums') : coverTitle(sel, origin);
-    const baseKey = sourceKey({ mixId: origin.mixId, library: origin.library, ids: sel.map((p) => p.id) });
-    if (kind === 'time') {
-      const title = origin.mixName || t('minutesShort', { n: minutes });
-      return { key: origin.mixId ? baseKey : `time:${minutes}`, name: generatedName({ mixName: title }, nameLabels()), title };
-    }
-    if (kind === 'albums') {
-      const title = origin.mixName || `${label} · ${t('albumsWord')}`;
-      return { key: origin.mixId ? baseKey : saved ? 'albums:saved' : baseKey && `albums:${baseKey}`, name: generatedName({ mixName: title }, nameLabels()), title };
-    }
-    return { key: baseKey, name: generatedName({ mixName: origin.mixName, library: origin.library, sources: sel }, nameLabels()), title: coverTitle(sel, origin) };
-  }
-
-  /**
-   * Escribe en el destino. «reuse»: la «· Shuffle» de ese origen (ver writeGenerated); «new»: una nueva con fecha;
-   * «self»: la propia playlist (con Deshacer). Devuelve { id, notes }.
-   */
-  async function writeTarget(mode, { sel, originalTracks, target, uris, saved }) {
-    if (mode === 'self') {
-      return withWriteLock(async () => {
-        saveUndo(sel[0].id, sel[0].name, originalTracks.map((x) => x.uri));
-        await overwritePlaylist(sel[0].id, uris, status);
-        return { id: sel[0].id, notes: [] };
-      });
-    }
-    const description = generatedDescription(t('shuffleDescFrom'),
-      saved ? [t('yourAlbums')] : target.library ? [t('allMyMusic')] : sel.map((p) => (p.isLiked ? t('liked') : p.name)));
-    if (mode === 'new' || !target.key) {
-      const id = (await S.api.createPlaylist(datedName(target.name, nowLabel()), description)).id;
-      await S.api.replaceItems(id, uris, (d, tot) => status.progress('saving', d, tot));
-      return { id, notes: [] };
-    }
-    return writeGenerated({ key: target.key, name: target.name, description, uris, protect: sel.map((p) => p.id) }, status);
-  }
-
   /** Texto grande de la portada: el origen sin el sufijo. */
   const coverTitle = (sel, origin) => origin?.mixName || (origin?.library ? t('allMyMusic')
     : sel.length === 1 ? (sel[0].isLiked ? t('liked') : sel[0].name) : 'Mix');
 
-  /** Orden final según el tipo. Canciones: Fisher-Yates; tiempo: barajar y llenar; álbumes: orden de álbumes uniforme. */
-  function arrange(kind, base, { minutes, albums }) {
-    if (kind === 'time') {
+  /** Orden final: Fisher-Yates; con tiempo, barajar y llenar la duración. */
+  function arrange(base, minutes) {
+    if (minutes) {
       const fit = fitDuration(base, minutes);
       if (!fit.tracks.length) throw new UserError(t('errTimeEmpty'));
       return { order: fit.tracks, truncated: 0, notes: fit.reached ? [] : [t('timeShort', { got: fmt(Math.round(fit.totalMs / MINUTE)), m: fmt(minutes) })] };
-    }
-    if (kind === 'albums') {
-      const { tracks, albums: order } = shuffleAlbums(albums);
-      const capped = capPlaylist(tracks);
-      return { order: capped.tracks, truncated: capped.truncated, notes: [t('albumsCount', { n: fmt(order.length) })] };
     }
     const capped = capPlaylist(shuffle(base));
     return { order: capped.tracks, truncated: capped.truncated, notes: [] };
@@ -1241,76 +1147,111 @@ function shufflePanel() {
 
   function showResult(info) {
     form.hidden = true;
+    working.hidden = true;
+    back.hidden = true;
+    rouletteCard.hidden = false;
     last = info;
-    const notes = [...skipNotes(info.skipped), ...(info.kindNotes ?? []), ...(info.coverNotes ?? [])];
+    const notes = [...(info.purgeNotes ?? []), ...skipNotes(info.skipped), ...(info.kindNotes ?? []), ...(info.coverNotes ?? [])];
     if (info.dedupRemoved) notes.push(t('dedupRemoved', { n: fmt(info.dedupRemoved) }));
     if (info.filteredOut) notes.push(t('filteredOut', { n: fmt(info.filteredOut) }));
     if (info.truncated) notes.push(t('truncated', { n: fmt(info.truncated) }));
     renderResult(result, status, {
-      titleFn: (n) => t('shuffledDone', { n: fmt(n) }), count: info.order.length,
-      notes, tracks: info.order, playlistId: info.playlistId,
+      name: info.name, notes, tracks: info.order, playlistId: info.playlistId,
       extra: [
         h('button', { class: 'btn', type: 'button', id: 'reshuffle', onclick: () => reshuffle() }, t('reshuffle')),
         h('button', { class: 'btn', type: 'button', id: 'open-pin-result', onclick: () => S.show('pin') }, t('pinTitle')),
       ],
-      onBack: () => { result.hidden = true; form.hidden = false; status.clear(); },
+      onBack: () => { status.clear(); showForm(); },
     });
   }
 
   /** Devuelve una promesa con el id de la playlist escrita (o null si no se barajó). */
   function run(fromMix = null, { modeOverride } = {}) {
     let written = null;
+    if (S.busy) return Promise.resolve(null);
+    // Respuesta inmediata: la pantalla de trabajo sale antes de la primera petición.
+    form.hidden = true;
+    result.hidden = true;
+    rouletteCard.hidden = true;
+    back.hidden = true;
+    working.textContent = t('working');
+    working.hidden = false;
+    status.phase('reading');
+    window.scrollTo(0, 0);
     return task(status, async () => {
       // Todo el formulario se lee antes de esperar a la red: si otra pantalla lo cambia a mitad, esta baraja no se ve afectada.
-      const kind = kindSel.value;
-      const saved = usingSavedAlbums();
-      const sel = saved ? [] : picker.getSelected();
+      const sel = picker.getSelected();
       const minutes = readMinutes();
-      const origin = { mixId: fromMix?.mixId, mixName: fromMix?.mixName, library: libraryMode && !saved };
-      const mode = kind !== 'songs' && (modeOverride ?? dest()) === 'self' ? 'reuse' : modeOverride ?? dest();
+      const origin = { mixId: fromMix?.mixId, mixName: fromMix?.mixName, library: libraryMode };
+      const mode = minutes && (modeOverride ?? dest()) === 'self' ? 'reuse' : modeOverride ?? dest();
       const filters = readFilters();
-      const doDedupe = dedupe.checked || kind === 'albums';
-      const config = { ...currentConfig(), mode, mixId: origin.mixId };
-      if (kind === 'time' && !minutes) throw new UserError(t('errMinutes', { min: MIN_MINUTES, max: MAX_MINUTES }));
-      const { tracks, skipped } = saved ? await readSavedAlbumTracks(status) : await readSources(sel, status);
-      if (mode === 'self' && !confirmOverwrite(sel[0].name, skippedCount(skipped))) { status.clear(); return; }
+      const doDedupe = dedupe.checked;
+      const config = { ...currentConfig(), mode, mixId: origin.mixId, at: new Date().toISOString() };
+      if (timeOn.checked && !minutes) throw new UserError(t('errMinutes', { min: MIN_MINUTES, max: MAX_MINUTES }));
+      status.phase('reading');
+      const { tracks, skipped } = await readSources(sel, status);
+      if (mode === 'self' && !confirmOverwrite(sel[0].name, skippedCount(skipped))) { status.clear(); showForm(); return; }
+      status.phase('shuffling');
       const unique = doDedupe ? uniqueByUri(tracks) : tracks;
-      const base = saved ? unique : filterTracks(unique, filters);
-      if (!base.length) throw new UserError(hasFilters(filters) && !saved ? t('errFiltersEmpty') : t('errEmpty'));
-      const albums = kind === 'albums' ? (saved ? groupAlbums(base) : await completeAlbums(groupAlbums(base), status)) : null;
-      const { order, truncated, notes: kindNotes } = arrange(kind, base, { minutes, albums });
-      const target = { ...targetFor(kind, { sel, origin, minutes, saved }), library: origin.library };
-      const written_ = await writeTarget(mode, { sel, originalTracks: tracks, target, uris: order.map((x) => x.uri), saved });
-      const coverNotes = [...written_.notes, ...(mode === 'self' ? [] : await uploadCover(written_.id, target.title))];
-      setItem(KEYS.lastMix, config);
-      if (mode !== 'self') setItem(KEYS.lastTarget, written_.id);
-      written = written_.id;
-      await loadPlaylists();
-      status.clear();
-      showResult({
-        base, order, skipped, truncated, dedupRemoved: tracks.length - unique.length, filteredOut: unique.length - base.length,
-        playlistId: written_.id, mode, coverNotes, kindNotes, title: target.title, kind, minutes, albums,
-      });
-    }).then(() => written);
+      const base = filterTracks(unique, filters);
+      if (!base.length) throw new UserError(hasFilters(filters) ? t('errFiltersEmpty') : t('errEmpty'));
+      const { order, truncated, notes: kindNotes } = arrange(base, minutes);
+      const title = minutes && !origin.mixName ? t('minutesShort', { n: minutes }) : coverTitle(sel, origin);
+      const name = generatedName({ mixName: minutes ? title : origin.mixName, library: origin.library, sources: sel }, nameLabels());
+      const uris = order.map((x) => x.uri);
+      const finish = async (w, purgeNotes) => {
+        const coverNotes = mode === 'self' ? [] : await uploadCover(w.id, title);
+        setItem(KEYS.lastMix, config);
+        written = w.id;
+        await loadPlaylists();
+        status.clear();
+        showResult({
+          base, order, skipped, truncated, dedupRemoved: tracks.length - unique.length, filteredOut: unique.length - base.length,
+          playlistId: w.id, name: mode === 'self' ? sel[0].name : name, mode, coverNotes, kindNotes, purgeNotes, title, minutes,
+        });
+      };
+      if (mode === 'self') {
+        await withWriteLock(async () => {
+          saveUndo(sel[0].id, sel[0].name, tracks.map((x) => x.uri));
+          status.phase('saving');
+          await overwritePlaylist(sel[0].id, uris, status);
+        });
+        await finish({ id: sel[0].id }, []);
+        return;
+      }
+      const description = generatedDescription(t('shuffleDescFrom'), origin.library ? [t('allMyMusic')] : sel.map((p) => (p.isLiked ? t('liked') : p.name)));
+      const key = sourceKey({ mixId: origin.mixId, library: origin.library, ids: sel.map((p) => p.id) });
+      await commitApp({ key, name, description, uris, protect: sel.map((p) => p.id) }, status, (w) => finish(w, w.notes));
+    }).then(() => {
+      // Si no hubo resultado (error o cancelación), «Volver» lleva al formulario; el error y «Reintentar» siguen arriba.
+      if (result.hidden && !working.hidden) {
+        back.hidden = false;
+        working.textContent = t('workingStopped');
+      }
+      return written;
+    });
   }
   S.shuffleWith = run;
 
+  /** «Volver a barajar» reordena la misma playlist (no crea otra): no hay nada que borrar. */
   function reshuffle() {
     task(status, async () => {
-      const { order, truncated, notes: kindNotes } = arrange(last.kind, last.base, last);
+      const { order, truncated, notes: kindNotes } = arrange(last.base, last.minutes);
       await withWriteLock(async () => {
+        if (last.mode !== 'self') await assertStillAppPlaylist(last.playlistId);
         await assertUnchanged(last.playlistId, last.order.length, last.order);
         saveUndo(last.playlistId, '', last.order.map((x) => x.uri), { soft: true });
         await overwritePlaylist(last.playlistId, order.map((x) => x.uri), status);
       });
       const coverNotes = last.mode === 'self' ? [] : await uploadCover(last.playlistId, last.title);
       status.clear();
-      showResult({ ...last, order, truncated, kindNotes, coverNotes });
+      showResult({ ...last, order, truncated, kindNotes, coverNotes, purgeNotes: [] });
     });
   }
 
-  return h('section', { class: 'panel', id: 'panel-shuffle' }, form, result, status.el, rouletteCard);
+  return h('section', { class: 'panel', id: 'panel-shuffle' }, working, status.el, back, form, result, rouletteCard);
 }
+
 
 // ---------- Ordenar ----------
 
@@ -1548,7 +1489,7 @@ function backBar(id) {
 const BACK_BARS = new Set();
 
 function snapPanel() {
-  const status = createStatus();
+  const status = createStatus({ loader: true });
   const result = h('div', { class: 'result', hidden: true });
   const radios = SNAPS.map(([key, label]) => ({ key, input: h('input', { type: 'radio', name: 'snap-kind', value: key, id: `snap-${key}` }), label }));
   radios[0].input.checked = true;
@@ -1558,36 +1499,24 @@ function snapPanel() {
     h('label', { class: 'check' }, shuffleBox, h('span', {}, t('snapShuffle'))),
     h('button', { class: 'btn primary big', type: 'button', id: 'snap-go', onclick: () => run() }, t('snapBtn')));
 
+  /** Como cualquier playlist de Shuffl: se borran las anteriores y se crea la instantánea nueva. */
   function run() {
     task(status, async () => {
       const [kind, labelKey, range] = SNAPS.find(([k]) => radios.find((r) => r.key === k).input.checked);
+      status.phase('reading');
       const entries = range ? (await S.api.getTopTracks(range)).map((track) => ({ track })) : await S.api.getRecentlyPlayed();
       const tracks = uniqueByUri(normalizeEntries(entries).tracks);
       if (!tracks.length) throw new UserError(t('errEmpty'));
       const order = shuffleBox.checked ? shuffle(tracks) : tracks;
-      const uris = order.map((x) => x.uri);
-      const name = t(labelKey);
-      const snaps = getItem(KEYS.snaps, {});
-      const existing = snaps[kind] ? (await S.api.getMyPlaylists()).find((p) => p?.id === snaps[kind] && p.owner?.id === S.me.id) : null;
-      let id;
-      if (existing) {
-        id = existing.id;
-        await withWriteLock(async () => {
-          const current = normalizeEntries(await S.api.getPlaylistItems(id)).tracks;
-          saveUndo(id, existing.name, current.map((x) => x.uri), { soft: true });
-          await overwritePlaylist(id, uris, status);
+      const name = snapshotName(t(labelKey));
+      await commitApp({ key: `snap:${kind}`, name, description: t('snapDesc'), uris: order.map((x) => x.uri) }, status, async (w) => {
+        await loadPlaylists();
+        status.clear();
+        form.hidden = true;
+        renderResult(result, status, {
+          name, notes: w.notes, tracks: order, playlistId: w.id,
+          onBack: () => { result.hidden = true; form.hidden = false; status.clear(); },
         });
-      } else {
-        id = (await S.api.createPlaylist(name, t('snapDesc'))).id;
-        setItem(KEYS.snaps, { ...snaps, [kind]: id });
-        await S.api.addItems(id, uris, (d, tot) => status.progress('saving', d, tot));
-      }
-      await loadPlaylists();
-      status.clear();
-      form.hidden = true;
-      renderResult(result, status, {
-        title: t('snapDone', { name, n: fmt(order.length) }), notes: [], tracks: order, playlistId: id,
-        onBack: () => { result.hidden = true; form.hidden = false; status.clear(); },
       });
     });
   }
@@ -1608,7 +1537,7 @@ function orphansPanel() {
   function scan() {
     task(status, async () => {
       const liked = S.playlists.find((p) => p.isLiked);
-      const mine = S.playlists.filter((p) => !p.isLiked && p.readable && !isGenerated(p));
+      const mine = S.playlists.filter((p) => !p.isLiked && p.readable);
       const likedRead = await readSource(liked, (d, tot) => status.progress('reading', d, tot));
       const inPlaylists = new Set();
       let done = 0;
@@ -1899,8 +1828,8 @@ function settingsPanel() {
     syncShake();
   } });
   shakeToggle.checked = shakeEnabled();
-  const cleanToggle = h('input', { type: 'checkbox', id: 'clean-toggle', onchange: () => setItem(KEYS.autoClean, cleanToggle.checked) });
-  cleanToggle.checked = autoClean();
+  const purgeToggle = h('input', { type: 'checkbox', id: 'purge-toggle', onchange: () => setItem(KEYS.purge, purgeToggle.checked) });
+  purgeToggle.checked = purgeEnabled();
   const diagList = h('ul', { class: 'diag', id: 'diag-results' });
   async function diagnose() {
     const rows = [];
@@ -1911,6 +1840,21 @@ function settingsPanel() {
     await check(t('diagPlaylists'), async () => { await S.api.request('GET', '/me/playlists?limit=1'); return ''; });
     const missing = auth.missingScopes(getItem(KEYS.tokens));
     rows.push({ label: t('diagScopes'), ok: missing.length === 0, detail: missing.join(', ') });
+    // Prueba real de borrado: crea una playlist vacía y la quita con DELETE /me/library. Si falla, se ve el error de Spotify.
+    // También comprueba que Spotify devuelve la etiqueta en la descripción (sin ella no se reconocerían las de Shuffl)
+    // y que la playlist ya no está en la biblioteca. Lleva la etiqueta: si no se pudo quitar, la quitará el próximo shuffle.
+    await check(t('diagDelete'), async () => {
+      const name = t('diagProbeName');
+      const probe = await S.api.createPlaylist(name, withTag(t('diagProbeDesc'), await tagFor('diag'), name));
+      try {
+        const seen = (await S.api.getMyPlaylists()).find((p) => p?.id === probe.id);
+        if (!seen || !isAppPlaylist(seen, S.me.id)) throw new UserError(t('diagNoTag'));
+        await removePlaylists([probe.id]);
+      } catch (e) {
+        throw new UserError(`${errorMessage(e)} ${t('diagProbeLeft', { name })}`);
+      }
+      return t('diagDeleteOk');
+    });
     setKids(diagList, rows.map((r) => h('li', { class: r.ok ? 'ok' : 'bad' }, `${r.ok ? '✓' : '✗'} ${r.label}${r.detail ? ` — ${r.detail}` : ''}`)));
   }
   const diagBtn = h('button', { class: 'btn', type: 'button', id: 'run-diag', onclick: () => task(status, diagnose) }, t('diagRun'));
@@ -1937,9 +1881,9 @@ function settingsPanel() {
     h('label', { class: 'check' }, coverToggle, h('span', {}, t('coverToggle'))),
     h('h2', {}, t('shakeTitle')),
     h('label', { class: 'check' }, shakeToggle, h('span', {}, t('shakeToggle'))),
-    h('h2', {}, t('cleanSettingTitle')),
-    h('label', { class: 'check' }, cleanToggle, h('span', {}, t('cleanAlways'))),
-    h('p', { class: 'muted small' }, t('cleanRecover')),
+    h('h2', {}, t('purgeSettingTitle')),
+    h('label', { class: 'check' }, purgeToggle, h('span', {}, t('purgeToggle'))),
+    h('p', { class: 'muted small' }, t('purgeRecover')),
 
     h('h2', {}, t('undoTitle')), undoInfo, undoBtn,
     h('h2', {}, t('account')), h('p', { class: 'muted' }, S.me?.display_name || S.me?.id || ''),
@@ -1949,7 +1893,7 @@ function settingsPanel() {
     h('p', { class: 'muted', id: 'about-notice' }, t('notAffiliated')),
     h('p', {}, h('a', { href: REPO_URL, target: '_blank', rel: 'noopener' }, t('repoLink'))),
     status.el);
-  panel.refresh = () => { syncUndo(); cleanToggle.checked = autoClean(); };
+  panel.refresh = () => { syncUndo(); purgeToggle.checked = purgeEnabled(); };
   return panel;
 }
 
@@ -1967,7 +1911,7 @@ function pinPanel() {
     slot,
     h('button', { class: 'btn', type: 'button', id: 'pin-back', onclick: () => S.back() }, t('back')));
   panel.refresh = () => {
-    const id = getItem(KEYS.lastTarget) ?? getItem(KEYS.barajaId);
+    const id = getItem(KEYS.lastTarget);
     setKids(slot, id ? h('a', { class: 'btn primary', href: spotifyUrl(id), target: '_blank', rel: 'noopener', id: 'pin-open' }, t('openInSpotify')) : null);
   };
   return panel;
@@ -1979,7 +1923,7 @@ function roulettePanel() {
   const status = createStatus();
   const reel = h('div', { class: 'reel', id: 'reel', role: 'status', 'aria-live': 'polite' }, '?');
   const go = h('button', { class: 'btn primary big', type: 'button', id: 'roulette-go', onclick: () => spin() }, t('rouletteSpin'));
-  const candidates = () => S.playlists.filter((p) => !baseReason(p) && (p.isLiked || !isGenerated(p)) && p.total !== 0);
+  const candidates = () => S.playlists.filter((p) => !baseReason(p) && p.total !== 0);
 
   /** La elegida sale de pickIndex (uniforme) antes de animar; la ruleta solo lo enseña. */
   async function spin() {
@@ -2078,16 +2022,6 @@ function proofPanel() {
 
 // ---------- Estructura de la app ----------
 
-/** Aviso único de logo nuevo (en iPhone el icono de la pantalla de inicio no se actualiza solo). */
-function logoNotice() {
-  if (getItem(KEYS.logoNotice)) return null;
-  const box = h('div', { class: 'notice', id: 'logo-notice', role: 'note' },
-    h('p', {}, t('logoNotice')),
-    h('button', { class: 'btn', type: 'button', onclick: () => { setItem(KEYS.logoNotice, true); box.remove(); } }, t('gotIt')));
-  return box;
-}
-
-
 const mixOrigin = (mix) => ({ mixId: mix.id, mixName: mix.name });
 const appBase = () => `${location.origin}${location.pathname}`;
 
@@ -2132,7 +2066,7 @@ function mixSummary(mix) {
   return parts.join(' · ');
 }
 
-// ---------- Descubrir y recuerdos: cada función crea su propia «· Shuffle» ----------
+// ---------- Descubrir ----------
 
 const RECENT_MAX = 3;
 /** «Lo último» de Inicio: las últimas funciones usadas (solo el panel y su título, nada de Spotify). */
@@ -2142,7 +2076,7 @@ function rememberRecent(panel) {
 }
 const recentPanels = () => (Array.isArray(getItem(KEYS.recent)) ? getItem(KEYS.recent) : []).filter((x) => PANEL_LABEL[x]).slice(0, RECENT_MAX);
 
-/** Lectura de Tus me gusta compartida por Tal día como hoy y Olvidadas (una vez por sesión). */
+/** Lectura de Tus me gusta compartida por Olvidadas y el índice de la biblioteca (una vez por sesión). */
 async function likedTracks(status) {
   const liked = S.playlists.find((p) => p.isLiked);
   if (liked?.error) throw new UserError(t('likedUnavailable'));
@@ -2152,173 +2086,325 @@ async function likedTracks(status) {
   return r.tracks;
 }
 
-/** Quita lo que ya tienes guardado (GET /me/library/contains, de 40 en 40). */
-async function notSaved(tracks, status) {
-  const uris = tracks.map((x) => x.uri);
-  status.say(t('checkingLibrary'));
-  const saved = await S.api.libraryContains(uris);
-  return tracks.filter((_, i) => !saved[i]);
-}
+const LIB_TTL_MS = 24 * 3600 * 1000;
+/** Más grande no se guarda en el dispositivo (se usa solo en esta sesión): deja sitio a Deshacer y a las mezclas. */
+const MAX_INDEX_CHARS = 1_500_000;
+const IDS_RE = /^[A-Za-z0-9,]*$/;
 
 /**
- * Pantalla de una función que crea su «· Shuffle»: título, una frase, opciones (las avanzadas plegadas en «Más opciones»),
- * botón principal, estado vacío que dice qué hacer y resultado con Reproducir ahora.
- * `build(status)` devuelve { key, name, description, coverTitle, tracks, notes?, extra? } o { empty: { title, text } }.
+ * Ids de todas las canciones que ya tienes: tus playlists (propias y colaborativas, sin las de Shuffl) y Tus me gusta.
+ * Se guarda en el dispositivo por playlist con su `snapshot_id`: solo se vuelve a leer la que cambió o lleva más de 24 h.
  */
-function genPanel({ id, title, lead, options = [], advanced = [], button, build }) {
-  const status = createStatus({ loader: true });
-  const result = h('div', { class: 'result', hidden: true });
-  const empty = h('div', { class: 'empty', id: `${id}-empty`, hidden: true, role: 'status' });
-  const go = h('button', { class: 'btn primary big', type: 'button', id: `${id}-go`, onclick: () => run() }, button);
-  const form = h('div', {}, ...options,
-    advanced.length ? h('details', { class: 'more', id: `${id}-more` }, h('summary', {}, t('moreOptions')), ...advanced) : null,
-    go, empty);
-  const back = () => { result.hidden = true; form.hidden = false; status.clear(); };
-
-  function run() {
-    return task(status, async () => {
-      empty.hidden = true;
-      const out = await build(status);
-      if (out.empty) {
-        status.clear();
-        setKids(empty, h('p', { class: 'empty-title' }, out.empty.title), h('p', { class: 'muted' }, out.empty.text));
-        empty.hidden = false;
-        return;
-      }
-      const { tracks, truncated } = capPlaylist(out.tracks);
-      const written = await writeGenerated({ key: out.key, name: out.name, description: out.description, uris: tracks.map((x) => x.uri) }, status);
-      const notes = [...(out.notes ?? []), ...written.notes, ...await uploadCover(written.id, out.coverTitle)];
-      if (truncated) notes.push(t('truncated', { n: fmt(truncated) }));
-      rememberRecent(id);
-      await loadPlaylists();
-      status.clear();
-      form.hidden = true;
-      renderResult(result, status, {
-        titleFn: (n) => t('genDone', { name: out.name, n: fmt(n) }), titleNamesPlaylist: true, count: tracks.length, notes, tracks, playlistId: written.id,
-        extra: [h('button', { class: 'btn', type: 'button', id: `${id}-again`, onclick: () => { back(); run(); } }, t('reshuffle')), ...(out.extra ?? [])],
-        onBack: back,
-      });
-    });
+async function libraryIndex(status) {
+  const stored = getItem(KEYS.libIndex);
+  const prev = stored?.me === S.me.id && stored.lists && typeof stored.lists === 'object' ? stored : { lists: {} };
+  const now = Date.now();
+  const fresh = (e) => e && typeof e.ids === 'string' && IDS_RE.test(e.ids) && typeof e.at === 'number' && now - e.at < LIB_TTL_MS && now >= e.at;
+  const next = { me: S.me.id, lists: {}, liked: null };
+  const ids = new Set();
+  const add = (s) => { for (const id of s.split(',')) if (id) ids.add(id); };
+  const mine = S.raw.filter((p) => (p.owner?.id === S.me.id || p.collaborative) && !isAppPlaylist(p, S.me.id));
+  for (const [i, p] of mine.entries()) {
+    let e = prev.lists[p.id];
+    if (!fresh(e) || e.snap !== (p.snapshot_id ?? '')) {
+      status.progress('readingLibrary', i, mine.length);
+      const r = await readSource({ id: p.id, isLiked: false });
+      e = { snap: p.snapshot_id ?? '', at: now, ids: r.tracks.map((x) => x.id).filter((id) => /^[A-Za-z0-9]+$/.test(id)).join(',') };
+    }
+    next.lists[p.id] = e;
+    add(e.ids);
   }
-  const panel = h('section', { class: 'panel', id: `panel-${id}`, hidden: true },
-    backBar(), h('h2', { class: 'tool-title' }, title), h('p', { class: 'lead' }, lead), form, result, status.el);
-  panel.run = run;
-  return panel;
+  const liked = S.playlists.find((p) => p.isLiked);
+  if (liked && !liked.error) {
+    let e = prev.liked;
+    if (!fresh(e) || e.total !== liked.total) {
+      e = { total: liked.total, at: now, ids: (await likedTracks(status)).map((x) => x.id).filter((id) => /^[A-Za-z0-9]+$/.test(id)).join(',') };
+    }
+    next.liked = e;
+    add(e.ids);
+  }
+  if (JSON.stringify(next).length <= MAX_INDEX_CHARS) setItem(KEYS.libIndex, next);
+  else removeItem(KEYS.libIndex);
+  return ids;
 }
 
 const genDescription = (key, params) => generatedDescription(t(key, params), []);
 
-function newReleasesPanel() {
-  const stored = RELEASE_DAYS.includes(getItem(KEYS.discoverDays)) ? getItem(KEYS.discoverDays) : 30;
-  const days = segmented('new-days', t('newDaysLabel'), RELEASE_DAYS.map((d) => [String(d), t('lastDays', { n: d })]), (v) => setItem(KEYS.discoverDays, Number(v)));
-  days.set(String(stored));
-  return genPanel({
-    id: 'new', title: t('newTitle'), lead: t('newLead'), button: t('newBtn'),
-    advanced: [h('p', { class: 'field-label' }, t('newDaysLabel')), days.el, h('p', { class: 'muted small' }, t('quotaNote'))],
-    async build(status) {
-      const n = Number(days.value);
-      status.say(t('discoverArtists'));
-      const slim = (list) => list.map((a) => ({ id: a.id, name: a.name }));
-      const short = await cached('topArtists:short_term', async () => slim(await S.api.getTopArtists('short_term')));
-      const medium = await cached('topArtists:medium_term', async () => slim(await S.api.getTopArtists('medium_term')));
-      const followed = await cached('followed', async () => slim(await S.api.getFollowedArtists()));
-      const artists = pickArtists([short, medium, followed]);
-      if (!artists.length) return { empty: { title: t('newNoArtistsTitle'), text: t('newNoArtists') } };
-      const albums = [];
-      for (const [i, a] of artists.entries()) {
-        status.progress('discoverReading', i, artists.length);
-        albums.push(...await cached(`artistAlbums:${a.id}`, async () => [
-          ...await S.api.getArtistAlbums(a.id, 'album'), ...await S.api.getArtistAlbums(a.id, 'single'),
-        ].map(albumInfo)));
-      }
-      const fresh = recentAlbums(albums, n);
-      const tracks = [];
-      for (const [i, al] of fresh.entries()) {
-        status.progress('readingAlbums', i, fresh.length);
-        tracks.push(...await albumTracks(al));
-      }
-      const pool = await notSaved(withoutUris(tracks, []), status);
-      if (!pool.length) return { empty: { title: t('newEmptyTitle', { n }), text: t('newEmpty') } };
-      return {
-        key: 'new', name: generatedName({ mixName: t('newName') }, nameLabels()), coverTitle: t('newName'),
-        description: genDescription('newDesc', { n }), tracks: shuffle(pool),
-        notes: [t('newSummary', { a: fmt(fresh.length), p: fmt(artists.length) })],
-      };
-    },
-  });
-}
+/** Artistas simplificados (id, nombre y géneros si Spotify los da) para guardar en la caché. */
+const slimArtists = (list) => list.filter((a) => a?.id).map((a) => ({ id: a.id, name: a.name ?? '', genres: Array.isArray(a.genres) ? a.genres.slice(0, 5) : [] }));
+const topArtistLists = async () => [
+  await cached('topArtists:short_term', async () => slimArtists(await S.api.getTopArtists('short_term'))),
+  await cached('topArtists:medium_term', async () => slimArtists(await S.api.getTopArtists('medium_term'))),
+];
+/** Lanzamientos (álbumes y singles, los 10 últimos de cada tipo) de un artista. */
+const artistReleases = (id) => cached(`artistAlbums:${id}`, async () => [
+  ...await S.api.getArtistAlbums(id, 'album'), ...await S.api.getArtistAlbums(id, 'single'),
+].map(albumInfo));
 
-function explorePanel() {
-  return genPanel({
-    id: 'explore', title: t('exploreTitle'), lead: t('exploreLead'), button: t('exploreBtn'),
-    advanced: [h('p', { class: 'muted small' }, t('quotaNote'))],
-    async build(status) {
-      status.say(t('exploreReading'));
-      const recent = normalizeEntries(await S.api.getRecentlyPlayed()).tracks;
-      const top = normalizeEntries((await S.api.getTopTracks('short_term')).map((track) => ({ track }))).tracks;
-      const listened = [...recent, ...top];
-      const ids = albumsFromListening(listened);
-      if (!ids.length) return { empty: { title: t('exploreEmptyTitle'), text: t('exploreEmpty') } };
-      const byId = new Map(listened.map((tr) => [tr.albumId, tr]));
-      const tracks = [];
-      for (const [i, id] of ids.entries()) {
-        status.progress('readingAlbums', i, ids.length);
-        tracks.push(...await albumTracks({ id, name: byId.get(id)?.album ?? '' }));
+const MAX_GENRE_PAGES = 3;
+
+/**
+ * Novedades y Descubre: cuántas canciones (o cuánto tiempo), de quién («tus artistas», «como mi playlist…» o un
+ * género) y sin lo que ya tienes en tus playlists o en Tus me gusta. «Buscar más» añade otra tanda a la misma playlist.
+ */
+function discoverGenPanel(kind) {
+  const isNew = kind === 'new';
+  const status = createStatus({ loader: true });
+  const result = h('div', { class: 'result', hidden: true });
+  const empty = h('div', { class: 'empty', id: `${kind}-empty`, hidden: true, role: 'status' });
+
+  const byTime = h('input', { type: 'checkbox', id: `${kind}-bytime`, onchange: () => sync() });
+  const countSel = segmented(`${kind}-count`, t('amountLabel'), DISCOVER_COUNTS.map((n) => [String(n), String(n)]), () => sync());
+  countSel.set(String(DEFAULT_DISCOVER_COUNT));
+  const minSel = segmented(`${kind}-minutes`, t('timeLabel'), DISCOVER_MINUTES.map((m) => [String(m), t('minutesShort', { n: m })]), () => sync());
+  minSel.set('60');
+  const amountBox = h('div', {}, h('p', { class: 'field-label' }, t('amountLabel')), countSel.el);
+  const timeBox = h('div', { hidden: true }, h('p', { class: 'field-label' }, t('timeLabel')), minSel.el);
+
+  const styleSel = segmented(`${kind}-style`, t('styleLabel'), [['mine', t('style_mine')], ['playlist', t('style_playlist')], ['genre', t('style_genre')]], () => sync());
+  const genreOption = styleSel.el.querySelector(`label[for="${kind}-style-genre"]`);
+  const seedSel = h('select', { id: `${kind}-seed`, 'aria-label': t('seedLabel'), onchange: () => sync() });
+  const seedBox = h('label', { class: 'field-wide', hidden: true }, t('seedLabel'), seedSel);
+  let genres = [];
+  const genreSel = h('select', { id: `${kind}-genre`, 'aria-label': t('genreLabel'), onchange: () => sync() });
+  const genreBox = h('label', { class: 'field-wide', hidden: true }, t('genreLabel'), genreSel);
+  const days = isNew ? segmented('new-days', t('newDaysLabel'), RELEASE_DAYS.map((d) => [String(d), t('lastDays', { n: d })]), (v) => setItem(KEYS.discoverDays, Number(v))) : null;
+  days?.set(String(RELEASE_DAYS.includes(getItem(KEYS.discoverDays)) ? getItem(KEYS.discoverDays) : 30));
+
+  const srcLine = h('p', { class: 'source-line', id: `${kind}-source` });
+  const go = h('button', { class: 'btn primary big', type: 'button', id: `${kind}-go`, onclick: () => run() }, t(isNew ? 'newBtn' : 'exploreBtn'));
+
+  const style = () => styleSel.value;
+  const amount = () => (byTime.checked ? { minutes: Number(minSel.value) } : { count: Number(countSel.value) });
+  const seed = () => S.playlists.find((p) => p.id === seedSel.value);
+  function sync() {
+    amountBox.hidden = byTime.checked;
+    timeBox.hidden = !byTime.checked;
+    seedBox.hidden = style() !== 'playlist';
+    genreBox.hidden = style() !== 'genre';
+    const why = style() === 'playlist' ? t('srcPlaylist', { name: seed()?.name ?? '…' })
+      : style() === 'genre' ? t('srcGenre', { genre: genreSel.value || '…' })
+        : t(isNew ? 'srcMineNew' : 'srcMineExplore');
+    srcLine.textContent = `${why} ${t('srcNotOwned')}`;
+    go.disabled = (style() === 'playlist' && !seed()) || (style() === 'genre' && !genreSel.value);
+  }
+
+  const form = h('div', {},
+    h('p', { class: 'lead' }, t(isNew ? 'newLead' : 'exploreLead')),
+    styleSel.el, seedBox, genreBox,
+    go, srcLine, empty,
+    h('details', { class: 'more', id: `${kind}-more` }, h('summary', {}, t('moreOptions')),
+      h('label', { class: 'check' }, byTime, h('span', {}, t('byTimeToggle'))), amountBox, timeBox,
+      isNew ? h('p', { class: 'field-label' }, t('newDaysLabel')) : null, days?.el,
+      h('p', { class: 'muted small' }, t('quotaNote'))));
+
+  /** Se rellenan al abrir la pantalla: tus playlists para «Como mi playlist…» y los géneros de tus artistas. */
+  async function refresh() {
+    const current = seedSel.value;
+    setKids(seedSel, h('option', { value: '' }, t('seedPick')),
+      S.playlists.filter((p) => !p.isLiked && p.readable && p.total).map((p) => h('option', { value: p.id }, p.name)));
+    seedSel.value = current && seed() ? current : '';
+    if (!genres.length) {
+      try {
+        genres = topGenres((await topArtistLists()).flat());
+      } catch (e) {
+        console.warn('Géneros no leídos:', e?.status ?? e?.message);
       }
-      const pool = await notSaved(withoutUris(tracks, listened.map((x) => x.uri)), status);
-      if (!pool.length) return { empty: { title: t('exploreNoneTitle'), text: t('exploreNone') } };
-      return {
-        key: 'explore', name: generatedName({ mixName: t('exploreName') }, nameLabels()), coverTitle: t('exploreName'),
-        description: genDescription('exploreDesc'), tracks: shuffle(pool),
-        notes: [t('exploreSummary', { a: fmt(ids.length) })],
-      };
-    },
-  });
-}
+      // Spotify marca `genres` como obsoleto y en muchas cuentas llega vacío: sin géneros no se ofrece la opción.
+      genreOption.hidden = !genres.length;
+      setKids(genreSel, h('option', { value: '' }, t('genrePick')), genres.map((g) => h('option', { value: g }, g)));
+      if (!genres.length && style() === 'genre') styleSel.set('mine');
+    }
+    sync();
+  }
 
-const monthName = (year, month) => new Date(year, month, 1).toLocaleString(getLang(), { month: 'long' });
+  // Estado de la tanda en curso: lo que queda por proponer y en qué playlist se está escribiendo.
+  let st = null;
 
-function onThisDayPanel() {
-  let year = null;
-  const yearsBox = h('div', { class: 'actions', id: 'ago-years' });
-  const panel = genPanel({
-    id: 'ago', title: t('agoTitle'), lead: t('agoLead'), button: t('agoBtn'),
-    async build(status) {
-      const groups = onThisDayGroups(await likedTracks(status));
-      if (!groups.length) return { empty: { title: t('agoEmptyTitle', { month: monthName(2000, new Date().getMonth()) }), text: t('agoEmpty') } };
-      const g = groups.find((x) => x.year === year) ?? groups[0];
-      year = null;
-      const artist = topArtist(g.tracks);
-      const label = t('yearsAgo', { n: String(g.yearsAgo) });
-      const others = groups.filter((x) => x !== g).map((x) => h('button', { class: 'btn', type: 'button', 'data-year': String(x.year), onclick: () => { year = x.year; panel.querySelector('.result').hidden = true; panel.run(); } }, String(x.year)));
-      return {
-        key: `ago:${g.yearsAgo}`, name: generatedName({ mixName: label }, nameLabels()), coverTitle: label,
-        description: genDescription('agoDesc', { month: monthName(g.year, new Date().getMonth()), year: g.year }), tracks: shuffle(g.tracks),
-        notes: [artist ? t('nostalgia', { month: monthName(g.year, new Date().getMonth()), year: g.year, artist }) : t('nostalgiaPlain', { month: monthName(g.year, new Date().getMonth()), year: g.year })],
-        extra: others.length ? [h('p', { class: 'muted small' }, t('agoOtherYears')), ...others] : [],
-      };
-    },
-  });
+  async function artistsFor(s) {
+    if (s === 'playlist') {
+      const { tracks } = await readSources([seed()], status);
+      return artistsFromTracks(tracks).slice(0, MAX_DISCOVER_ARTISTS);
+    }
+    const tops = await topArtistLists();
+    if (s === 'genre') {
+      const g = genreSel.value;
+      const out = tops.flat().filter((a) => a.genres?.includes(g));
+      for (let page = 0; page < MAX_GENRE_PAGES; page++) {
+        status.phase('searchingGenre');
+        const found = slimArtists(await cached(`genre:${g}:${page}`, async () => slimArtists(await S.api.searchArtistsByGenre(g, page * 10))));
+        out.push(...found);
+        if (found.length < 10) break;
+      }
+      return pickArtists([out], MAX_DISCOVER_ARTISTS);
+    }
+    status.phase('readingArtists');
+    const followed = await cached('followed', async () => slimArtists(await S.api.getFollowedArtists()));
+    return pickArtists([...tops, followed], MAX_DISCOVER_ARTISTS);
+  }
+
+  /** Canciones de un lote de artistas: lanzamientos recientes (Novedades) o sus últimos álbumes (Descubre). */
+  async function tracksFor(batch, from) {
+    const albums = [];
+    for (const [i, a] of batch.entries()) {
+      status.progress('discoverReading', from + i, st.artists.length);
+      const rel = await artistReleases(a.id);
+      if (isNew) albums.push(...recentAlbums(rel, st.days));
+      else albums.push(...rel.filter((al) => al.album_type === 'album').slice(0, 3));
+    }
+    const tracks = [];
+    for (const [i, al] of albums.entries()) {
+      status.progress('readingAlbums', i, albums.length);
+      tracks.push(...await albumTracks(al));
+    }
+    return tracks;
+  }
+
+  /** Añade al pool (barajado) canciones nuevas hasta tener `need` o quedarse sin artistas. */
+  async function fill(need) {
+    while (st.pool.length < need && st.next < st.artists.length) {
+      const from = st.next;
+      const batch = st.artists.slice(from, from + ARTIST_BATCH);
+      st.next += batch.length;
+      const fresh = notInLibrary(await tracksFor(batch, from), st.libIds).filter((x) => !st.seen.has(x.uri));
+      fresh.forEach((x) => st.seen.add(x.uri));
+      st.pool.push(...shuffle(fresh));
+    }
+  }
+
+  const need = (a) => (a.minutes ? Math.ceil(a.minutes / 2.5) + 10 : a.count);
+  const name = () => generatedName({ mixName: t(isNew ? 'newName' : 'exploreName') }, nameLabels());
+
+  function show(notes) {
+    form.hidden = true;
+    renderResult(result, status, {
+      name: st.name, notes, tracks: st.tracks, playlistId: st.playlistId,
+      headExtra: h('button', { class: 'btn find-more', type: 'button', id: `${kind}-more-songs`, onclick: () => more() }, t('findMore')),
+      onBack: () => { result.hidden = true; form.hidden = false; status.clear(); },
+    });
+  }
+
+  function run() {
+    task(status, async () => {
+      empty.hidden = true;
+      status.phase('readingLibrary');
+      const s = style();
+      st = { pool: [], next: 0, seen: new Set(), artists: [], tracks: [], days: days ? Number(days.value) : 0, name: name(), amount: amount() };
+      st.libIds = await libraryIndex(status);
+      st.artists = await artistsFor(s);
+      if (!isNew && s === 'mine') {
+        // Descubre empieza por los álbumes que escuchas últimamente.
+        status.phase('readingListening');
+        const recent = normalizeEntries(await S.api.getRecentlyPlayed()).tracks;
+        const top = normalizeEntries((await S.api.getTopTracks('short_term')).map((track) => ({ track }))).tracks;
+        const listened = [...recent, ...top];
+        const byId = new Map(listened.map((tr) => [tr.albumId, tr]));
+        const tracks = [];
+        for (const id of albumsFromListening(listened)) tracks.push(...await albumTracks({ id, name: byId.get(id)?.album ?? '' }));
+        const fresh = notInLibrary(withoutUris(tracks, listened.map((x) => x.uri)), st.libIds);
+        fresh.forEach((x) => st.seen.add(x.uri));
+        st.pool.push(...shuffle(fresh));
+      }
+      if (!st.artists.length && !st.pool.length) {
+        status.clear();
+        const key = s === 'playlist' ? 'seedNoArtists' : s === 'genre' ? 'genreNoArtists' : 'newNoArtists';
+        setKids(empty, h('p', { class: 'empty-title' }, t('noArtistsTitle')), h('p', { class: 'muted' }, t(key)));
+        empty.hidden = false;
+        return;
+      }
+      await fill(need(st.amount));
+      const { taken, rest } = takeAmount(st.pool, st.amount);
+      st.pool = rest;
+      if (!taken.length) {
+        status.clear();
+        setKids(empty,
+          h('p', { class: 'empty-title' }, isNew ? t('newEmptyTitle', { n: st.days }) : t('exploreNoneTitle')),
+          h('p', { class: 'muted' }, t(isNew ? 'newEmpty' : 'exploreNone')));
+        empty.hidden = false;
+        return;
+      }
+      status.phase('shuffling');
+      const description = genDescription(isNew ? 'newDesc' : 'exploreDesc', { n: st.days });
+      await commitApp({ key: kind, name: st.name, description, uris: taken.map((x) => x.uri) }, status, async (w) => {
+        st.playlistId = w.id;
+        st.tracks = taken;
+        const notes = [...w.notes, ...await uploadCover(w.id, t(isNew ? 'newName' : 'exploreName'))];
+        if (!st.amount.minutes && taken.length < st.amount.count) notes.push(t('fewerFound', { n: fmt(taken.length) }));
+        rememberRecent(kind);
+        await loadPlaylists();
+        status.clear();
+        show(notes);
+      });
+    });
+  }
+
+  /** «Buscar más»: otra tanda a la misma playlist (no se crea otra, así que no hay nada que borrar). */
+  function more() {
+    task(status, async () => {
+      await fill(need(st.amount));
+      const { taken, rest } = takeAmount(st.pool, st.amount);
+      st.pool = rest;
+      if (!taken.length) { status.say(t('noMoreFound')); return; }
+      status.phase('saving');
+      await withWriteLock(async () => {
+        await assertStillAppPlaylist(st.playlistId);
+        await S.api.addItems(st.playlistId, taken.map((x) => x.uri), (d, tot) => status.progress('saving', d, tot));
+      });
+      st.tracks = [...st.tracks, ...taken];
+      status.clear();
+      show([t('addedMore', { n: fmt(taken.length) })]);
+    });
+  }
+
+  const panel = h('section', { class: 'panel', id: `panel-${kind}`, hidden: true },
+    backBar(), h('h2', { class: 'tool-title' }, t(isNew ? 'newTitle' : 'exploreTitle')), status.el, form, result);
+  panel.refresh = () => { refresh(); };
+  sync();
   return panel;
 }
 
+/** Olvidadas: Tus me gusta de hace años. Como toda playlist de Shuffl, sustituye a la anterior. */
 function forgottenPanel() {
+  const status = createStatus({ loader: true });
+  const result = h('div', { class: 'result', hidden: true });
+  const empty = h('div', { class: 'empty', id: 'forgotten-empty', hidden: true, role: 'status' });
   const years = segmented('forgotten-years', t('forgottenYearsLabel'), FORGOTTEN_YEARS.map((n) => [String(n), t('moreThanYears', { n: String(n) })]));
   years.set('2');
-  return genPanel({
-    id: 'forgotten', title: t('forgottenTitle'), lead: t('forgottenLead'), button: t('forgottenBtn'),
-    advanced: [h('p', { class: 'field-label' }, t('forgottenYearsLabel')), years.el],
-    async build(status) {
+  const go = h('button', { class: 'btn primary big', type: 'button', id: 'forgotten-go', onclick: () => run() }, t('forgottenBtn'));
+  const form = h('div', {}, h('p', { class: 'lead' }, t('forgottenLead')), go, empty,
+    h('details', { class: 'more', id: 'forgotten-more' }, h('summary', {}, t('moreOptions')), h('p', { class: 'field-label' }, t('forgottenYearsLabel')), years.el));
+  function run() {
+    task(status, async () => {
+      empty.hidden = true;
       const n = Number(years.value);
+      status.phase('reading');
       const list = forgottenTracks(await likedTracks(status), n);
-      if (!list.length) return { empty: { title: t('forgottenEmptyTitle'), text: t('forgottenEmpty', { n }) } };
-      return {
-        key: 'forgotten', name: generatedName({ mixName: t('forgottenName') }, nameLabels()), coverTitle: t('forgottenName'),
-        description: genDescription('forgottenDesc', { n }), tracks: shuffle(list),
-      };
-    },
-  });
+      if (!list.length) {
+        status.clear();
+        setKids(empty, h('p', { class: 'empty-title' }, t('forgottenEmptyTitle')), h('p', { class: 'muted' }, t('forgottenEmpty', { n })));
+        empty.hidden = false;
+        return;
+      }
+      const { tracks } = capPlaylist(shuffle(list));
+      const name = generatedName({ mixName: t('forgottenName') }, nameLabels());
+      await commitApp({ key: 'forgotten', name, description: genDescription('forgottenDesc', { n }), uris: tracks.map((x) => x.uri) }, status, async (w) => {
+        const notes = [...w.notes, ...await uploadCover(w.id, t('forgottenName'))];
+        rememberRecent('forgotten');
+        await loadPlaylists();
+        status.clear();
+        form.hidden = true;
+        renderResult(result, status, {
+          name, notes, tracks, playlistId: w.id,
+          extra: [h('button', { class: 'btn', type: 'button', id: 'forgotten-again', onclick: () => { result.hidden = true; form.hidden = false; run(); } }, t('reshuffle'))],
+          onBack: () => { result.hidden = true; form.hidden = false; status.clear(); },
+        });
+      });
+    });
+  }
+  return h('section', { class: 'panel', id: 'panel-forgotten', hidden: true },
+    backBar(), h('h2', { class: 'tool-title' }, t('forgottenTitle')), status.el, form, result);
 }
+
 
 // ---------- Tu resumen ----------
 
@@ -2388,13 +2474,15 @@ function summaryPanel() {
     task(status, async () => {
       const order = shuffle(uniqueByUri(topTracks));
       const name = generatedName({ mixName: t('topName') }, nameLabels());
-      const written = await writeGenerated({ key: 'top', name, description: genDescription('topDesc', { range: t(SUMMARY_RANGES.find(([k]) => k === range.value)[1]) }), uris: order.map((x) => x.uri) }, status);
-      const notes = [...written.notes, ...await uploadCover(written.id, t('topName'))];
-      await loadPlaylists();
-      status.clear();
-      renderResult(result, status, {
-        titleFn: (n) => t('genDone', { name, n: fmt(n) }), titleNamesPlaylist: true, count: order.length, notes, tracks: order, playlistId: written.id,
-        onBack: () => { result.hidden = true; },
+      const description = genDescription('topDesc', { range: t(SUMMARY_RANGES.find(([k]) => k === range.value)[1]) });
+      await commitApp({ key: 'top', name, description, uris: order.map((x) => x.uri) }, status, async (w) => {
+        const notes = [...w.notes, ...await uploadCover(w.id, t('topName'))];
+        await loadPlaylists();
+        status.clear();
+        renderResult(result, status, {
+          name, notes, tracks: order, playlistId: w.id,
+          onBack: () => { result.hidden = true; },
+        });
       });
     });
   }
@@ -2417,16 +2505,16 @@ const TAB_LABEL = Object.fromEntries(TABS);
 /** De qué pestaña cuelga cada pantalla (para marcarla y para «‹ Volver»). */
 const PARENT = {
   roulette: 'shuffle',
-  new: 'discover', explore: 'discover', ago: 'discover', forgotten: 'discover', summary: 'discover',
+  new: 'discover', explore: 'discover', forgotten: 'discover', summary: 'discover',
   sort: 'more', dups: 'more', backup: 'more', snap: 'more', orphans: 'more', split: 'more', proof: 'more', pin: 'more', settings: 'more',
 };
 const PANEL_LABEL = {
-  new: 'newTitle', explore: 'exploreTitle', ago: 'agoTitle', forgotten: 'forgottenTitle', summary: 'summaryTitle',
+  new: 'newTitle', explore: 'exploreTitle', forgotten: 'forgottenTitle', summary: 'summaryTitle',
   sort: 'tabSort', dups: 'tabDups', backup: 'tabBackup', snap: 'snapTitle', orphans: 'orphansTitle', split: 'splitTitle',
   roulette: 'rouletteTitle', proof: 'proofTitle',
 };
 const PANEL_ICON = {
-  new: 'spark', explore: 'compass', ago: 'calendar', forgotten: 'clock', summary: 'trophy',
+  new: 'spark', explore: 'compass', forgotten: 'clock', summary: 'trophy',
   sort: 'sort', dups: 'dups', backup: 'backup', snap: 'snap', orphans: 'orphans', split: 'split',
   roulette: 'roulette', proof: 'proof', pin: 'pin', settings: 'settings',
 };
@@ -2446,7 +2534,6 @@ function discoverPanel() {
       navCard('explore', t('exploreTitle'), t('cardExploreSub'))),
     h('h2', {}, t('discoverYours')),
     h('div', { class: 'cards' },
-      navCard('ago', t('agoTitle'), t('cardAgoSub')),
       navCard('forgotten', t('forgottenTitle'), t('cardForgottenSub')),
       navCard('summary', t('summaryTitle'), t('cardSummarySub'))),
     h('p', { class: 'muted small' }, t('discoverNote')));
@@ -2470,12 +2557,32 @@ function morePanel() {
       navCard('settings', t('settings'), t('cardSettingsSub'))));
 }
 
+/** «hoy, 18:30», «ayer, 09:10» o «12 nov, 18:30». */
+function whenLabel(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const time = d.toLocaleTimeString(getLang(), { hour: '2-digit', minute: '2-digit' });
+  const day = new Date(); day.setHours(0, 0, 0, 0);
+  const diff = Math.round((day - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 86400000);
+  if (diff === 0) return t('whenToday', { time });
+  if (diff === 1) return t('whenYesterday', { time });
+  return `${d.toLocaleDateString(getLang(), { day: 'numeric', month: 'short' })}, ${time}`;
+}
+
+/** Carátula del último origen: la de su primera playlist (♥ para Tus me gusta). Siempre entera, sin nada encima. */
+function lastCover(mix) {
+  const first = mix.library ? null : S.playlists.find((p) => p.id === mix.ids[0]);
+  if (first?.isLiked) return h('span', { class: 'again-cover liked', 'aria-hidden': 'true' }, '♥');
+  if (first?.image?.startsWith('https://')) return h('img', { class: 'again-cover', src: first.image, alt: '', width: '72', height: '72' });
+  return h('span', { class: 'again-cover', 'aria-hidden': 'true' }, icon(...ICONS.shuffle));
+}
+
 function homePanel() {
   const slot = h('div', { class: 'home' });
   const panel = h('section', { class: 'panel', id: 'panel-home', hidden: true }, slot);
   const mixRow = (mix) => h('div', { class: 'mix-row' },
     h('button', { class: 'card', type: 'button', 'data-mix': mix.id, onclick: () => S.runMix(mix, mixOrigin(mix)) },
-      h('span', { class: 'card-icon' }, icon(...ICONS[mix.kind === 'time' ? 'clock' : mix.kind === 'albums' ? 'album' : 'shuffle'])),
+      h('span', { class: 'card-icon' }, icon(...ICONS[mix.kind === 'time' ? 'clock' : 'shuffle'])),
       h('span', {}, h('span', { class: 'card-title' }, mix.name), h('span', { class: 'card-sub' }, mixSummary(mix)))),
     h('button', { class: 'icon-btn', type: 'button', 'data-shortcut': mix.id, 'aria-label': t('shortcutBtn', { name: mix.name }), onclick: () => showShortcutSheet(mix) }, icon(...ICONS.mic)),
     h('button', { class: 'icon-btn', type: 'button', 'aria-label': t('editMix', { name: mix.name }), onclick: () => S.editMix(mix) }, icon(...ICONS.edit)),
@@ -2490,7 +2597,7 @@ function homePanel() {
     const mixes = getMixes();
     const saved = raw?.mixId && mixes.find((m) => m.id === raw.mixId);
     const origin = saved ? mixOrigin(saved) : null;
-    /** Agitar: siempre pide confirmación, porque va a sobrescribir la playlist «· Shuffle» de esa mezcla. */
+    /** Agitar: siempre pide confirmación, porque crea una playlist nueva y quita la anterior de Shuffl. */
     S.shakeShuffle = mix ? () => {
       if (!confirm(t('shakeConfirm', { name: saved?.name ?? mixLabel(mix) }))) return;
       navigator.vibrate?.(40);
@@ -2502,12 +2609,23 @@ function homePanel() {
         ? h('button', { class: 'btn shortcut', type: 'button', id: 'shake-enable', onclick: async () => { if (await requestMotion()) panel.refresh(); } }, t('shakeEnable'))
         : h('p', { class: 'muted small', id: 'shake-hint' }, t('shakeHint'));
     const recent = recentPanels();
+    const when = raw?.at ? whenLabel(raw.at) : '';
+    const top = mix
+      ? h('article', { class: 'again', id: 'again-card' },
+        h('div', { class: 'again-head' }, lastCover(mix),
+          h('div', { class: 'again-text' },
+            h('p', { class: 'again-kicker' }, t('againKicker')),
+            h('h2', { class: 'again-name', id: 'again-name' }, saved?.name ?? mixLabel(mix)),
+            when ? h('p', { class: 'again-when' }, t('againWhen', { when })) : null)),
+        h('div', { class: 'again-actions' },
+          h('button', { class: 'btn primary again-go', type: 'button', id: 'card-last-mix', onclick: () => S.runMix(mix, origin) }, icon(...ICONS.shuffle), h('span', {}, t('againBtn'))),
+          h('button', { class: 'btn', type: 'button', id: 'hero-other', onclick: () => S.show('shuffle') }, t('heroOther'))))
+      : h('article', { class: 'again welcome', id: 'welcome-card' },
+        h('h2', { class: 'again-name' }, t('welcomeTitle')),
+        h('p', { class: 'muted' }, t('welcomeText')),
+        h('button', { class: 'btn primary again-go', type: 'button', id: 'hero-start', onclick: () => S.show('shuffle') }, t('startBtn')));
     setKids(slot,
-      h('button', { class: 'hero-shuffle', type: 'button', id: mix ? 'card-last-mix' : 'hero-start', onclick: () => (mix ? S.runMix(mix, origin) : S.show('shuffle')) },
-        h('span', { class: 'hero-icon' }, icon(...ICONS.shuffle)),
-        h('span', { class: 'hero-word' }, t('heroShuffle')),
-        h('span', { class: 'hero-sub' }, mix ? t('heroAgain', { name: saved?.name ?? mixLabel(mix) }) : t('heroFirst'))),
-      mix ? h('button', { class: 'link-btn', type: 'button', id: 'hero-other', onclick: () => S.show('shuffle') }, t('heroOther')) : null,
+      top,
       shakeHint,
       recent.length ? h('h2', {}, t('recentTitle')) : null,
       recent.length ? h('div', { class: 'chips' }, recent.map((key) => h('button', { class: 'chip', type: 'button', 'data-recent': key, onclick: () => S.show(key) },
@@ -2519,8 +2637,8 @@ function homePanel() {
 }
 
 const mixLabel = (mix) => {
-  const src = mixSources(mix, t('libraryName'), t('yourAlbums'));
-  return mix.kind === 'time' ? `${t('minutesShort', { n: mix.minutes })} · ${src}` : mix.kind === 'albums' ? `${t('albumsWord')} · ${src}` : src;
+  const src = mixSources(mix, t('libraryName'));
+  return mix.kind === 'time' ? `${t('minutesShort', { n: mix.minutes })} · ${src}` : src;
 };
 
 function mountApp() {
@@ -2528,7 +2646,7 @@ function mountApp() {
   BACK_BARS.clear();
   const panels = {
     home: homePanel(), shuffle: shufflePanel(), discover: discoverPanel(), more: morePanel(),
-    new: newReleasesPanel(), explore: explorePanel(), ago: onThisDayPanel(), forgotten: forgottenPanel(), summary: summaryPanel(),
+    new: discoverGenPanel('new'), explore: discoverGenPanel('explore'), forgotten: forgottenPanel(), summary: summaryPanel(),
     sort: sortPanel(), dups: dupsPanel(), backup: backupPanel(),
     snap: snapPanel(), orphans: orphansPanel(), split: splitPanel(), pin: pinPanel(), settings: settingsPanel(),
     roulette: roulettePanel(), proof: proofPanel(),
@@ -2536,50 +2654,56 @@ function mountApp() {
   const tabBtns = {};
   let prev = null;
   S.backTarget = () => (prev && prev !== S.tab ? prev : tabOf(S.tab));
-  S.back = () => show(S.backTarget(), -1);
-  const show = (key, dir) => {
-    const from = TAB_ORDER.indexOf(tabOf(S.tab));
-    const to = TAB_ORDER.indexOf(tabOf(key));
-    const dx = dir ?? (from >= 0 && to >= 0 && from !== to ? Math.sign(to - from) : PARENT[key] && !PARENT[S.tab] ? 1 : 0);
+  S.back = () => show(S.backTarget());
+  /**
+   * Cambio de pantalla inmediato: sin View Transitions (en iOS, y más en la app instalada, hacían que la pantalla
+   * «vibrara» casi un segundo) ni desplazamientos; solo un fundido de 120 ms. Cada pantalla recuerda su scroll.
+   */
+  const show = (key) => {
     const changed = S.tab !== key;
-    // «Volver» lleva a la pantalla anterior si es de la misma pestaña (Inicio → Ordenar → Volver vuelve a Inicio).
-    if (changed) prev = PARENT[key] ? S.tab : null;
+    if (changed) {
+      S.scroll[S.tab] = window.scrollY;
+      // «Volver» lleva a la pantalla anterior si es de la misma pestaña (Inicio → Ordenar → Volver vuelve a Inicio).
+      prev = PARENT[key] ? S.tab : null;
+    }
     S.tab = key;
-    const swap = () => {
-      for (const [k, p] of Object.entries(panels)) {
-        p.hidden = k !== key;
-        if (k === key) p.style.setProperty('--dx', `${dx * 28}px`);
+    for (const [k, p] of Object.entries(panels)) {
+      const on = k === key;
+      if (p.hidden === on) p.hidden = !on;
+    }
+    for (const [k, b] of Object.entries(tabBtns)) b.setAttribute('aria-current', k === tabOf(key) ? 'page' : 'false');
+    for (const b of BACK_BARS) b.sync();
+    panels[key].refresh?.();
+    if (changed) {
+      window.scrollTo(0, S.scroll[key] ?? 0);
+      if (!prefersReducedMotion()) {
+        panels[key].classList.remove('fade');
+        void panels[key].offsetWidth;
+        panels[key].classList.add('fade');
       }
-      for (const [k, b] of Object.entries(tabBtns)) b.setAttribute('aria-current', k === tabOf(key) ? 'page' : 'false');
-      for (const b of BACK_BARS) b.sync();
-      for (const p of Object.values(panels)) if (!p.hidden) p.refresh?.();
-      panels.home.refresh();
-      window.scrollTo(0, 0);
-    };
-    // Transición fluida entre pantallas donde el navegador la admite (View Transitions API).
-    if (changed && document.startViewTransition && !prefersReducedMotion()) {
-      root.classList.add('vt');
-      document.startViewTransition(swap).finished.finally(() => root.classList.remove('vt'));
-    } else {
-      swap();
     }
   };
   S.show = show;
-  const nav = h('nav', { class: 'tabs', 'aria-label': t('sections') }, TABS.map(([key, label]) => {
-    const b = h('button', { type: 'button', id: `tab-${key}`, onclick: () => show(key) }, icon(...ICONS[key]), h('span', {}, t(label)));
-    tabBtns[key] = b;
+  const nav = h('nav', { class: 'tabs', 'aria-label': t('sections') }, TABS.map(([label_key, label]) => {
+    const b = h('button', { type: 'button', id: `tab-${label_key}`, onclick: () => show(label_key) }, icon(...ICONS[label_key]), h('span', {}, t(label)));
+    tabBtns[label_key] = b;
     return b;
   }));
   setKids(root,
     h('header', { class: 'top' }, h('h1', {}, h('img', { src: 'icons/icon.svg', alt: '', width: '28', height: '28' }), APP_NAME)),
-    h('main', {}, logoNotice(), Object.values(panels)),
+    h('main', {}, Object.values(panels)),
     nav);
-  show(S.tab);
+  S.tab = S.tab in panels ? S.tab : 'home';
+  const first = S.tab;
+  S.tab = null;
+  show(first);
+  // Aviso de un solo uso, solo en Inicio: al pulsar «Entendido» no vuelve a salir.
+  showNotice('logo-notice', t('logoNotice'), KEYS.logoNotice);
   syncShake();
   // Chrome también expone requestPermission y lo concede sin preguntar; iOS lo rechaza sin un toque y entonces sale el botón.
   if (shakeEnabled() && motionNeedsPermission() && !SHAKE.granted && !SHAKE.tried) {
     SHAKE.tried = true;
-    requestMotion().then((ok) => { if (ok) panels.home.refresh(); });
+    requestMotion().then((ok) => { if (ok && S.tab === 'home') panels.home.refresh(); });
   }
   S.playlists = S.playlists.length ? S.playlists : [likedEntry()];
   S.pickers.forEach((p) => p.update());
@@ -2696,6 +2820,7 @@ function bindGestures() {
 async function boot() {
   setLang();
   applyTheme();
+  OBSOLETE_KEYS.forEach(removeItem);
   bindGestures();
   // El enlace profundo se quita de la barra en cuanto se lee: recargar nunca vuelve a barajar ni a reproducir.
   const link = parseDeepLink(location.search);
@@ -2715,7 +2840,6 @@ async function boot() {
     await loadPlaylists();
     await probeLiked();
     if (link) await S.openDeepLink(link);
-    checkLibraryDuplicates().catch((e) => console.warn('Revisión de copias no hecha:', e?.status ?? e?.message));
   } catch (e) {
     console.error(e);
     if (e instanceof auth.AuthError) return renderSetup(e);

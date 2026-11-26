@@ -4,6 +4,7 @@ import { installMock, login, openPanel } from './helpers.mjs';
 test('aviso único de logo nuevo, aviso de no afiliación y favicons', async ({ page }) => {
   await installMock(page, { logoNotice: true });
   await login(page);
+  await page.locator('#tab-home').click();
   await expect(page.locator('#logo-notice')).toContainText('quitar la app de la pantalla de inicio');
   await page.locator('#logo-notice button').click();
   await expect(page.locator('#logo-notice')).toHaveCount(0);

@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => {
 
 const ANA = 'AbCdEfGhIjKlMnOpQrStUv';
 const owner = (id) => ({ id, display_name: id === 'ana' ? 'Ana' : id });
-const baraja = () => state.lists.get(state.writes.filter((w) => w.op === 'put').at(-1).id);
+const baraja = () => state.lists.get(state.writes.filter((w) => w.op === 'create').at(-1).id);
 
 test('«Playlists que sigues»: sección propia, marcadas y con guía para hacerse una copia', async ({ page }) => {
   await login(page);
@@ -41,7 +41,7 @@ test('una playlist propia con el mismo nombre que una seguida es «Tu copia de�
 
   await pick(page, 'shuffle', 'Top 50 global');
   await page.locator('#shuffle-go').click();
-  await expect(page.getByText('Listo: 30 canciones barajadas')).toBeVisible();
+  await expect(page.locator('#result-meta:visible', { hasText: /^30 (canciones|songs) ·/ })).toBeVisible();
   await idle(page);
   expect(baraja().tracks).toHaveLength(30);
 });
@@ -52,7 +52,7 @@ test('una colaborativa de otra persona se puede barajar como si fuera propia', a
   await expect(page.locator('#panel-shuffle .followed', { hasText: 'Colaborativa' })).toHaveCount(0);
   await pick(page, 'shuffle', 'Colaborativa');
   await page.locator('#shuffle-go').click();
-  await expect(page.getByText('Listo: 12 canciones barajadas')).toBeVisible();
+  await expect(page.locator('#result-meta:visible', { hasText: /^12 (canciones|songs) ·/ })).toBeVisible();
 });
 
 test('enlace pegado: solo metadatos, nunca el contenido, y la misma guía', async ({ page }) => {

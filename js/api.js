@@ -6,6 +6,7 @@ const WRITE_CHUNK = 100;
 const CONCURRENCY = 3;
 const MAX_RETRY_AFTER_S = 30;
 export const LIBRARY_CHUNK = 40;
+export const SEARCH_LIMIT = 10;
 const ARTIST_ALBUMS_LIMIT = 10;
 
 export class ApiError extends Error {
@@ -203,16 +204,17 @@ export class SpotifyApi {
 
   /** Deja de seguir (quitar de tu biblioteca) playlists por id: DELETE /me/library con sus URI. Lotes de 40. */
   async unfollowPlaylists(ids) {
+    if (!ids.every((id) => typeof id === 'string' && /^[A-Za-z0-9]{1,64}$/.test(id))) throw new ApiError(0, 'id de playlist no válido');
     for (const part of chunk(ids, LIBRARY_CHUNK)) {
       await this.request('DELETE', `/me/library?uris=${part.map((id) => encodeURIComponent(`spotify:playlist:${id}`)).join(',')}`);
     }
   }
 
-  /** Fecha (ms) de la primera canción de una playlist: al sobrescribir, es cuándo se escribió por última vez. */
-  async lastWriteTime(id) {
-    const data = await this.request('GET', `/playlists/${encodeURIComponent(id)}/items?limit=1&fields=${encodeURIComponent('items(added_at)')}`);
-    const t = Date.parse(data?.items?.[0]?.added_at ?? '');
-    return Number.isNaN(t) ? -Infinity : t;
+  /** Artistas de un género (`q=genre:"…"`, type=artist). En Development Mode `limit` no pasa de 10; se pagina con offset. */
+  async searchArtistsByGenre(genre, offset = 0) {
+    const q = encodeURIComponent(`genre:"${String(genre).replace(/"/g, '')}"`);
+    const data = await this.request('GET', `/search?type=artist&limit=${SEARCH_LIMIT}&offset=${Math.max(0, Math.min(offset, 990))}&q=${q}`);
+    return Array.isArray(data?.artists?.items) ? data.artists.items : [];
   }
 
   async getRecentlyPlayed() {
@@ -228,11 +230,6 @@ export class SpotifyApi {
   /** `base64` es un JPEG de hasta 256 KB, sin el prefijo data:. */
   setPlaylistImage(id, base64) {
     return this.request('PUT', `/playlists/${encodeURIComponent(id)}/images`, undefined, { rawBody: base64, contentType: 'image/jpeg' });
-  }
-
-  /** Cambia nombre y descripción de una playlist propia (PUT /playlists/{id}). */
-  updatePlaylistDetails(id, { name, description }) {
-    return this.request('PUT', `/playlists/${encodeURIComponent(id)}`, { name, description });
   }
 
   createPlaylist(name, description = '') {

@@ -73,6 +73,8 @@ a { color: var(--accent); }
   border-bottom: 1px solid var(--border);
 }
 main { padding: 0 1rem calc(var(--tab-h) + env(safe-area-inset-bottom) + 1.5rem); max-width: 40rem; margin: 0 auto; overflow-x: clip; }
+/* flow-root: el margen del primer elemento de cada pantalla no se sale de main, así main no se mueve al cambiar de pestaña. */
+main { display: flow-root; }
 main.setup { padding-top: 1.5rem; padding-bottom: 2rem; }
 .brand { display: flex; flex-direction: column; align-items: center; gap: .5rem; margin-bottom: .5rem; }
 .brand h1 { font-size: 2.4rem; }
@@ -203,8 +205,6 @@ progress { width: 100%; height: 8px; accent-color: var(--accent); margin-top: .4
   :root[data-theme="auto"] .spotify-attrib .on-dark { display: none; }
   :root[data-theme="auto"] .spotify-attrib .on-light { display: block; }
 }
-.preview { padding-left: 1.6rem; margin: 1rem 0; }
-.preview li { padding: .15rem 0; }
 .dup-list, .restore-list { list-style: none; padding: 0; margin: 1rem 0; display: grid; gap: .6rem; }
 .dup-group { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: .6rem .8rem; }
 .dup-head { margin: 0; }
@@ -265,17 +265,6 @@ progress { width: 100%; height: 8px; accent-color: var(--accent); margin-top: .4
 
 /* v1.3: Inicio con una acción enorme, pastillas de opciones, volver y estados vacíos */
 .home { display: grid; gap: .8rem; margin-top: 1.2rem; }
-.hero-shuffle {
-  display: grid; justify-items: start; gap: .3rem; width: 100%; min-height: 200px; padding: 1.4rem 1.3rem; text-align: left; cursor: pointer;
-  background: var(--lime); color: var(--on-lime); border: 2px solid var(--on-lime); border-radius: var(--radius);
-  box-shadow: 6px 6px 0 var(--edge); font: inherit; transition: transform .12s ease, box-shadow .12s ease;
-}
-.hero-shuffle:active { transform: translate(6px, 6px); box-shadow: none; }
-.hero-icon { width: 52px; height: 52px; display: grid; place-items: center; border-radius: 10px; background: rgba(11, 11, 11, .12); }
-.hero-icon svg { width: 30px; height: 30px; }
-.hero-word { font: 900 clamp(2.6rem, 14vw, 3.6rem)/1 var(--font-display); letter-spacing: -.03em; text-transform: uppercase; }
-.hero-sub { font-weight: 700; overflow-wrap: anywhere; }
-.link-btn { justify-self: center; min-height: 44px; padding: 0 1rem; border: 0; background: transparent; color: var(--accent); font: inherit; font-weight: 700; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 .home h2 { margin: .8rem 0 0; }
 .chips { display: flex; flex-wrap: wrap; gap: .5rem; }
 .chip {
@@ -306,7 +295,6 @@ progress { width: 100%; height: 8px; accent-color: var(--accent); margin-top: .4
 .sheet-title { font: 800 1.15rem/1.3 system-ui, -apple-system, "Segoe UI", sans-serif; text-transform: none; letter-spacing: 0; color: var(--text); }
 .sheet-title::before { content: none; }
 .summary-preview { display: block; width: min(270px, 70vw); height: auto; margin: 1rem auto; border-radius: var(--radius); border: 1px solid var(--border); box-shadow: var(--shadow); }
-.result-sub { margin: .2rem 0 0; font-weight: 700; color: var(--accent); overflow-wrap: anywhere; }
 .summary-list { list-style: none; padding: 0; margin: .4rem 0; }
 .summary-list .row { cursor: default; }
 .summary-list .row:hover { background: transparent; }
@@ -341,7 +329,7 @@ progress { width: 100%; height: 8px; accent-color: var(--accent); margin-top: .4
 
 /* Celebración discreta al terminar */
 .result { position: relative; }
-.confetti { position: absolute; inset: 0 0 auto; height: 0; pointer-events: none; z-index: 2; }
+.confetti { position: relative; height: 0; pointer-events: none; z-index: 2; }
 .confetti span {
   position: absolute; top: 0; left: var(--x); width: 10px; height: 14px; border-radius: 2px; background: var(--lime);
   border: 1px solid var(--on-lime); opacity: 0; animation: drop 1.2s ease-out var(--d) both;
@@ -353,8 +341,6 @@ progress { width: 100%; height: 8px; accent-color: var(--accent); margin-top: .4
 }
 
 /* Transiciones entre pantallas con View Transitions (sustituyen al deslizamiento del panel) */
-::view-transition-old(root), ::view-transition-new(root) { animation-duration: .22s; }
-.vt .panel { animation: none; }
 
 /* Animación de barajado, ligada al progreso real (--p de 0 a 1) */
 .loader { display: none; flex-direction: column; align-items: center; gap: .6rem; margin: .5rem 0 0; }
@@ -378,9 +364,10 @@ progress { width: 100%; height: 8px; accent-color: var(--accent); margin-top: .4
 @keyframes shimmer { to { background-position: -200% 0; } }
 
 /* Transiciones y entradas */
-.panel { animation: panel-in .28s ease both; }
-@keyframes panel-in { from { opacity: 0; transform: translateX(var(--dx, 0)); } to { opacity: 1; transform: none; } }
-.preview li { animation: rise .45s ease both; animation-delay: calc(var(--i, 0) * 40ms); }
+/* Cambio de pantalla: solo opacidad (no mueve nada, no hay saltos de layout) y como mucho 120 ms. */
+.panel.fade { animation: fade-in .12s ease-out both; }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+.tracks .track { animation: rise .4s ease both; animation-delay: calc(var(--i, 0) * 35ms); }
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 .ptr {
   position: fixed; top: calc(env(safe-area-inset-top) + 56px); left: 50%; z-index: 15; transform: translate(-50%, -80px);
@@ -393,3 +380,56 @@ progress { width: 100%; height: 8px; accent-color: var(--accent); margin-top: .4
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* v1.3.1 · Inicio: tarjeta de la última baraja, equilibrada (carátula, nombre, fecha y dos botones). */
+.again {
+  display: grid; gap: 1rem; padding: 1rem; background: var(--surface); border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 4px); box-shadow: var(--shadow);
+}
+.again-head { display: flex; gap: .9rem; align-items: center; min-width: 0; }
+.again-cover {
+  flex: none; width: 72px; height: 72px; border-radius: 6px; object-fit: cover; display: grid; place-items: center;
+  background: var(--surface-2); color: var(--accent);
+}
+.again-cover.liked { background: var(--lime); color: var(--on-lime); font-size: 1.8rem; }
+.again-text { min-width: 0; }
+.again-kicker { margin: 0; font: 600 .72rem/1.3 var(--font-mono); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.again-name { margin: .15rem 0; font: 900 1.35rem/1.15 var(--font-display); letter-spacing: -.02em; color: var(--text); text-transform: none; overflow-wrap: anywhere; }
+.again-name::before { content: none; }
+.again-when { margin: 0; font-size: .85rem; color: var(--muted); }
+.again-actions { display: grid; grid-template-columns: 1fr; gap: .5rem; }
+.again-go { min-height: 52px; gap: .5rem; font-size: 1.05rem; }
+.again-go svg { width: 20px; height: 20px; }
+.welcome { text-align: left; }
+.welcome .again-name { font-size: 1.5rem; }
+
+/* Pantalla de trabajo y errores con «Reintentar» */
+.error-box { margin-top: .6rem; }
+.error-box .btn { margin-top: .4rem; }
+#shuffle-working { margin-bottom: 0; }
+.panel .status:has(.loader.on) { min-height: 150px; }
+
+/* Resultado: cabecera con nombre, canciones y duración; lista con carátulas a 48 px (enteras, sin nada encima). */
+.result-head { padding: .2rem 0 .4rem; }
+.result-kicker { margin: 1rem 0 0; font: 600 .75rem/1.3 var(--font-mono); text-transform: uppercase; letter-spacing: .12em; color: var(--accent); }
+.result-kicker::before { content: "✓ "; }
+.result-head .result-title { margin: .2rem 0 .1rem; overflow-wrap: anywhere; }
+.result-meta { margin: 0; color: var(--muted); font-variant-numeric: tabular-nums; }
+.result-main { display: grid; grid-template-columns: 1fr auto; gap: .5rem; margin-top: .9rem; }
+.result-main .btn { min-height: 48px; white-space: nowrap; padding-inline: .9rem; }
+.find-more { width: 100%; margin-top: .5rem; border-style: dashed; }
+.tracks { list-style: none; padding: 0; margin: 1rem 0 .4rem; display: grid; gap: .15rem; }
+.track { display: flex; align-items: center; gap: .75rem; min-height: 60px; padding: .3rem .25rem; border-radius: 8px; }
+.track + .track { border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+.track-cover { flex: none; width: 48px; height: 48px; border-radius: 4px; object-fit: contain; background: var(--surface-2); display: grid; place-items: center; color: var(--muted); }
+.track-text { display: flex; flex-direction: column; min-width: 0; }
+.track-name { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.track-artist { font-size: .85rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Hoja de borrado y línea de procedencia en Descubrir */
+.purge-list { margin: .2rem 0; padding-left: 1.2rem; max-height: 40vh; overflow: auto; }
+.purge-list li { margin: .2rem 0; overflow-wrap: anywhere; }
+.source-line { margin: .6rem 0 0; font-size: .85rem; color: var(--muted); }
+
+/* Sin mensaje, ni error, ni naipes, el estado no ocupa sitio (evita un hueco sobre el resultado). */
+.status:has(.live:empty):has(.error-box[hidden]):not(:has(.loader.on)):not(:has(progress:not([hidden]))) { margin: 0; min-height: 0; }
