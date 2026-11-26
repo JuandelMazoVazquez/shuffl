@@ -48,4 +48,8 @@ export const KEYS = {
   migrationNotice: 'baraja.migrationNotice',
   shake: 'baraja.shake',
   linkKey: 'baraja.linkKey',
+  autoClean: 'baraja.autoClean',
+  metaCache: 'baraja.metaCache',
+  recent: 'baraja.recent',
+  discoverDays: 'baraja.discoverDays',
 };

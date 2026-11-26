@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { installMock, login } from './helpers.mjs';
+import { installMock, login, openPanel } from './helpers.mjs';
 
 test('aviso único de logo nuevo, aviso de no afiliación y favicons', async ({ page }) => {
   await installMock(page, { logoNotice: true });
@@ -11,7 +11,7 @@ test('aviso único de logo nuevo, aviso de no afiliación y favicons', async ({ 
   await expect(page.locator('#tab-shuffle')).toBeVisible();
   await expect(page.locator('#logo-notice')).toHaveCount(0);
 
-  await page.locator('#open-settings').click();
+  await openPanel(page, 'settings');
   await expect(page.locator('#about-notice')).toHaveText('Proyecto independiente, no afiliado ni respaldado por Spotify. Spotify es una marca de Spotify AB.');
   await expect(page.locator('link[rel="icon"][href="icons/favicon.svg"]')).toHaveCount(1);
   await expect(page.locator('link[rel="icon"][href="icons/favicon.ico"]')).toHaveCount(1);

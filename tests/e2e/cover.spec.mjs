@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { installMock, login, idle, pick } from './helpers.mjs';
+import { installMock, login, idle, pick, openPanel, moreOptions } from './helpers.mjs';
 
 let state;
 
@@ -41,7 +41,9 @@ test('barajar sube una portada JPEG de 640x640 y menos de 256 KB, y pone la desc
   expect([...bytes.subarray(0, 3)]).toEqual([0xff, 0xd8, 0xff]);
   expect(jpegSize(bytes)).toEqual({ width: 640, height: 640 });
   const create = state.writes.find((w) => w.op === 'create' && w.name === 'Chill · Shuffle');
-  expect(create.description).toBe('Barajada con Shuffl (aleatorio uniforme; reprodúcela con el aleatorio de Spotify apagado). Origen: Chill');
+  expect(create.description).toMatch(/ · shuffl:src=[a-f0-9]{10}$/);
+
+  expect(create.description.replace(/ · shuffl:src=[a-f0-9]{10}$/, '')).toBe('Barajada con Shuffl (aleatorio uniforme; reprodúcela con el aleatorio de Spotify apagado). Origen: Chill');
 
   await page.getByRole('button', { name: 'Volver a barajar' }).click();
   await idle(page);
@@ -58,7 +60,7 @@ test('si la portada falla la baraja sigue bien y solo hay un aviso discreto', as
 
 test('la portada se puede desactivar en Ajustes y no se sube al barajar la propia playlist', async ({ page }) => {
   await login(page);
-  await page.locator('#open-settings').click();
+  await openPanel(page, 'settings');
   await page.locator('#cover-toggle').uncheck();
   await page.reload();
   await page.locator('#tab-shuffle').click();
@@ -67,10 +69,11 @@ test('la portada se puede desactivar en Ajustes y no se sube al barajar la propi
   await expect(page.getByText('Listo: 80 canciones barajadas')).toBeVisible();
   expect(state.images).toHaveLength(0);
 
-  await page.locator('#open-settings').click();
+  await openPanel(page, 'settings');
   await page.locator('#cover-toggle').check();
   await page.locator('#tab-shuffle').click();
   await page.getByRole('button', { name: 'Volver', exact: true }).click();
+  await moreOptions(page);
   await page.locator('#panel-shuffle label.choice', { hasText: 'La propia playlist' }).click();
   await page.locator('#panel-shuffle .btn.primary.big').click();
   await expect(page.getByText('Listo: 80 canciones barajadas')).toBeVisible();
@@ -95,9 +98,9 @@ test('«Tenerla siempre a mano» explica pines, destino fijo y accesos de Inicio
 
 test('la pantalla de ayuda y la portada salen en inglés', async ({ page }) => {
   await login(page);
-  await page.locator('#open-settings').click();
+  await openPanel(page, 'settings');
   await page.locator('#lang-select').selectOption('en');
   await expect(page.getByText('Upload a custom cover')).toBeVisible();
-  await page.locator('#open-pin').click();
+  await openPanel(page, 'pin');
   await expect(page.locator('#panel-pin')).toContainText('press and hold the “… · Shuffle” playlist you use most');
 });

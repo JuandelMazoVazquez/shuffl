@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { installMock, login, idle, pick, shot } from './helpers.mjs';
+import { installMock, login, idle, pick, shot, openPanel } from './helpers.mjs';
 
 let state;
 
@@ -7,10 +7,7 @@ test.beforeEach(async ({ page }) => {
   state = await installMock(page);
 });
 
-const open = async (page, card) => {
-  await page.locator('#tab-home').click();
-  await page.locator(`#card-${card}`).click();
-};
+const open = (page, card) => openPanel(page, card);
 const byName = (name) => [...state.lists.values()].filter((l) => l.name === name);
 
 test('instantáneas: Top 4 semanas pide limit 50, crea «📸 Top 4 semanas» y la siguiente vez la actualiza', async ({ page }) => {
@@ -154,10 +151,10 @@ test('dividir por década y por artista con mínimo configurable', async ({ page
 
 test('las herramientas nuevas salen en inglés', async ({ page }) => {
   await login(page);
-  await page.locator('#open-settings').click();
+  await openPanel(page, 'settings');
   await page.locator('#lang-select').selectOption('en');
   await page.locator('#tab-home').click();
-  await page.locator('#card-split').click();
+  await openPanel(page, 'split');
   await expect(page.locator('#panel-split')).toContainText('Splits one of your playlists');
   await expect(page.locator('#split-mode option').first()).toHaveText('Into N equal parts');
 });

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { installMock, login, idle, pick } from './helpers.mjs';
+import { installMock, login, idle, pick, moreOptions } from './helpers.mjs';
 
 let state;
 
@@ -24,7 +24,9 @@ test('cada origen tiene su propia playlist «· Shuffle» y se reutiliza al volv
   await shuffle(page, 'Rock');
   const [rock] = byName('Rock · Shuffle');
   expect(rock.tracks).toHaveLength(120);
-  expect(rock.description).toBe('Barajada con Shuffl (aleatorio uniforme; reprodúcela con el aleatorio de Spotify apagado). Origen: Rock');
+  expect(rock.description).toMatch(/ · shuffl:src=[a-f0-9]{10}$/);
+
+  expect(rock.description.replace(/ · shuffl:src=[a-f0-9]{10}$/, '')).toBe('Barajada con Shuffl (aleatorio uniforme; reprodúcela con el aleatorio de Spotify apagado). Origen: Rock');
   expect(await targets(page)).toEqual({ 'pl:pl_rock': rock.id });
 
   await shuffle(page, 'Chill');
@@ -61,7 +63,9 @@ test('en inglés: «Liked Songs · Shuffle», «All my music · Shuffle» y desc
   await page.locator('#shuffle-go').click();
   await idle(page);
   const [liked] = byName('Liked Songs · Shuffle');
-  expect(liked.description).toBe('Shuffled with Shuffl (uniform random; play it with Spotify shuffle off). Source: Liked Songs');
+  expect(liked.description).toMatch(/ · shuffl:src=[a-f0-9]{10}$/);
+
+  expect(liked.description.replace(/ · shuffl:src=[a-f0-9]{10}$/, '')).toBe('Shuffled with Shuffl (uniform random; play it with Spotify shuffle off). Source: Liked Songs');
   await page.getByRole('button', { name: 'Back', exact: true }).first().click();
   await page.locator('#select-library').click();
   await page.locator('#shuffle-go').click();
@@ -160,6 +164,7 @@ test('si la generada desaparece se crea otra y se actualiza la correspondencia',
 test('«una nueva cada vez» crea «Rock · Shuffle · fecha» y no toca la correspondencia', async ({ page }) => {
   await login(page);
   await pick(page, 'shuffle', 'Rock');
+  await moreOptions(page);
   await page.locator('#panel-shuffle label.choice', { hasText: 'Playlist nueva' }).click();
   await page.locator('#shuffle-go').click();
   await idle(page);
@@ -177,26 +182,28 @@ test('la correspondencia guardada con formato raro se ignora y nunca se escribe 
   expect(state.lists.get('pl_rock').tracks).toHaveLength(120);
 });
 
-test('migración: aviso único para borrar a mano la antigua «🔀 Baraja», que no se toca', async ({ page }) => {
+test('migración: la antigua «🔀 Baraja» no se escribe ni se quita sin preguntar, y «Entendido» es definitivo', async ({ page }) => {
   state.lists.set('pl_old', { id: 'pl_old', name: '🔀 Baraja', owner: { id: 'me' }, tracks: state.liked.slice(0, 5) });
   await page.addInitScript(() => { if (!sessionStorage.getItem('seeded')) { localStorage.setItem('baraja.playlistId', JSON.stringify('pl_old')); sessionStorage.setItem('seeded', '1'); } });
   await login(page);
-  const notice = page.locator('#migration-notice');
-  await expect(notice).toContainText('La antigua «🔀 Baraja» ya no se actualiza');
-  await expect(notice).toContainText('bórrala a mano en Spotify');
+  const notice = page.locator('#clean-notice');
+  await expect(notice).toContainText('Tienes la antigua «🔀 Baraja», que ya no se actualiza.');
   await shuffle(page, 'Rock');
   expect(state.lists.get('pl_old').tracks).toHaveLength(5);
   expect(state.writes.some((w) => w.id === 'pl_old')).toBe(false);
-  await notice.getByRole('button').click();
+  expect(state.unfollowCalls).toEqual([]);
+  await page.locator('#tab-home').click();
+  await notice.getByRole('button', { name: 'Entendido' }).click();
   await expect(notice).toHaveCount(0);
   await page.reload();
   await expect(page.locator('#tab-home')).toBeVisible();
   await page.waitForTimeout(300);
-  await expect(page.locator('#migration-notice')).toHaveCount(0);
+  await expect(page.locator('#clean-notice')).toHaveCount(0);
+  expect(state.lists.has('pl_old')).toBe(true);
 });
 
-test('sin «🔀 Baraja» antigua no hay aviso de migración', async ({ page }) => {
+test('sin «🔀 Baraja» antigua ni copias no hay aviso', async ({ page }) => {
   await login(page);
   await page.waitForTimeout(300);
-  await expect(page.locator('#migration-notice')).toHaveCount(0);
+  await expect(page.locator('#clean-notice')).toHaveCount(0);
 });

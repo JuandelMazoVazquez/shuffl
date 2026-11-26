@@ -84,7 +84,22 @@ export function createState() {
   const top = { short_term: range(3000, 3030), medium_term: range(3100, 3150), long_term: range(3200, 3250) };
   const recent = [...range(3300, 3310), ...range(3300, 3305)];
   const devices = [{ id: 'dev-phone', name: 'iPhone de prueba', type: 'Smartphone', is_active: true }];
-  return { catalog, lists, liked, created: 0, writes: [], tokens: 0, authorizeParams: null, devices, playerCalls: [], images: [], itemRequests: [], metaRequests: [], top, recent, topRequests: [], albums, artists };
+  // v1.3: artistas top, lanzamientos (2 recientes y 1 viejo) y canciones completas de los álbumes de la mock
+  const topArtists = { short_term: [{ id: 'art0', name: 'Seguido 0', images: [] }, { id: 'artX', name: 'Top X', images: [] }], medium_term: [{ id: 'art1', name: 'Seguido 1', images: [] }], long_term: [] };
+  const day = (offset) => new Date(Date.now() - offset * 86400000).toISOString().slice(0, 10);
+  const release = (id, type, offset) => ({ id, name: `Lanzamiento ${id}`, album_type: type, release_date: day(offset), release_date_precision: 'day', images: [] });
+  const releases = { art0: [release('rel_new', 'album', 3), release('rel_old', 'album', 400)], artX: [release('rel_single', 'single', 10)] };
+  const albumTracks = {};
+  const albumOf = (id, from, n) => { albumTracks[id] = Array.from({ length: n }, (_, k) => reg({ ...makeTrack(from + k), album: { id, name: `Álbum ${id}`, images: [] }, disc_number: 1, track_number: k + 1 })); };
+  albumOf('rel_new', 4000, 4);
+  albumOf('rel_old', 4100, 3);
+  albumOf('rel_single', 4200, 1);
+  for (let i = 0; i < 9; i++) albumOf(`al${i}`, 5000 + i * 20, 12);
+  for (let i = 0; i < 7; i++) albumOf(`alb${i}`, 6000 + i * 20, 5);
+  return {
+    catalog, lists, liked, created: 0, writes: [], tokens: 0, authorizeParams: null, devices, playerCalls: [], images: [], itemRequests: [], metaRequests: [], top, recent, topRequests: [], albums, artists,
+    topArtists, releases, albumTracks, savedUris: new Set([albumTracks.rel_new[0].uri]), containsCalls: [], unfollowCalls: [], artistAlbumCalls: [], albumTrackCalls: [],
+  };
 }
 
 const json = (route, body, status = 200) =>
@@ -138,6 +153,40 @@ export async function mockSpotify(page, state) {
     const body = req.postData() && isJson ? JSON.parse(req.postData()) : null;
 
     if (method === 'GET' && path === '/me/albums') return json(route, page_(state.albums, url));
+    // v1.3: biblioteca (contains y quitar), artistas top, lanzamientos y canciones de un álbum
+    if (method === 'GET' && path === '/me/library/contains') {
+      const uris = (url.searchParams.get('uris') ?? '').split(',').filter(Boolean);
+      state.containsCalls.push(uris.length);
+      if (uris.length > 40) return json(route, { error: { status: 400, message: 'Too many ids' } }, 400);
+      const saved = new Set([...state.liked.map((t) => t.uri), ...state.savedUris]);
+      return json(route, uris.map((u) => saved.has(u)));
+    }
+    if (method === 'DELETE' && path === '/me/library') {
+      const uris = (url.searchParams.get('uris') ?? '').split(',').filter(Boolean);
+      state.unfollowCalls.push(uris);
+      if (state.failUnfollow) return json(route, { error: { status: 403, message: 'Forbidden' } }, 403);
+      for (const u of uris) state.lists.delete(u.replace('spotify:playlist:', ''));
+      return route.fulfill({ status: 200, headers: CORS });
+    }
+    if (method === 'GET' && path === '/me/top/artists') {
+      state.topRequests.push({ artists: true, ...Object.fromEntries(url.searchParams) });
+      const all = state.topArtists[url.searchParams.get('time_range')] ?? [];
+      return json(route, { items: all.slice(0, Number(url.searchParams.get('limit') ?? 20)) });
+    }
+    const artistAlbums = /^\/artists\/([^/]+)\/albums$/.exec(path);
+    if (artistAlbums && method === 'GET') {
+      state.artistAlbumCalls.push({ id: artistAlbums[1], ...Object.fromEntries(url.searchParams) });
+      if (Number(url.searchParams.get('limit')) > 10) return json(route, { error: { status: 400, message: 'Invalid limit' } }, 400);
+      const group = url.searchParams.get('include_groups');
+      const items = (state.releases[artistAlbums[1]] ?? []).filter((a) => a.album_type === group).slice(0, 10);
+      return json(route, { items, total: items.length, limit: 10, offset: 0 });
+    }
+    const albumTracks = /^\/albums\/([^/]+)\/tracks$/.exec(path);
+    if (albumTracks && method === 'GET') {
+      state.albumTrackCalls.push(albumTracks[1]);
+      const tracks = (state.albumTracks[albumTracks[1]] ?? []).map(({ album, ...t }) => t);
+      return json(route, page_(tracks, url));
+    }
     if (method === 'GET' && path === '/me/following') {
       const after = url.searchParams.get('after');
       const start = after ? state.artists.findIndex((a) => a.id === after) + 1 : 0;
@@ -162,7 +211,7 @@ export async function mockSpotify(page, state) {
     }
     if (method === 'GET' && path === '/me') return json(route, { id: 'me', display_name: 'Usuaria Prueba' });
     if (method === 'GET' && path === '/me/playlists') return json(route, page_([...state.lists.values()].map(metaOf), url));
-    if (method === 'GET' && path === '/me/tracks') return json(route, page_(toEntries(state.liked), url));
+    if (method === 'GET' && path === '/me/tracks') return json(route, page_(state.likedDates ? state.liked.map((item, i) => ({ added_at: state.likedDates(i), item })) : toEntries(state.liked), url));
     if (method === 'POST' && path === '/me/playlists') {
       const id = `new${++state.created}`;
       state.lists.set(id, { id, name: body.name, description: body.description, owner: { id: 'me' }, tracks: [] });
@@ -197,10 +246,10 @@ export async function mockSpotify(page, state) {
       if (method === 'GET') {
         state.itemRequests.push(m[1]);
         if (list.owner.id !== 'me' && !list.collaborative) return json(route, { error: { status: 403, message: 'Forbidden' } }, 403);
-        return json(route, page_(toEntries(list.tracks), url));
+        return json(route, page_(list.writtenAt ? list.tracks.map((item) => ({ added_at: list.writtenAt, item })) : toEntries(list.tracks), url));
       }
       const tracksOf = (uris) => uris.map((u) => state.catalog.get(u) ?? { id: u.split(':').pop(), uri: u, type: 'track', name: u, artists: [], album: {} });
-      if (method === 'PUT') { list.tracks = tracksOf(body.uris); state.writes.push({ op: 'put', id: m[1], n: body.uris.length }); return json(route, { snapshot_id: 's' }); }
+      if (method === 'PUT') { list.tracks = tracksOf(body.uris); list.writtenAt = new Date(Date.now() + state.writes.length).toISOString(); state.writes.push({ op: 'put', id: m[1], n: body.uris.length }); return json(route, { snapshot_id: 's' }); }
       if (method === 'POST' && state.failNextPost) { state.failNextPost = false; return json(route, { error: { status: 500, message: 'boom' } }, 500); }
       if (method === 'POST') { list.tracks.push(...tracksOf(body.uris)); state.writes.push({ op: 'post', id: m[1], n: body.uris.length }); return json(route, { snapshot_id: 's' }, 201); }
     }

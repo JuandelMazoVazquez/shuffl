@@ -22,7 +22,15 @@ Solo con `accounts.spotify.com` (inicio de sesión y renovación del token), `ap
 | `baraja.snapshots` | Ids de las playlists de instantáneas |
 | `baraja.linkKey` | Clave aleatoria que llevan los atajos de Siri creados en este navegador |
 | `baraja.theme`, `baraja.cover`, `baraja.shake` | Tema, si se sube portada y si agitar para barajar está activado |
-| `baraja.logoNotice.v12`, `baraja.migrationNotice` | Si ya viste los avisos de icono nuevo y de migración |
+| `baraja.logoNotice.v12`, `baraja.migrationNotice` | Si ya viste los avisos de icono nuevo y de la antigua «🔀 Baraja» |
+| `baraja.autoClean` | Si las copias repetidas de las «· Shuffle» se quitan sin preguntar |
+| `baraja.metaCache` | Caché de 24 h de datos públicos de Spotify: ids y nombres de tus artistas top y seguidos, lanzamientos de esos artistas y canciones de álbumes |
+| `baraja.recent` | Las últimas funciones de Descubrir usadas, para «Lo último» de Inicio |
+| `baraja.discoverDays` | Días de Novedades (7, 30 o 90) |
+
+En la descripción de cada playlist «· Shuffle» de tu cuenta de Spotify se guarda una etiqueta (` · shuffl:src=` y 10 caracteres). Es un resumen (SHA-256 recortado) del origen: no contiene ids, nombres ni datos tuyos, y solo sirve para encontrar esa playlist desde otro dispositivo.
+
+La tarjeta de «Tu resumen» se dibuja en tu navegador y solo sale de él si tú la compartes o la descargas.
 
 Las claves siguen empezando por `baraja.` (el nombre anterior de la app) para no cerrar la sesión de nadie con el cambio de nombre.
 

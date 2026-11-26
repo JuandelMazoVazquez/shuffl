@@ -5,6 +5,8 @@ const PAGE = 50;
 const WRITE_CHUNK = 100;
 const CONCURRENCY = 3;
 const MAX_RETRY_AFTER_S = 30;
+export const LIBRARY_CHUNK = 40;
+const ARTIST_ALBUMS_LIMIT = 10;
 
 export class ApiError extends Error {
   constructor(status, message, body) {
@@ -170,6 +172,47 @@ export class SpotifyApi {
   async getTopTracks(range) {
     const data = await this.request('GET', `/me/top/tracks?limit=50&time_range=${encodeURIComponent(range)}`);
     return Array.isArray(data?.items) ? data.items : [];
+  }
+
+  /** Tus artistas más escuchados (v1.3). */
+  async getTopArtists(range, limit = 50) {
+    const data = await this.request('GET', `/me/top/artists?limit=${limit}&time_range=${encodeURIComponent(range)}`);
+    return Array.isArray(data?.items) ? data.items : [];
+  }
+
+  /** Últimos lanzamientos de un artista de un tipo (`album` o `single`). En Development Mode el máximo es 10. */
+  async getArtistAlbums(id, group) {
+    const data = await this.request('GET', `/artists/${encodeURIComponent(id)}/albums?include_groups=${encodeURIComponent(group)}&limit=${ARTIST_ALBUMS_LIMIT}`);
+    return Array.isArray(data?.items) ? data.items : [];
+  }
+
+  getAlbumTracks(id) {
+    return this.paginate(`/albums/${encodeURIComponent(id)}/tracks`);
+  }
+
+  /** Para cada URI, si está en tu biblioteca (Tus me gusta, álbumes, playlists seguidas…). Lotes de 40. */
+  async libraryContains(uris) {
+    const out = [];
+    for (const part of chunk(uris, LIBRARY_CHUNK)) {
+      const data = await this.request('GET', `/me/library/contains?uris=${part.map(encodeURIComponent).join(',')}`);
+      if (!Array.isArray(data) || data.length !== part.length) throw new ApiError(0, 'incomplete');
+      out.push(...data.map(Boolean));
+    }
+    return out;
+  }
+
+  /** Deja de seguir (quitar de tu biblioteca) playlists por id: DELETE /me/library con sus URI. Lotes de 40. */
+  async unfollowPlaylists(ids) {
+    for (const part of chunk(ids, LIBRARY_CHUNK)) {
+      await this.request('DELETE', `/me/library?uris=${part.map((id) => encodeURIComponent(`spotify:playlist:${id}`)).join(',')}`);
+    }
+  }
+
+  /** Fecha (ms) de la primera canción de una playlist: al sobrescribir, es cuándo se escribió por última vez. */
+  async lastWriteTime(id) {
+    const data = await this.request('GET', `/playlists/${encodeURIComponent(id)}/items?limit=1&fields=${encodeURIComponent('items(added_at)')}`);
+    const t = Date.parse(data?.items?.[0]?.added_at ?? '');
+    return Number.isNaN(t) ? -Infinity : t;
   }
 
   async getRecentlyPlayed() {

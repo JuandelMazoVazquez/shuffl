@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { CLIENT_ID } from './mock.mjs';
-import { installMock, login, idle, pick, shot } from './helpers.mjs';
+import { installMock, login, idle, pick, shot, openPanel } from './helpers.mjs';
 
 let state;
 
@@ -13,7 +13,7 @@ const baraja = () => [...state.lists.values()].find((l) => l.name.startsWith('Ro
 
 test('orden combinado: artista → álbum cronológico → nº de pista', async ({ page }) => {
   await login(page);
-  await page.locator('#tab-sort').click();
+  await openPanel(page, 'sort');
   await pick(page, 'sort', 'Rock');
   await expect(page.locator('#sort-then2')).toBeDisabled();
   await page.locator('#sort-key').selectOption('artist');
@@ -35,7 +35,7 @@ test('orden combinado: artista → álbum cronológico → nº de pista', async 
 
 test('orden combinado: criterios repetidos se rechazan y «invertir» desactiva los siguientes', async ({ page }) => {
   await login(page);
-  await page.locator('#tab-sort').click();
+  await openPanel(page, 'sort');
   await pick(page, 'sort', 'Rock');
   await page.locator('#sort-key').selectOption('artist');
   await page.locator('#sort-then1').selectOption('artist');
@@ -49,7 +49,7 @@ test('orden combinado: criterios repetidos se rechazan y «invertir» desactiva 
 
 test('copia ampliada: álbumes guardados y artistas seguidos (cursor) con UPC en JSON y CSV', async ({ page }) => {
   await login(page);
-  await page.locator('#tab-backup').click();
+  await openPanel(page, 'backup');
   await pick(page, 'backup', 'Chill');
   await page.getByRole('button', { name: 'Preparar copia' }).click();
   await expect(page.getByText('Copia lista: 80 canciones en 1 listas')).toBeVisible();
@@ -73,7 +73,7 @@ test('copia ampliada: álbumes guardados y artistas seguidos (cursor) con UPC en
 
 test('copia ampliada: se puede desmarcar y no pide álbumes ni artistas', async ({ page }) => {
   await login(page);
-  await page.locator('#tab-backup').click();
+  await openPanel(page, 'backup');
   await page.locator('#inc-albums').uncheck();
   await page.locator('#inc-artists').uncheck();
   await expect(page.getByRole('button', { name: 'Preparar copia' })).toBeDisabled();
@@ -88,7 +88,7 @@ test('copia ampliada: se puede desmarcar y no pide álbumes ni artistas', async 
 
 test('copia solo de álbumes y artistas, y restaurar avisa de que no los restaura', async ({ page }) => {
   await login(page);
-  await page.locator('#tab-backup').click();
+  await openPanel(page, 'backup');
   await page.getByRole('button', { name: 'Preparar copia' }).click();
   await expect(page.locator('#backup-extra')).toBeVisible();
   await expect(page.locator('#save-csv')).toHaveCount(0);
@@ -121,7 +121,7 @@ test('asistente de alta: pasos guiados, copiar la Redirect URI y ayuda de errore
 
 test('diagnóstico de conexión: todo bien y 403 por usuario no añadido', async ({ page }) => {
   await login(page);
-  await page.locator('#open-settings').click();
+  await openPanel(page, 'settings');
   await page.locator('#run-diag').click();
   await expect(page.locator('#diag-results li.ok')).toHaveCount(3);
   await expect(page.locator('#diag-results')).toContainText('Usuaria Prueba');

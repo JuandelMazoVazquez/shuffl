@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { installMock, login, idle, pick, shot } from './helpers.mjs';
+import { installMock, login, idle, pick, shot, openPanel, moreOptions } from './helpers.mjs';
 
 let state;
 
@@ -59,13 +59,18 @@ test('enlace pegado: solo metadatos, nunca el contenido, y la misma guía', asyn
   state.lists.set(ANA, { id: ANA, name: 'Fiesta de Ana', owner: owner('ana'), tracks: [] });
   state.lists.set('A'.repeat(22), { id: 'A'.repeat(22), name: 'Mía', owner: owner('me'), tracks: [] });
   await login(page);
+  await moreOptions(page);
   await page.locator('#link-box summary').click();
 
+  await moreOptions(page);
   await page.locator('#link-input').fill('hola');
+  await moreOptions(page);
   await page.locator('#link-check').click();
   await expect(page.locator('#link-msg')).toContainText('no parece un enlace');
 
+  await moreOptions(page);
   await page.locator('#link-input').fill(`https://open.spotify.com/intl-es/playlist/${ANA}?si=abc`);
+  await moreOptions(page);
   await page.locator('#link-check').click();
   const help = page.getByRole('dialog', { name: 'Fiesta de Ana' });
   await expect(help).toContainText('Ana');
@@ -75,11 +80,15 @@ test('enlace pegado: solo metadatos, nunca el contenido, y la misma guía', asyn
   expect(state.itemRequests).not.toContain(ANA);
   await page.keyboard.press('Escape');
 
+  await moreOptions(page);
   await page.locator('#link-input').fill(`spotify:playlist:${'B'.repeat(22)}`);
+  await moreOptions(page);
   await page.locator('#link-check').click();
   await expect(page.locator('#link-msg')).toContainText('No se encontró esa playlist');
 
+  await moreOptions(page);
   await page.locator('#link-input').fill('A'.repeat(22));
+  await moreOptions(page);
   await page.locator('#link-check').click();
   await expect(page.locator('#link-msg')).toContainText('«Mía» es tuya o colaborativa');
   expect(state.itemRequests).not.toContain(ANA);
@@ -87,7 +96,7 @@ test('enlace pegado: solo metadatos, nunca el contenido, y la misma guía', asyn
 
 test('la ayuda de playlists ajenas sale en inglés', async ({ page }) => {
   await login(page);
-  await page.locator('#open-settings').click();
+  await openPanel(page, 'settings');
   await page.locator('#lang-select').selectOption('en');
   await page.locator('#tab-shuffle').click();
   await expect(page.locator('#panel-shuffle .picker-group')).toHaveText('Playlists you follow');

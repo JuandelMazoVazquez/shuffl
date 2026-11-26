@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { installMock, login, idle, pick, shot } from './helpers.mjs';
+import { installMock, login, idle, pick, shot, openPanel, moreOptions } from './helpers.mjs';
 
 let state;
 
@@ -27,7 +27,7 @@ async function shuffleRock(page) {
 test('«¿Es aleatorio de verdad?»: Shuffl sale plano, el sesgado no, con tabla y otra simulación', async ({ page }) => {
   await login(page);
   await page.locator('#tab-home').click();
-  await page.locator('#card-proof').click();
+  await openPanel(page, 'proof');
   await expect(page.locator('#proof-fair .bar')).toHaveCount(10);
   await expect(page.locator('#proof-biased .bar')).toHaveCount(10);
   expect(spread(await heights(page, 'proof-fair'))).toBeLessThan(0.1);
@@ -49,7 +49,7 @@ test('«Elige por mí»: la ruleta se para en una de tus playlists (nunca en una
   const valid = ['Tus me gusta', 'Rock', 'Chill', 'Con repetidas', 'Top 50 global'];
   for (let i = 0; i < 3; i++) {
     await page.locator('#tab-home').click();
-    await page.locator('#card-roulette').click();
+    await openPanel(page, 'roulette');
     await page.locator('#roulette-go').click();
     await expect(page.locator('#reel')).toHaveClass(/landed/);
     const name = await page.locator('#reel').textContent();
@@ -65,7 +65,7 @@ test('«Elige por mí»: la ruleta se para en una de tus playlists (nunca en una
 test('la ruleta anima los nombres antes de pararse (sin movimiento reducido)', async ({ page }) => {
   await login(page);
   await page.locator('#tab-home').click();
-  await page.locator('#card-roulette').click();
+  await openPanel(page, 'roulette');
   await page.locator('#roulette-go').click();
   await expect(page.locator('#reel')).toHaveClass(/spinning/);
   await expect(page.locator('#roulette-go')).toBeDisabled();
@@ -95,7 +95,7 @@ test('agitar en Inicio rebaraja la última mezcla tras confirmar; cancelar o est
   expect(byName('Rock · Shuffle')).toHaveLength(1);
 
   await page.waitForTimeout(3100);
-  await page.locator('#tab-sort').click();
+  await openPanel(page, 'sort');
   await shake(page);
   await page.waitForTimeout(300);
   expect(puts()).toBe(2);
@@ -104,7 +104,7 @@ test('agitar en Inicio rebaraja la última mezcla tras confirmar; cancelar o est
 test('agitar se puede desactivar en Ajustes', async ({ page }) => {
   await noPermissionApi(page);
   await shuffleRock(page);
-  await page.locator('#open-settings').click();
+  await openPanel(page, 'settings');
   await page.locator('#shake-toggle').uncheck();
   await page.locator('#tab-home').click();
   await expect(page.locator('#shake-hint')).toHaveCount(0);
@@ -145,6 +145,7 @@ test('agitar tras barajar «la propia playlist» escribe en su «· Shuffle», n
   await noPermissionApi(page);
   await login(page);
   await pick(page, 'shuffle', 'Rock');
+  await moreOptions(page);
   await page.locator('#panel-shuffle label.choice', { hasText: 'La propia playlist' }).click();
   await page.locator('#shuffle-go').click();
   await expect(page.locator('#panel-shuffle .result-title')).toContainText('Listo');
@@ -163,7 +164,7 @@ test('agitar tras barajar «la propia playlist» escribe en su «· Shuffle», n
 test('la ruleta lleva la atribución de Spotify', async ({ page }) => {
   await login(page);
   await page.locator('#tab-home').click();
-  await page.locator('#card-roulette').click();
+  await openPanel(page, 'roulette');
   await expect(page.locator('#panel-roulette .spotify-attrib')).toBeVisible();
 });
 
@@ -180,18 +181,18 @@ test('celebración al terminar, salvo con movimiento reducido', async ({ page })
 test('lo nuevo sale en inglés y los botones miden al menos 44 px', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('baraja.lang', JSON.stringify('en')));
   await login(page);
-  await page.locator('#tab-home').click();
-  await expect(page.locator('#card-roulette')).toBeVisible();
+  await page.locator('#tab-shuffle').click();
   await expect(page.locator('#card-roulette')).toContainText('Pick for me');
+  await expect(page.locator('#card-roulette')).toBeVisible();
+  expect((await page.locator('#card-roulette').boundingBox()).height).toBeGreaterThanOrEqual(44);
+  await page.locator('#tab-more').click();
   await expect(page.locator('#card-proof')).toContainText('Is it really random?');
-  for (const sel of ['#card-roulette', '#card-proof']) {
-    const box = await page.locator(sel).boundingBox();
-    expect(box.height).toBeGreaterThanOrEqual(44);
-  }
-  await page.locator('#card-proof').click();
+  await expect(page.locator('#card-proof')).toBeVisible();
+  expect((await page.locator('#card-proof').boundingBox()).height).toBeGreaterThanOrEqual(44);
+  await openPanel(page, 'proof');
   await expect(page.locator('#proof-summary')).toContainText('with Shuffl');
   const again = await page.locator('#proof-again').boundingBox();
   expect(again.height).toBeGreaterThanOrEqual(44);
-  await page.locator('#open-settings').click();
+  await openPanel(page, 'settings');
   await expect(page.locator('#panel-settings')).toContainText('Shake to shuffle');
 });

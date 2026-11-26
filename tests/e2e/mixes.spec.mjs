@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { installMock, login, idle, pick, shot } from './helpers.mjs';
+import { installMock, login, idle, pick, shot, openPanel, moreOptions } from './helpers.mjs';
 
 let state;
 
@@ -8,6 +8,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 const openFilters = async (page) => {
+  await moreOptions(page);
   await page.locator('#filters-box summary').click();
   await expect(page.locator('#filters-box')).toHaveAttribute('open', '');
 };
@@ -20,8 +21,10 @@ test('filtros: contador en vivo, barajado solo del subconjunto y la propia playl
   await pick(page, 'shuffle', 'Rock');
   await openFilters(page);
   await expect(page.locator('#filter-count')).toHaveText('120 de 120 canciones pasan los filtros.');
+  await moreOptions(page);
   await page.locator('#f-yearFrom').fill('2000');
   await expect(page.locator('#filter-count')).toHaveText('80 de 120 canciones pasan los filtros.');
+  await moreOptions(page);
   await page.locator('#f-explicit').selectOption('none');
   await expect(page.locator('#filter-count')).toHaveText('64 de 120 canciones pasan los filtros.');
   await expect(page.locator('#panel-shuffle label.choice', { hasText: 'La propia playlist' }).locator('input')).toBeDisabled();
@@ -40,6 +43,7 @@ test('filtros: si nada pasa no se escribe nada', async ({ page }) => {
   await login(page);
   await pick(page, 'shuffle', 'Rock');
   await openFilters(page);
+  await moreOptions(page);
   await page.locator('#f-yearFrom').fill('2050');
   await expect(page.locator('#filter-count')).toHaveText('0 de 120 canciones pasan los filtros.');
   await page.locator('#shuffle-go').click();
@@ -71,7 +75,9 @@ test('mezclas guardadas: guardar con filtros, reutilizar desde Inicio, editar, b
   await login(page);
   await pick(page, 'shuffle', 'Rock');
   await openFilters(page);
+  await moreOptions(page);
   await page.locator('#f-yearFrom').fill('2000');
+  await moreOptions(page);
   await page.locator('#save-mix').click();
   await page.locator('#ask-name').fill('Coche');
   await page.locator('#ask-ok').click();
@@ -92,7 +98,9 @@ test('mezclas guardadas: guardar con filtros, reutilizar desde Inicio, editar, b
   await page.getByRole('button', { name: 'Editar mezcla Coche' }).click();
   await expect(page.locator('#f-yearFrom')).toHaveValue('2000');
   await expect(page.locator('#save-mix')).toHaveText('Guardar cambios en «Coche»');
+  await moreOptions(page);
   await page.locator('#f-yearFrom').fill('2010');
+  await moreOptions(page);
   await page.locator('#save-mix').click();
   await expect(page.locator('#ask-name')).toHaveValue('Coche');
   await page.locator('#ask-name').fill('Gym');
@@ -112,6 +120,7 @@ test('mezclas guardadas: guardar con filtros, reutilizar desde Inicio, editar, b
 test('una mezcla de biblioteca incluye las playlists nuevas al volver a barajarla', async ({ page }) => {
   await login(page);
   await page.locator('#select-library').click();
+  await moreOptions(page);
   await page.locator('#save-mix').click();
   await page.locator('#ask-ok').click();
   await expect(page.getByText('Mezcla «Toda mi biblioteca» guardada.')).toBeVisible();
@@ -137,7 +146,7 @@ test('una mezcla cuyas playlists ya no existen avisa sin escribir nada', async (
 
 test('las mezclas viajan en la copia de seguridad: se restauran y se limpian las inválidas', async ({ page }) => {
   await login(page);
-  await page.locator('#tab-backup').click();
+  await openPanel(page, 'backup');
   const backup = {
     app: 'baraja', version: 1, playlists: [],
     mixes: [
@@ -162,7 +171,7 @@ test('restaurar no pisa una mezcla local con el mismo id', async ({ page }) => {
   await page.evaluate(() => localStorage.setItem('baraja.mixes', JSON.stringify([
     { id: 'a1', name: 'Editada', ids: ['pl_rock'], names: ['Rock'], dedupe: true, mode: 'reuse', filters: {} },
   ])));
-  await page.locator('#tab-backup').click();
+  await openPanel(page, 'backup');
   const backup = {
     app: 'baraja', version: 1, playlists: [],
     mixes: [
@@ -182,7 +191,7 @@ test('el JSON exportado incluye las mezclas guardadas', async ({ page }) => {
   await page.evaluate(() => localStorage.setItem('baraja.mixes', JSON.stringify([
     { id: 'a1', name: 'Gym', ids: ['pl_rock'], names: ['Rock'], dedupe: true, mode: 'reuse', filters: {} },
   ])));
-  await page.locator('#tab-backup').click();
+  await openPanel(page, 'backup');
   await pick(page, 'backup', 'Chill');
   await page.getByRole('button', { name: 'Preparar copia' }).click();
   const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('#save-json').click()]);

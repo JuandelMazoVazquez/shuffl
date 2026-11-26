@@ -139,4 +139,5 @@ export async function getAccessToken() {
 export function logout() {
   removeItem(KEYS.tokens);
   removeItem(KEYS.pkce);
+  removeItem(KEYS.metaCache);
 }
