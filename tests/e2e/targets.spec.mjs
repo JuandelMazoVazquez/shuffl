@@ -130,6 +130,21 @@ test('si renombras la generada para conservarla (sin «· Shuffle»), se deja in
   expect(await targets(page)).toEqual({ 'pl:pl_rock': fresh.id });
 });
 
+test('si otra pestaña está escribiendo, la baraja espera a que termine (Web Locks)', async ({ page, context }) => {
+  await login(page);
+  const other = await context.newPage();
+  await other.goto('/');
+  await other.evaluate(() => { navigator.locks.request('shuffl-write', () => new Promise((ok) => { window.__release = ok; })); });
+  await pick(page, 'shuffle', 'Rock');
+  await page.locator('#shuffle-go').click();
+  await page.waitForTimeout(1500);
+  expect(state.writes.filter((w) => w.op === 'put')).toEqual([]);
+  await expect(page.locator('body')).toHaveClass(/busy/);
+  await other.evaluate(() => window.__release());
+  await expect(page.locator('#panel-shuffle .result-title')).toContainText('Listo: 120');
+  expect(byName('Rock · Shuffle')).toHaveLength(1);
+});
+
 test('si la generada desaparece se crea otra y se actualiza la correspondencia', async ({ page }) => {
   await login(page);
   await shuffle(page, 'Rock');

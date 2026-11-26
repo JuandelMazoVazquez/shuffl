@@ -522,7 +522,16 @@ function renderResult(container, status, o) {
 
 const prefersReducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 /** Web Locks: si dos pestañas (por ejemplo, dos órdenes de Siri seguidas) barajan a la vez, escriben una detrás de otra. */
-const withWriteLock = (fn) => (navigator.locks ? navigator.locks.request('shuffl-write', fn) : fn());
+/** Espera como mucho 30 s: iOS congela pestañas en segundo plano y una podría no soltar nunca el candado. */
+async function withWriteLock(fn) {
+  if (!navigator.locks) return fn();
+  try {
+    return await navigator.locks.request('shuffl-write', { signal: AbortSignal.timeout(30000) }, fn);
+  } catch (e) {
+    if (e?.name === 'AbortError' || e?.name === 'TimeoutError') throw new UserError(t('errOtherTab'));
+    throw e;
+  }
+}
 const wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
 
 /** Celebración discreta al terminar: unos naipes lima que caen y se desvanecen (nada con movimiento reducido). */
