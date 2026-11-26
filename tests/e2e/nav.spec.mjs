@@ -134,7 +134,8 @@ test('el resultado: nombre, canciones y duración, ▶ Reproducir y Abrir arriba
   const covers = page.locator('#panel-shuffle .tracks img.track-cover');
   await expect(covers).toHaveCount(30);
   await expect(covers.first()).toHaveAttribute('src', /-300$/);
-  const size = await covers.first().evaluate((img) => [img.getBoundingClientRect().width, img.getBoundingClientRect().height, getComputedStyle(img).objectFit]);
+  // Redondeado: durante la entrada en cascada el rectángulo puede salir con decimales (47,99998).
+  const size = await covers.first().evaluate((img) => [Math.round(img.getBoundingClientRect().width), Math.round(img.getBoundingClientRect().height), getComputedStyle(img).objectFit]);
   expect(size).toEqual([48, 48, 'contain']);
   await expect(page.locator('#panel-shuffle .result .spotify-attrib')).toBeVisible();
   await shot(page, 'docs/capturas/03-resultado-barajar.png');
