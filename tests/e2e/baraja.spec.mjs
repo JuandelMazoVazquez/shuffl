@@ -48,7 +48,7 @@ test('barajar dos playlists combinadas en «Mix · Shuffle», volver a barajar y
   await pick(page, 'shuffle', 'Rock');
   await pick(page, 'shuffle', 'Chill');
   await page.locator('#panel-shuffle .btn.primary.big').click();
-  await expect(page.getByText('Listo: 180 canciones barajadas')).toBeVisible();
+  await expect(page.locator('#result-meta:visible', { hasText: /^180 (canciones|songs) ·/ })).toBeVisible();
   await expect(page.getByText('20 repetidas quitadas.')).toBeVisible();
   await shot(page, `${SHOTS}/03-resultado-barajar.png`);
 
@@ -60,9 +60,10 @@ test('barajar dos playlists combinadas en «Mix · Shuffle», volver a barajar y
   expect(baraja.description.replace(/ · shuffl:src=[a-f0-9]{10}$/, '')).toBe('Barajada con Shuffl (aleatorio uniforme; reprodúcela con el aleatorio de Spotify apagado). Origen: Rock, Chill');
   const natural = [...state.lists.get('pl_rock').tracks, ...state.lists.get('pl_chill').tracks].map((t) => t.name);
   expect(names(baraja)).not.toEqual(natural.slice(0, 180));
-  expect(state.writes.filter((w) => w.op === 'put' && w.id === baraja.id)).toHaveLength(1);
-  expect(state.writes.filter((w) => w.op === 'post' && w.id === baraja.id)).toHaveLength(1);
-  await expect(page.locator('.preview li')).toHaveCount(20);
+  // Playlist nueva: se crea y se llena en bloques de 100 (nada que sobrescribir).
+  expect(state.writes.filter((w) => w.op === 'put' && w.id === baraja.id)).toHaveLength(0);
+  expect(state.writes.filter((w) => w.op === 'post' && w.id === baraja.id)).toHaveLength(2);
+  await expect(page.locator('#panel-shuffle .tracks .track')).toHaveCount(30);
 
   const first = names(baraja).join();
   await page.getByRole('button', { name: 'Volver a barajar' }).click();
@@ -79,7 +80,7 @@ test('barajar dos playlists combinadas en «Mix · Shuffle», volver a barajar y
   await page.getByRole('button', { name: 'Volver', exact: true }).click();
   await page.locator('#panel-shuffle .btn.primary.big').click();
   await idle(page);
-  await expect(page.getByText('Listo: 180 canciones barajadas')).toBeVisible();
+  await expect(page.locator('#result-meta:visible', { hasText: /^180 (canciones|songs) ·/ })).toBeVisible();
   expect([...state.lists.values()].filter((l) => l.name === 'Mix · Shuffle')).toHaveLength(1);
 });
 
@@ -87,12 +88,12 @@ test('si la playlist «· Shuffle» desaparece se crea una nueva', async ({ page
   await login(page);
   await pick(page, 'shuffle', 'Rock');
   await page.locator('#panel-shuffle .btn.primary.big').click();
-  await expect(page.getByText('Listo: 120 canciones barajadas')).toBeVisible();
+  await expect(page.locator('#result-meta:visible', { hasText: /^120 (canciones|songs) ·/ })).toBeVisible();
   const old = [...state.lists.values()].find((l) => l.name === 'Rock · Shuffle');
   state.lists.delete(old.id);
   await page.getByRole('button', { name: 'Volver', exact: true }).click();
   await page.locator('#panel-shuffle .btn.primary.big').click();
-  await expect(page.getByText('Listo: 120 canciones barajadas')).toBeVisible();
+  await expect(page.locator('#result-meta:visible', { hasText: /^120 (canciones|songs) ·/ })).toBeVisible();
   const now = [...state.lists.values()].filter((l) => l.name === 'Rock · Shuffle');
   expect(now).toHaveLength(1);
   expect(now[0].id).not.toBe(old.id);
@@ -112,7 +113,7 @@ test('barajar la propia playlist pide confirmación y se puede deshacer', async 
   expect(state.writes.some((w) => w.id === 'pl_rock')).toBe(false);
 
   await page.locator('#panel-shuffle .btn.primary.big').click();
-  await expect(page.getByText('Listo: 120 canciones barajadas')).toBeVisible();
+  await expect(page.locator('#result-meta:visible', { hasText: /^120 (canciones|songs) ·/ })).toBeVisible();
   expect(names(state.lists.get('pl_rock')).join()).not.toBe(before);
   await page.getByRole('button', { name: 'Deshacer último cambio' }).click();
   await expect(page.getByText('Cambio deshecho.')).toBeVisible();
@@ -254,6 +255,7 @@ test('escritura a medias: reintentar no pisa el Deshacer y Deshacer recupera el 
   expect(state.lists.get('pl_rock').tracks).toHaveLength(100);
 
   const writesBefore = state.writes.length;
+  await page.locator('#working-back').click();
   await page.locator('#panel-shuffle .btn.primary.big').click();
   await expect(page.getByRole('alert')).toContainText('no terminó');
   expect(state.writes).toHaveLength(writesBefore);
@@ -284,7 +286,7 @@ test('Deshacer no se aplica si la playlist cambió después de la operación', a
   await moreOptions(page);
   await page.locator('#panel-shuffle label.choice', { hasText: 'La propia playlist' }).click();
   await page.locator('#panel-shuffle .btn.primary.big').click();
-  await expect(page.getByText('Listo: 120 canciones barajadas')).toBeVisible();
+  await expect(page.locator('#result-meta:visible', { hasText: /^120 (canciones|songs) ·/ })).toBeVisible();
   const list = state.lists.get('pl_rock');
   list.tracks.push([...state.catalog.values()][500]);
   const writesBefore = state.writes.length;
@@ -300,7 +302,7 @@ test('volver a barajar a medias: Deshacer sigue recuperando el original y otra p
   await moreOptions(page);
   await page.locator('#panel-shuffle label.choice', { hasText: 'La propia playlist' }).click();
   await page.locator('#panel-shuffle .btn.primary.big').click();
-  await expect(page.getByText('Listo: 120 canciones barajadas')).toBeVisible();
+  await expect(page.locator('#result-meta:visible', { hasText: /^120 (canciones|songs) ·/ })).toBeVisible();
   state.failNextPost = true;
   await page.getByRole('button', { name: 'Volver a barajar' }).click();
   await expect(page.getByRole('alert')).toBeVisible();
@@ -330,7 +332,7 @@ test('ninguna pantalla de resultado muestra «null», «undefined» ni «false»
 
   await pick(page, 'shuffle', 'Chill');
   await page.locator('#panel-shuffle .btn.primary.big').click();
-  await expect(page.getByText('Listo: 80 canciones barajadas')).toBeVisible();
+  await expect(page.locator('#result-meta:visible', { hasText: /^80 (canciones|songs) ·/ })).toBeVisible();
   await clean('barajar');
 
   await openPanel(page, 'sort');

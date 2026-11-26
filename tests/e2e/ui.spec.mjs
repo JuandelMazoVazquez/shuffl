@@ -32,19 +32,19 @@ test('Inicio: tarjetas de atajo, y «volver a barajar mi última mezcla» aparec
   await pick(page, 'shuffle', 'Rock');
   await pick(page, 'shuffle', 'Chill');
   await page.locator('#panel-shuffle .btn.primary.big').click();
-  await expect(page.getByText('Listo: 180 canciones barajadas')).toBeVisible();
+  await expect(page.locator('#result-meta:visible', { hasText: /^180 (canciones|songs) ·/ })).toBeVisible();
   await idle(page);
 
   await page.locator('#tab-home').click();
-  await expect(page.locator('#card-last-mix')).toContainText('Otra vez: Rock + Chill');
-  await expect(page.locator('#card-last-mix')).toContainText('Rock + Chill');
+  await expect(page.locator('#card-last-mix')).toContainText('Volver a barajar');
+  await expect(page.locator('#again-name')).toHaveText('Rock + Chill');
   await shot(page, 'docs/capturas/08-inicio.png');
   const before = state.writes.length;
   await page.locator('#card-last-mix').click();
   await expect(page.locator('#panel-shuffle')).toBeVisible();
   await expect.poll(() => state.writes.length).toBeGreaterThan(before);
   await idle(page);
-  await expect(page.getByText('Listo: 180 canciones barajadas')).toBeVisible();
+  await expect(page.locator('#result-meta:visible', { hasText: /^180 (canciones|songs) ·/ })).toBeVisible();
 });
 
 test('tema oscuro por defecto, se cambia en Ajustes, se recuerda y «como el sistema» respeta el sistema', async ({ page }) => {
@@ -100,10 +100,10 @@ test('la animación de naipes aparece mientras se baraja y sigue el progreso rea
   await page.locator('#panel-shuffle .btn.primary.big').click();
   const loader = page.locator('#panel-shuffle .loader');
   await expect(loader).toHaveClass(/on/);
-  const p = await loader.evaluate((el) => Number(el.style.getPropertyValue('--p')));
-  expect(p).toBeGreaterThan(0);
-  expect(p).toBeLessThanOrEqual(1);
-  await expect(page.getByText('Listo: 120 canciones barajadas')).toBeVisible();
+  // Primero sale el paso («Leyendo canciones…») y, en cuanto llega la primera página, la barra avanza.
+  await expect.poll(() => loader.evaluate((el) => Number(el.style.getPropertyValue('--p')))).toBeGreaterThan(0);
+  expect(await loader.evaluate((el) => Number(el.style.getPropertyValue('--p')))).toBeLessThanOrEqual(1);
+  await expect(page.locator('#result-meta:visible', { hasText: /^120 (canciones|songs) ·/ })).toBeVisible();
   await expect(loader).not.toHaveClass(/on/);
 });
 
@@ -111,9 +111,9 @@ test('el resultado muestra las canciones en cascada y cuenta hasta el total', as
   await login(page);
   await pick(page, 'shuffle', 'Chill');
   await page.locator('#panel-shuffle .btn.primary.big').click();
-  await expect(page.getByText('Listo: 80 canciones barajadas')).toBeVisible();
-  const delays = await page.locator('.preview li').evaluateAll((lis) => lis.slice(0, 4).map((li) => getComputedStyle(li).animationDelay));
-  expect(delays).toEqual(['0s', '0.04s', '0.08s', '0.12s']);
+  await expect(page.locator('#result-meta:visible', { hasText: /^80 (canciones|songs) ·/ })).toBeVisible();
+  const delays = await page.locator('#panel-shuffle .tracks .track').evaluateAll((lis) => lis.slice(0, 4).map((li) => getComputedStyle(li).animationDelay));
+  expect(delays).toEqual(['0s', '0.035s', '0.07s', '0.105s']);
 });
 
 test('con movimiento reducido no hay animaciones y el contador sale ya completo', async ({ page }) => {
@@ -121,8 +121,8 @@ test('con movimiento reducido no hay animaciones y el contador sale ya completo'
   await login(page);
   await pick(page, 'shuffle', 'Chill');
   await page.locator('#panel-shuffle .btn.primary.big').click();
-  await expect(page.locator('#panel-shuffle .result-title')).toHaveText('Listo: 80 canciones barajadas');
-  expect(await page.locator('.preview li').first().evaluate((li) => getComputedStyle(li).animationName)).toBe('none');
+  await expect(page.locator('#result-meta:visible')).toContainText('80 canciones ·');
+  expect(await page.locator('#panel-shuffle .tracks .track').first().evaluate((li) => getComputedStyle(li).animationName)).toBe('none');
   expect(await page.locator('#panel-shuffle .result').evaluate((el) => getComputedStyle(el).animationName)).toBe('none');
 });
 

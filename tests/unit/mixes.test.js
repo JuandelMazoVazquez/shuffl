@@ -45,7 +45,15 @@ test('sanitizeFilters descarta valores con formato raro', () => {
 
 test('sanitizeMix valida y recorta', () => {
   const ok = sanitizeMix({ id: 'm1', name: '  Coche  ', ids: ['a', 'b'], names: ['A', 'B'], dedupe: false, mode: 'new', filters: { explicit: 'none' } });
-  assert.deepEqual(ok, { id: 'm1', name: 'Coche', library: false, ids: ['a', 'b'], names: ['A', 'B'], filters: { ...emptyFilters(), explicit: 'none' }, dedupe: false, mode: 'new', kind: 'songs' });
+  assert.deepEqual(ok, { id: 'm1', name: 'Coche', library: false, ids: ['a', 'b'], names: ['A', 'B'], filters: { ...emptyFilters(), explicit: 'none' }, dedupe: false, mode: 'reuse', kind: 'songs' }, '«una nueva cada vez» ya no existe: pasa a la playlist de Shuffl');
+  const time = sanitizeMix({ id: 'm2', name: 'Gym', ids: ['a'], kind: 'time', minutes: 35, mode: 'self' });
+  assert.equal(time.kind, 'time');
+  assert.equal(time.minutes, 35);
+  assert.equal(time.mode, 'reuse', 'por tiempo no puede sobrescribir la propia');
+  const albums = sanitizeMix({ id: 'm3', name: 'Discos', ids: ['a'], kind: 'albums', savedAlbums: true });
+  assert.equal(albums.kind, 'songs', 'las de «por álbumes» se barajan por canciones');
+  assert.equal(sanitizeMix({ id: 'm4', name: 'Solo guardados', ids: [], kind: 'albums', savedAlbums: true }), null);
+  assert.equal(sanitizeMix({ id: 'id con espacios', name: 'x', ids: ['a'] }), null);
   assert.equal(sanitizeMix({ id: 'm', name: 'x', ids: [] }), null, 'sin fuentes');
   assert.equal(sanitizeMix({ id: 'm', name: '', ids: ['a'] }), null, 'sin nombre');
   assert.equal(sanitizeMix('hola'), null);

@@ -1,17 +1,12 @@
-// Playlists generadas «· Shuffle»: nombre, descripción y correspondencia origen → playlist (vive en el dispositivo).
+// Playlists que crea Shuffl: nombre, descripción con etiqueta y cómo reconocerlas para borrarlas (v1.3.1).
+// En tu cuenta solo existe una playlist de Shuffl a la vez: antes de crear la nueva se quitan todas las anteriores.
 
 export const SHUFFLE_SUFFIX = ' · Shuffle';
 export const MAX_NAME = 100;
 export const MAX_DESCRIPTION = 300;
-export const MAX_TARGETS = 200;
 const SOURCE_ID = /^[A-Za-z0-9_-]{1,64}$/;
-const PLAYLIST_ID = /^[A-Za-z0-9]{1,64}$/;
-const BASE_KEY = '(library|mix:[A-Za-z0-9_-]{1,64}|pl:[A-Za-z0-9_-]{1,64}(,[A-Za-z0-9_-]{1,64})*)';
-/** Claves de origen: las de barajar y las de la v1.3 (por tiempo, por álbumes, Descubrir, recuerdos y Mi top). */
-const KEY_RE = new RegExp(`^(${BASE_KEY}|albums:(saved|${BASE_KEY})|time:[0-9]{1,3}|new|explore|ago:[0-9]{1,2}|forgotten|top)$`);
-export const isTargetKey = (k) => typeof k === 'string' && KEY_RE.test(k);
-const LEGACY_NAME = /^(🔀 Baraja|Baraja · |📸 )/;
 export const LEGACY_PLAYLIST = '🔀 Baraja';
+export const SNAPSHOT_PREFIX = '📸 ';
 
 const cut = (s, max) => {
   const chars = [...s];
@@ -19,8 +14,8 @@ const cut = (s, max) => {
 };
 
 /**
- * Clave del origen: una mezcla guardada tiene la suya; si no, toda la biblioteca o el conjunto de playlists
- * (sin importar el orden en que se eligieron). Devuelve null si no hay origen válido.
+ * Clave del origen (para la etiqueta): una mezcla guardada tiene la suya; si no, toda la biblioteca o el conjunto de
+ * playlists (sin importar el orden en que se eligieron). Devuelve null si no hay origen válido.
  */
 export function sourceKey({ mixId, library, ids = [] }) {
   if (typeof mixId === 'string' && SOURCE_ID.test(mixId)) return `mix:${mixId}`;
@@ -41,39 +36,25 @@ export function generatedName({ mixName, library, sources = [] }, labels) {
   return cut(String(base).trim() || 'Mix', MAX_NAME - SHUFFLE_SUFFIX.length) + SHUFFLE_SUFFIX;
 }
 
-/** Nombre para «una nueva cada vez»: el generado más la fecha, sin pasar del máximo de Spotify. */
-export const datedName = (name, date) => cut(`${name} · ${date}`, MAX_NAME);
+/** Nombre de una instantánea: «📸 Top 4 semanas». */
+export const snapshotName = (label) => cut(`${SNAPSHOT_PREFIX}${label}`, MAX_NAME);
 
 /** `intro` termina en «: »; la lista de orígenes se recorta para no pasar de 300 caracteres. */
 export function generatedDescription(intro, names) {
   return cut(`${intro}${names.filter(Boolean).join(', ')}`, MAX_DESCRIPTION);
 }
 
+const decodeEntities = (s) => String(s ?? '')
+  .replace(/&quot;/g, '"').replace(/&#x27;|&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#x2F;/g, '/').replace(/&amp;/g, '&');
+
 /** Spotify devuelve la descripción con entidades HTML; para compararla hay que deshacerlas. */
 export function sameDescription(fromSpotify, wanted) {
   return decodeEntities(fromSpotify) === wanted;
 }
 
-/** Valida la correspondencia guardada (almacenamiento o copia): claves y ids con formato seguro, como mucho MAX_TARGETS. */
-export function sanitizeTargets(raw) {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
-  const ok = Object.entries(raw).filter(([k, v]) => KEY_RE.test(k) && typeof v === 'string' && PLAYLIST_ID.test(v));
-  return Object.fromEntries(ok.slice(-MAX_TARGETS));
-}
-
-/** Devuelve una correspondencia nueva con `key` → `id` como la más reciente; descarta las más antiguas si hay demasiadas. */
-export function setTarget(map, key, id) {
-  const rest = Object.entries(map).filter(([k]) => k !== key);
-  return Object.fromEntries([...rest, [key, id]].slice(-MAX_TARGETS));
-}
-
-export function removeTarget(map, key) {
-  return Object.fromEntries(Object.entries(map).filter(([k]) => k !== key));
-}
-
-// ---------- Etiqueta de origen (v1.3) ----------
-// Cada «· Shuffle» lleva al final de la descripción « · shuffl:src=<hash>», un resumen del origen que permite
-// encontrarla desde cualquier dispositivo sin guardar nada. El hash no revela los ids ni el nombre del origen.
+// ---------- Etiqueta ----------
+// Cada playlist de Shuffl lleva al final de la descripción « · shuffl:src=<hash>». El hash resume el origen y no revela
+// ids ni nombres; sirve para reconocerla desde cualquier dispositivo.
 
 export const TAG_PREFIX = 'shuffl:src=';
 const TAG_LEN = 10;
@@ -86,9 +67,6 @@ export async function tagFor(key) {
   return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, TAG_LEN);
 }
 
-const decodeEntities = (s) => String(s ?? '')
-  .replace(/&quot;/g, '"').replace(/&#x27;|&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#x2F;/g, '/').replace(/&amp;/g, '&');
-
 /** Descripción con la etiqueta al final; el texto se recorta para que la etiqueta quepa siempre. */
 export function withTag(description, tag) {
   const suffix = `${TAG_SEP}${TAG_PREFIX}${tag}`;
@@ -100,67 +78,44 @@ export function readTag(description) {
   return TAG_RE.exec(decodeEntities(description))?.[1] ?? null;
 }
 
-/** Una playlist que Shuffl puede tocar: tuya y con un nombre que sigue terminando en « · Shuffle». */
-export const isManagedName = (name) => typeof name === 'string' && name.endsWith(SHUFFLE_SUFFIX);
+// ---------- Reconocer las playlists de Shuffl ----------
 
 /**
- * Playlists (tal como las devuelve GET /me/playlists) que son la «· Shuffle» de este origen: propias, con el nombre
- * acabado en « · Shuffle» y con su etiqueta. Sin etiqueta (v1.2) el nombre y la descripción no bastan para saber el
- * origen (dos playlists «Rock» dan lo mismo), así que solo cuenta la que este dispositivo ya usaba para esa clave
- * (`preferredId`) o, si no, la única que coincida. Las renombradas no aparecen nunca.
+ * Descripciones que pusieron las versiones anteriores, sacadas del historial de git (js/i18n.js): exactas o, las que
+ * terminaban con la lista de orígenes, como prefijo. Una playlist sin etiqueta solo es de Shuffl si su descripción es una de estas.
  */
-export function findCandidates(playlists, { meId, tag, name, legacyDescription, preferredId = null }) {
-  const mine = playlists.filter((p) => p && p.owner?.id === meId && isManagedName(p.name));
-  const tagged = mine.filter((p) => readTag(p.description) === tag);
-  const legacy = legacyDescription == null ? []
-    : mine.filter((p) => !readTag(p.description) && p.name === name && sameDescription(p.description, legacyDescription));
-  const known = legacy.filter((p) => p.id === preferredId);
-  return [...tagged, ...(known.length ? known : legacy.length === 1 ? legacy : [])];
+export const LEGACY_DESCRIPTIONS = {
+  exact: [
+    'Barajada con Baraja · aleatorio uniforme · reprodúcela con el aleatorio de Spotify apagado',
+    'Shuffled with Baraja · uniform random · play it with Spotify shuffle off',
+    'Instantánea creada con Baraja', 'Snapshot created with Baraja',
+    'Instantánea creada con Shuffl', 'Snapshot created with Shuffl',
+  ],
+  prefix: [
+    'Barajada con Shuffl (aleatorio uniforme; reprodúcela con el aleatorio de Spotify apagado). Origen: ',
+    'Shuffled with Shuffl (uniform random; play it with Spotify shuffle off). Source: ',
+  ],
+};
+
+/** Nombres que pone Shuffl: «… · Shuffle», «… · Shuffle · fecha» (v1.2), «📸 …» y «🔀 Baraja». */
+export function isAppName(name) {
+  if (typeof name !== 'string' || !name.trim()) return false;
+  return name.endsWith(SHUFFLE_SUFFIX) || / · Shuffle · .+$/.test(name) || name.startsWith(SNAPSHOT_PREFIX) || name === LEGACY_PLAYLIST;
 }
 
-/** Clave de grupo de una «· Shuffle» propia: su etiqueta o, sin etiqueta (v1.2), nombre y descripción. Null si no se gestiona. */
-export function groupKeyOf(p, meId) {
-  if (!p || p.owner?.id !== meId || !isManagedName(p.name)) return null;
-  const tag = readTag(p.description);
-  return tag ? `tag:${tag}` : `legacy:${p.name}\n${decodeEntities(p.description)}`;
-}
+const isLegacyDescription = (description) => {
+  const d = decodeEntities(description).trim();
+  if (!d) return false;
+  return LEGACY_DESCRIPTIONS.exact.includes(d) || LEGACY_DESCRIPTIONS.prefix.some((p) => d.startsWith(p) && d.length > p.length);
+};
 
 /**
- * Cuál se queda de varias copias: la que se escribió más tarde (`lastWrite`: id → ms de la última canción añadida,
- * que al sobrescribir es la fecha de la baraja). En empate, la que este dispositivo ya usaba y, si no, la primera.
+ * Si una playlist (tal como la devuelve GET /me/playlists) la creó Shuffl y se puede borrar: propia, con un nombre de
+ * los que pone la app (si la renombraste, es tuya) y con la etiqueta o, sin ella, con una descripción de una versión
+ * anterior. Descripción vacía o distinta: no es de Shuffl.
  */
-export function pickKeep(candidates, lastWrite = new Map(), preferredId = null) {
-  let best = null;
-  for (const p of candidates) {
-    const t = lastWrite.get(p.id) ?? -Infinity;
-    const score = [t, p.id === preferredId ? 1 : 0];
-    if (!best || score[0] > best.score[0] || (score[0] === best.score[0] && score[1] > best.score[1])) best = { p, score };
-  }
-  return best?.p ?? null;
-}
-
-/**
- * Grupos de copias repetidas en toda la biblioteca: por etiqueta y, sin etiqueta, por nombre y descripción iguales
- * (v1.2, marcados `legacy`: pueden venir de orígenes distintos con el mismo nombre, así que nunca se quitan sin
- * preguntar). Solo playlists propias con nombre «… · Shuffle». Devuelve [{ key, name, legacy, playlists }] con 2 o más.
- */
-export function duplicateGroups(playlists, meId) {
-  const groups = new Map();
-  for (const p of playlists) {
-    const key = groupKeyOf(p, meId);
-    if (!key) continue;
-    if (!groups.has(key)) groups.set(key, { key, name: p.name, legacy: key.startsWith('legacy:'), playlists: [] });
-    groups.get(key).playlists.push(p);
-  }
-  return [...groups.values()].filter((g) => g.playlists.length > 1);
-}
-
-/** La antigua «🔀 Baraja» propia, solo si sigue con ese nombre (si la renombraste, es tuya y no se toca). */
-export function findLegacyBaraja(playlists, meId) {
-  return playlists.find((p) => p && p.owner?.id === meId && p.name === LEGACY_PLAYLIST) ?? null;
-}
-
-/** Playlists que crea la app (las de ahora, las de antes del cambio de nombre e instantáneas). */
-export function isGeneratedPlaylist(pl, map = {}, legacyId = null) {
-  return pl.id === legacyId || Object.values(map).includes(pl.id) || pl.name.endsWith(SHUFFLE_SUFFIX) || LEGACY_NAME.test(pl.name);
+export function isAppPlaylist(p, meId) {
+  if (!p || !meId || p.owner?.id !== meId || p.collaborative) return false;
+  if (!isAppName(p.name)) return false;
+  return !!readTag(p.description) || isLegacyDescription(p.description);
 }

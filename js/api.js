@@ -6,6 +6,7 @@ const WRITE_CHUNK = 100;
 const CONCURRENCY = 3;
 const MAX_RETRY_AFTER_S = 30;
 export const LIBRARY_CHUNK = 40;
+export const SEARCH_LIMIT = 10;
 const ARTIST_ALBUMS_LIMIT = 10;
 
 export class ApiError extends Error {
@@ -206,6 +207,13 @@ export class SpotifyApi {
     for (const part of chunk(ids, LIBRARY_CHUNK)) {
       await this.request('DELETE', `/me/library?uris=${part.map((id) => encodeURIComponent(`spotify:playlist:${id}`)).join(',')}`);
     }
+  }
+
+  /** Artistas de un género (`q=genre:"…"`, type=artist). En Development Mode `limit` no pasa de 10; se pagina con offset. */
+  async searchArtistsByGenre(genre, offset = 0) {
+    const q = encodeURIComponent(`genre:"${String(genre).replace(/"/g, '')}"`);
+    const data = await this.request('GET', `/search?type=artist&limit=${SEARCH_LIMIT}&offset=${Math.max(0, Math.min(offset, 990))}&q=${q}`);
+    return Array.isArray(data?.artists?.items) ? data.artists.items : [];
   }
 
   /** Fecha (ms) de la primera canción de una playlist: al sobrescribir, es cuándo se escribió por última vez. */

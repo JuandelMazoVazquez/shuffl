@@ -44,7 +44,7 @@ test('?origen=<playlist>&play=1 baraja esa playlist en su «· Shuffle»; sin pl
   expect(byName('Chill · Shuffle')[0].tracks).toHaveLength(80);
 
   await page.goto('/?origen=pl_rock');
-  await expect(page.locator('#panel-shuffle .result-title')).toContainText('Listo: 120');
+  await expect(page.locator('#result-meta:visible')).toContainText('120 canciones');
   await idle(page);
   expect(byName('Rock · Shuffle')).toHaveLength(1);
   expect(state.playerCalls.filter((c) => c.path === '/me/player/play')).toHaveLength(1);
@@ -97,7 +97,7 @@ test('la ayuda explica CarPlay y el atajo sale en inglés', async ({ page }) => 
   await openPanel(page, 'settings');
   await openPanel(page, 'pin');
   await expect(page.locator('#panel-pin')).toContainText('CarPlay no admite apps web');
-  await expect(page.locator('#panel-pin')).toContainText('«· Shuffle» dentro de Spotify');
+  await expect(page.locator('#panel-pin')).toContainText('tu playlist de Shuffl dentro de Spotify');
   await openPanel(page, 'settings');
   await page.locator('#lang-select').selectOption('en');
   await page.locator('#tab-home').click();
@@ -112,7 +112,7 @@ test('un enlace sin la clave de este navegador (por ejemplo, desde otra web) pre
   state.dismissNext = true;
   await page.goto('/?origen=__liked__&play=1');
   await expect(page.getByText('Enlace cancelado: no se ha cambiado nada.')).toBeVisible();
-  expect(dialogs).toEqual(['Un enlace quiere barajar «Tus me gusta» en su playlist «· Shuffle» y reproducirla. ¿Seguir?']);
+  expect(dialogs).toEqual(['Un enlace quiere barajar «Tus me gusta» en una playlist nueva de Shuffl y reproducirla. ¿Seguir?']);
   expect(state.writes).toEqual([]);
   expect(state.playerCalls).toEqual([]);
 
@@ -123,7 +123,7 @@ test('un enlace sin la clave de este navegador (por ejemplo, desde otra web) pre
   expect(state.writes).toEqual([]);
 
   await page.goto('/?origen=pl_chill');
-  await expect(page.locator('#panel-shuffle .result-title')).toContainText('Listo: 80');
-  expect(dialogs[2]).toBe('Un enlace quiere barajar «Chill» en su playlist «· Shuffle». ¿Seguir?');
+  await expect(page.locator('#result-meta:visible')).toContainText('80 canciones');
+  expect(dialogs[2]).toBe('Un enlace quiere barajar «Chill» en una playlist nueva de Shuffl. ¿Seguir?');
   expect(byName('Chill · Shuffle')).toHaveLength(1);
 });

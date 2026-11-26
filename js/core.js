@@ -74,6 +74,7 @@ export function normalizeEntry(entry) {
       type: isEpisode ? 'episode' : 'track',
       name: it.name ?? '',
       artists: isEpisode ? [it.show?.publisher].filter(Boolean) : (it.artists ?? []).map((a) => a.name).filter(Boolean),
+      artistIds: isEpisode ? [] : (it.artists ?? []).filter((a) => a?.name).map((a) => a.id ?? ''),
       album: album?.name ?? '',
       albumId: album?.id ?? '',
       releaseDate: (isEpisode ? it.release_date : it.album?.release_date) ?? '',
@@ -86,6 +87,8 @@ export function normalizeEntry(entry) {
       trackNumber: it.track_number ?? 0,
       isLocal: false,
       image: images.length ? images[images.length - 1].url : '',
+      // Miniatura para listas (unos 48 px en pantallas de 2x o 3x): la mediana (300 px) si la hay.
+      thumb: images.length > 1 ? images[images.length - 2].url : images.length ? images[0].url : '',
     },
   };
 }

@@ -25,7 +25,7 @@ async function shuffleChill(page) {
   await login(page);
   await pick(page, 'shuffle', 'Chill');
   await page.locator('#panel-shuffle .btn.primary.big').click();
-  await expect(page.getByText('Listo: 80 canciones barajadas')).toBeVisible();
+  await expect(page.locator('#result-meta:visible', { hasText: /^80 (canciones|songs) ·/ })).toBeVisible();
   await idle(page);
 }
 
@@ -66,7 +66,7 @@ test('la portada se puede desactivar en Ajustes y no se sube al barajar la propi
   await page.locator('#tab-shuffle').click();
   await pick(page, 'shuffle', 'Chill');
   await page.locator('#panel-shuffle .btn.primary.big').click();
-  await expect(page.getByText('Listo: 80 canciones barajadas')).toBeVisible();
+  await expect(page.locator('#result-meta:visible', { hasText: /^80 (canciones|songs) ·/ })).toBeVisible();
   expect(state.images).toHaveLength(0);
 
   await openPanel(page, 'settings');
@@ -76,7 +76,7 @@ test('la portada se puede desactivar en Ajustes y no se sube al barajar la propi
   await moreOptions(page);
   await page.locator('#panel-shuffle label.choice', { hasText: 'La propia playlist' }).click();
   await page.locator('#panel-shuffle .btn.primary.big').click();
-  await expect(page.getByText('Listo: 80 canciones barajadas')).toBeVisible();
+  await expect(page.locator('#result-meta:visible', { hasText: /^80 (canciones|songs) ·/ })).toBeVisible();
   await idle(page);
   expect(state.images).toHaveLength(0);
 });
@@ -86,9 +86,9 @@ test('«Tenerla siempre a mano» explica pines, destino fijo y accesos de Inicio
   await page.locator('#open-pin-result').click();
   const panel = page.locator('#panel-pin');
   await expect(panel).toBeVisible();
-  await expect(panel).toContainText('mantén pulsada la playlist «… · Shuffle» que más uses');
-  await expect(panel).toContainText('hasta 20');
-  await expect(panel).toContainText('Cada origen tiene siempre la misma playlist');
+  await expect(panel).toContainText('mantén pulsada tu playlist «… · Shuffle» y elige Fijar');
+  await expect(panel).toContainText('el pin de Tu biblioteca no pasa a la nueva');
+  await expect(panel).toContainText('90 días');
   await expect(panel).toContainText('Spotify según lo que reproduces a menudo y hace poco');
   const baraja = [...state.lists.values()].find((l) => l.name === 'Chill · Shuffle');
   await expect(page.locator('#pin-open')).toHaveAttribute('href', `https://open.spotify.com/playlist/${baraja.id}`);
@@ -102,5 +102,5 @@ test('la pantalla de ayuda y la portada salen en inglés', async ({ page }) => {
   await page.locator('#lang-select').selectOption('en');
   await expect(page.getByText('Upload a custom cover')).toBeVisible();
   await openPanel(page, 'pin');
-  await expect(page.locator('#panel-pin')).toContainText('press and hold the “… · Shuffle” playlist you use most');
+  await expect(page.locator('#panel-pin')).toContainText('press and hold your “… · Shuffle” playlist and choose Pin');
 });

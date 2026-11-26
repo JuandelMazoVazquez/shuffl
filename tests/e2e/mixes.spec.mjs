@@ -13,7 +13,7 @@ const openFilters = async (page) => {
   await expect(page.locator('#filters-box')).toHaveAttribute('open', '');
 };
 /** La última playlist escrita por la app (la generada «· Shuffle»). */
-const baraja = () => state.lists.get(state.writes.filter((w) => w.op === 'put').at(-1).id);
+const baraja = () => state.lists.get(state.writes.filter((w) => w.op === 'create').at(-1).id);
 const yearOf = (t) => Number(t.album.release_date.slice(0, 4));
 
 test('filtros: contador en vivo, barajado solo del subconjunto y la propia playlist queda bloqueada', async ({ page }) => {
@@ -31,7 +31,7 @@ test('filtros: contador en vivo, barajado solo del subconjunto y la propia playl
   await shot(page, 'docs/capturas/10-filtros.png', { fullPage: true });
 
   await page.locator('#shuffle-go').click();
-  await expect(page.getByText('Listo: 64 canciones barajadas')).toBeVisible();
+  await expect(page.locator('#result-meta:visible', { hasText: /^64 (canciones|songs) ·/ })).toBeVisible();
   await idle(page);
   const out = baraja().tracks;
   expect(out).toHaveLength(64);
@@ -59,7 +59,7 @@ test('toda la biblioteca: resumen, salta las de otros y no se lee a sí misma', 
   await expect(page.locator('#selection-info')).toContainText('4 playlists · 268 canciones');
   await expect(page.locator('#selection-info')).toContainText('Se saltan 1 playlists de otras personas');
   await page.locator('#shuffle-go').click();
-  await expect(page.locator('#panel-shuffle .result-title')).toContainText('Listo:');
+  await expect(page.locator('#panel-shuffle .result-kicker')).toContainText('Listo');
   await idle(page);
   const unique = new Set([...state.lists.get('pl_rock').tracks, ...state.lists.get('pl_chill').tracks, ...state.lists.get('pl_dupes').tracks, ...state.liked].map((t) => t.uri));
   expect(baraja().name).toBe('Toda mi música · Shuffle');
@@ -89,7 +89,7 @@ test('mezclas guardadas: guardar con filtros, reutilizar desde Inicio, editar, b
   await expect(card).toContainText('Rock · con filtros');
   await shot(page, 'docs/capturas/11-mezclas.png');
   await card.click();
-  await expect(page.getByText('Listo: 80 canciones barajadas')).toBeVisible();
+  await expect(page.locator('#result-meta:visible', { hasText: /^80 (canciones|songs) ·/ })).toBeVisible();
   await idle(page);
   expect(baraja().tracks.every((t) => yearOf(t) >= 2000)).toBe(true);
   expect(baraja().name).toBe('Coche · Shuffle');
@@ -129,7 +129,7 @@ test('una mezcla de biblioteca incluye las playlists nuevas al volver a barajarl
   await expect(page.locator('[data-mix]')).toHaveCount(1);
   await page.evaluate(() => document.querySelector('[data-mix]').click());
   await page.locator('#tab-shuffle').click();
-  await expect(page.locator('#panel-shuffle .result-title')).toContainText('Listo:');
+  await expect(page.locator('#panel-shuffle .result-kicker')).toContainText('Listo');
 });
 
 test('una mezcla cuyas playlists ya no existen avisa sin escribir nada', async ({ page }) => {

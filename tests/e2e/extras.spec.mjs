@@ -123,7 +123,7 @@ test('diagnóstico de conexión: todo bien y 403 por usuario no añadido', async
   await login(page);
   await openPanel(page, 'settings');
   await page.locator('#run-diag').click();
-  await expect(page.locator('#diag-results li.ok')).toHaveCount(3);
+  await expect(page.locator('#diag-results li.ok')).toHaveCount(4);
   await expect(page.locator('#diag-results')).toContainText('Usuaria Prueba');
 
   await page.route('https://api.spotify.com/v1/me/playlists?limit=1', (route) => route.fulfill({
