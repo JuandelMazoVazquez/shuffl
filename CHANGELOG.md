@@ -2,6 +2,43 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). El proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 
+## [1.3.0] - 2026-11-26
+
+### Cambiado
+
+- **Navegación en 4 pestañas**: Inicio · Shuffle · Descubrir · Más.
+  - Ordenar, Duplicados, Copia, Instantáneas, Me gusta sin playlist, Dividir, «¿Es aleatorio de verdad?», «Tenerla siempre a mano» y Ajustes están en Más.
+  - Cada pantalla secundaria tiene «‹ Volver» arriba.
+  - El engranaje de la cabecera desaparece.
+- **Inicio**: un botón enorme «SHUFFLE», que vuelve a barajar tu última mezcla o te lleva a elegir qué barajar. Debajo, «Lo último» y tus mezclas guardadas.
+- **Shuffle**: tipo de shuffle, origen y botón principal. Quitar repetidas, filtros, destino, pegar enlace y guardar mezcla están plegados en «Más opciones». «Elige por mí» está al final.
+- **Una sola «· Shuffle» por origen en cualquier dispositivo**: cada playlist generada lleva al final de la descripción una etiqueta (` · shuffl:src=<hash>`).
+  - Antes de crear o sobrescribir, Shuffl la busca entre tus playlists, así que cambiar de móvil, reinstalar o usar Safari y la app instalada ya no crea duplicadas.
+  - El hash no contiene ids ni nombres.
+  - Las «· Shuffle» de la v1.2 se reconocen por su nombre y su descripción y se etiquetan al reutilizarlas.
+
+### Añadido
+
+- **Limpieza de copias repetidas**: si hay varias «· Shuffle» del mismo origen, se queda la que se barajó más tarde y las demás se quitan de tu biblioteca (`DELETE /me/library`).
+  - La primera vez pregunta («Hemos encontrado 3 copias de «Reggaeton · Shuffle». ¿Dejamos solo una?») y explica que se pueden recuperar durante 90 días en spotify.com.
+  - Hay opción de hacerlo siempre sin preguntar, también en Ajustes.
+  - Las renombradas no se tocan nunca. La antigua «🔀 Baraja» se ofrece quitar, siempre con confirmación.
+  - Si quitar falla no se pierde nada y se avisa.
+- **Shuffle por tiempo**: 15, 30, 45, 60 min o los que quieras (de 5 a 600). Se baraja de forma uniforme y se llena el tiempo con un margen de ±2 min («35 min · Shuffle»).
+- **Shuffle por álbumes**: de tus playlists o de tus álbumes guardados. El orden de los álbumes es aleatorio y cada álbum suena entero y en su orden («Rock · Álbumes · Shuffle»).
+- **Descubrir**:
+  - **Novedades**: lanzamientos de los últimos 7, 30 o 90 días de tus artistas más escuchados y de los que sigues, sin lo que ya tienes guardado.
+  - **Descubre**: canciones nunca guardadas de los álbumes que escuchas últimamente.
+  - **Tal día como hoy**: lo que guardaste este mes en años anteriores, por año y con un recuerdo («En noviembre de 2024 te enganchaste a…»).
+  - **Olvidadas**: Me gusta de hace más de 1, 2, 3 o 5 años.
+  - **Tu resumen**: tus 5 artistas y canciones top (4 semanas, 6 meses o siempre) en una tarjeta vertical (1080×1920) y otra cuadrada para compartir, con las carátulas sin tocar y el logo de Spotify. Puedes crear «Mi top · Shuffle».
+  - Cada opción crea su propia «· Shuffle» reutilizable, con portada y «Reproducir ahora». Lo que se lee de Spotify se guarda 24 h en el dispositivo para gastar menos peticiones.
+- Las mezclas guardadas recuerdan el tipo de shuffle (también para Siri y agitar).
+
+### No incluido
+
+- «Similares» (artistas parecidos con MusicBrainz y ListenBrainz): no se puede hacer bien desde el navegador. Ver [ROADMAP.md](ROADMAP.md).
+
 ## [1.2.0] - 2026-11-26
 
 **Baraja pasa a llamarse Shuffl.** El repositorio y la dirección de GitHub Pages no cambian, así que la Redirect URI sigue siendo la misma. En iPhone, para ver el icono nuevo hay que quitar la app de la pantalla de inicio y volver a añadirla (la app lo avisa una vez).

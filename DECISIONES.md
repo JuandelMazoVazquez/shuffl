@@ -2,6 +2,81 @@
 
 Trabajo hecho sin supervisión el 2026-11-23. Todo lo reversible lo decidí yo; lo demás está en [docs/bandeja.md](docs/bandeja.md).
 
+## v1.3 (2026-11-26): una sola «· Shuffle», Descubrir y funciones nuevas
+
+- **Navegación en 4 pestañas: Inicio · Shuffle · Descubrir · Más.**
+  - Agrupación por lo que se viene a hacer: Shuffle (barajar lo que ya tienes), Descubrir (música nueva y recuerdos) y Más (herramientas que se usan de vez en cuando: Ordenar, Duplicados, Copia, Instantáneas, Me gusta sin playlist, Dividir, «Tenerla siempre a mano», «¿Es aleatorio de verdad?» y Ajustes).
+  - Ordenar, Duplicados y Copia dejan de ser pestañas: se usan poco comparadas con barajar y ocupaban la barra.
+  - El engranaje de la cabecera desaparece: Ajustes vive en Más, así hay un solo sitio para todo lo secundario.
+  - Cada pantalla secundaria tiene arriba «‹ <pestaña>», que vuelve a donde estabas.
+  - «Elige por mí» va dentro de Shuffle, porque es una forma de barajar.
+- **Inicio**: un botón enorme «SHUFFLE».
+  - Con una última mezcla, la vuelve a barajar; sin ella, abre Shuffle. Debajo, «Barajar otra cosa».
+  - Luego vienen «Lo último» (las tres últimas funciones de Descubrir usadas) y las mezclas guardadas, con un estado vacío que explica cómo guardar una.
+  - Se quitan las tarjetas de atajos y de herramientas.
+- **Shuffle**: tipo de shuffle en pastillas (Canciones, Por tiempo, Por álbumes), origen y botón principal.
+  - Quitar repetidas, filtros, destino, pegar enlace y guardar mezcla van plegados en «Más opciones».
+  - Los valores por defecto (canciones, su «· Shuffle», sin repetidas) funcionan sin tocar nada.
+  - La pestaña se llama «Shuffle» también en español porque es el nombre de la función y de las playlists; los botones siguen diciendo «Barajar».
+- **Etiqueta de origen**: « · shuffl:src=<10 hex>» al final de la descripción.
+  - Los 10 hex son los primeros del SHA-256 de `shuffl:<clave de origen>`; la clave es la de la v1.2 más las nuevas: `time:<min>`, `albums:…`, `new`, `explore`, `ago:<n>`, `forgotten` y `top`.
+  - No incluye ids ni nombres. 40 bits bastan para que dos orígenes de una misma cuenta no choquen en la práctica.
+  - La descripción se recorta para que la etiqueta quepa siempre en los 300 caracteres.
+- **Búsqueda antes de escribir**: con `GET /me/playlists` se buscan las playlists propias, con nombre «… · Shuffle» y esa etiqueta.
+  - Una playlist de la v1.2 sin etiqueta solo cuenta si tiene el mismo nombre y la misma descripción que generaría ese origen. Así «Mix · Shuffle» de dos combinaciones distintas no se confunde. Al reutilizarla se le añade la etiqueta.
+  - Tras la revisión de seguridad, ni con nombre y descripción iguales basta: dos playlists «Rock» distintas dan lo mismo. Sin etiqueta solo cuenta la que este dispositivo ya usaba para esa clave o, si no, la única coincidencia. Con varias iguales se crea una nueva con etiqueta.
+  - Nunca se reutiliza un origen de la propia baraja, aunque lleve la etiqueta (por ejemplo, barajar por tiempo desde «35 min · Shuffle»).
+  - La correspondencia local (`baraja.targets`) queda solo como preferencia en empates y para excluir las generadas de «toda mi biblioteca».
+- **Cuál se queda con varias copias**: la que se escribió más tarde.
+  - Se lee la fecha `added_at` de su primera canción (`GET /playlists/{id}/items?limit=1`); al sobrescribir, todas llevan la fecha de la baraja. Solo cuesta una petición por copia, y solo cuando hay copias.
+  - Spotify no da la fecha de creación de una playlist.
+- **Quitar = dejar de seguir con `DELETE /me/library?uris=spotify:playlist:…`** (máximo 40 por petición).
+  - Según la guía de migración de febrero de 2026, sustituye a `DELETE /playlists/{id}/followers`, que ya no existe. Usa el scope `playlist-modify-public`, que la app ya pedía, así que no hay que reconectar.
+  - Verificado solo con la documentación ([docs/specs/spotify-endpoints-v1.3.md](docs/specs/spotify-endpoints-v1.3.md)), no con una cuenta real: queda en SIGUIENTES_PASOS.
+- **Limpieza segura**.
+  - Se escribe primero y se limpia después, así que un fallo al quitar no pierde nada; sale un aviso.
+  - Antes de quitar se vuelve a leer la biblioteca dentro del candado de escritura. Cada grupo se recalcula: misma etiqueta y misma playlist conservada con las fechas nuevas. Si otra pestaña o dispositivo escribió en otra copia, o renombraste alguna, ese grupo se salta.
+  - Nunca se quitan los orígenes de esa baraja ni los de las mezclas guardadas y la última mezcla (atajos de Siri, agitar).
+  - Las copias de la v1.2 sin etiqueta solo se quitan marcándolas a mano en la hoja (salen sin marcar, con un aviso), nunca en automático. La antigua «🔀 Baraja» solo cuenta si sigue con ese nombre.
+  - Si una «· Shuffle» se hizo colaborativa, otra persona puede decidir cuál de las copias se conserva escribiendo en ella. Se acepta: no puede hacer que se quite nada que no sea una copia con la misma etiqueta y propia.
+  - La primera vez pregunta, con la opción «Quitar siempre sin preguntar», que también está en Ajustes. «Ahora no» no vuelve a preguntar en esa sesión. La hoja explica la recuperación durante 90 días.
+  - Al arrancar se buscan copias repetidas en toda la biblioteca y sale un aviso con «Revisar». En automático se limpian sin preguntar, pero la antigua «🔀 Baraja» siempre se pregunta, porque no es una copia de nada.
+- **Shuffle por tiempo**: se baraja todo con Fisher-Yates y se recorre ese orden tomando cada canción que quepa sin pasar de objetivo + 2 min. Se para al llegar a objetivo − 2 min.
+  - Así cada canción tiene la misma probabilidad de entrar; lo comprueba un test con 20.000 repeticiones.
+  - Si no llega (poca música), se escribe lo que hay y se avisa.
+  - Clave `time:<min>`: una playlist por duración («35 min · Shuffle»), sea cual sea el origen. Una mezcla guardada usa la suya («Coche · Shuffle»).
+  - No permite «la propia playlist», porque la dejaría corta.
+- **Shuffle por álbumes**: los álbumes de las canciones elegidas (después de los filtros) se completan con `GET /albums/{id}/tracks`; con más de 50 se eligen 50 al azar.
+  - Se baraja el orden de los álbumes y cada uno suena en orden de disco y pista.
+  - Con «Usar tus álbumes guardados» se usa `GET /me/albums` (las canciones vienen incluidas; se piden aparte si el álbum tiene más de 50). Ahí no se aplican filtros: partirían los álbumes.
+  - Nombre: «<origen> · Álbumes · Shuffle»; con los guardados, «Tus álbumes · Álbumes · Shuffle».
+- **Novedades**: hasta 25 artistas alternando tu top de 4 semanas, el de 6 meses y los que sigues.
+  - Por artista, dos peticiones a `GET /artists/{id}/albums` (`album` y `single`), porque en Development Mode `limit` no pasa de 10 y en una sola los singles quedarían fuera.
+  - Solo cuentan los lanzamientos con fecha exacta (precisión de día) dentro de los últimos 7, 30 o 90 días (30 por defecto, en «Más opciones»).
+  - Lo guardado se quita con `GET /me/library/contains` (40 por petición).
+- **Descubre**: álbumes de tus últimas 50 escuchas y de tu top de 4 semanas (hasta 25). Se quitan las canciones guardadas y también las que acabas de escuchar, que no serían un descubrimiento.
+- **Caché de 24 h** en el dispositivo para artistas top, seguidos, lanzamientos y canciones de cada álbum. Tiene 400 entradas y 1,5 millones de caracteres como máximo (se quitan primero las más antiguas) y se valida al leerla.
+  - Las claves llevan el id de la cuenta y la caché se borra al cerrar sesión.
+  - Si Deshacer no cabe en el almacenamiento, se vacía la caché y se reintenta: Deshacer va primero.
+  - Novedades con 25 artistas hace unas 50 peticiones la primera vez y ninguna de esas en las siguientes 24 h.
+  - Hay progreso visible. `QUOTA_EXCEEDED` ya tenía su mensaje propio.
+- **«Similares» (MetaBrainz) no se implementa.**
+  - Los dos servicios responden con CORS (`Access-Control-Allow-Origin: *`, comprobado con curl). Pero MusicBrainz exige un User-Agent identificativo que un navegador no puede enviar, y en 2026 ha bloqueado clientes que no lo cumplen.
+  - En la prueba, una petición cada 2 s con un User-Agent de Safari devolvió 503 por su límite global a la tercera.
+  - El endpoint de artistas similares está en «labs» sin garantía de estabilidad. Hacerlo bien exigiría un servidor propio, que el proyecto no tiene.
+  - Detalle en [docs/specs/metabrainz-similares.md](docs/specs/metabrainz-similares.md); queda en el ROADMAP.
+- **Tal día como hoy**: Tus me gusta guardadas en el mes actual (hora local) de años anteriores, agrupadas por año.
+  - Por defecto el más reciente; en el resultado, botones con los otros años.
+  - Clave `ago:<años>`: «Hace 1 año · Shuffle» se sobrescribe cada mes con el mes que toque.
+  - El texto nostálgico usa el artista que más se repite en ese grupo y solo se muestra en pantalla, no se guarda en Spotify.
+- **Olvidadas**: Tus me gusta guardadas hace más de 1, 2, 3 o 5 años (2 por defecto). Una sola playlist «Olvidadas · Shuffle». La lectura de Tus me gusta se reutiliza en la sesión mientras su total no cambie.
+- **Tu resumen**: `GET /me/top/artists?limit=5` y el top de canciones del periodo, dibujados en un canvas de 1080×1920 y otro de 1080×1080.
+  - Las carátulas se dibujan enteras (encajadas sin recortar ni deformar), sin nada encima y con el texto al lado. El logo completo de Spotify va en blanco sobre negro, sin modificar, a 300 o 240 px con su zona de seguridad. Un test comprueba la geometría.
+  - Si una carátula no se puede leer por CORS, su hueco queda gris y se avisa; nunca se pone otra imagen. Si el lienzo queda «contaminado», se repite sin carátulas.
+  - Se comparte con Web Share (archivo) o se descarga.
+  - «Mi top · Shuffle» usa las hasta 50 canciones del top barajadas; las instantáneas «📸 Top…» siguen en Más, sin cambios.
+- **Mezclas guardadas** guardan también el tipo, los minutos y «álbumes guardados», así que Siri y agitar funcionan con los tres tipos.
+
 ## v1.2 (2026-11-26): Shuffl
 
 - **Nombre**: «Shuffl» cumple la regla (no empieza por «Spot», no contiene «Spotify» ni termina en «-ify»/«-fy»). El repo `new-spoti` y la URL de Pages no cambian, para no romper la Redirect URI de nadie. Las claves de localStorage siguen siendo `baraja.*` y las copias `app: 'baraja'` se siguen aceptando: renombrarlas cerraría sesiones y perdería Deshacer, mezclas y correspondencias. Las copias nuevas llevan `app: 'shuffl'`. La caché del SW pasa a `shuffl-<hash>` (el `activate` borra las `baraja-*`). El aviso de icono nuevo usa una clave nueva (`baraja.logoNotice.v12`) para que salga otra vez.

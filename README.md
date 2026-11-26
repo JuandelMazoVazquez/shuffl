@@ -22,16 +22,27 @@ Las funciones salen de quejas reales de usuarios (hilos de Spotify Community, pr
 
 ![Inicio](docs/capturas/08-inicio.png)
 
-- Inicio con tarjetas grandes: «Volver a barajar mi última mezcla», mezclas guardadas, «Elige por mí», «¿Es aleatorio de verdad?» y atajos a cada función.
+- Cuatro pestañas: **Inicio · Shuffle · Descubrir · Más**. En Más están Ordenar, Duplicados, Copia, Instantáneas, Me gusta sin playlist, Dividir, «Tenerla siempre a mano», «¿Es aleatorio de verdad?» y Ajustes.
+- Inicio tiene un botón enorme «SHUFFLE» (vuelve a barajar tu última mezcla o te lleva a elegir qué barajar), «Lo último» y tus mezclas guardadas.
 - Negro y verde lima. Tema oscuro por defecto, claro (blanco con verde oscuro) o como el sistema, en Ajustes. El fondo toma un degradado sutil del color de la portada seleccionada.
 - Transiciones entre pantallas (View Transitions donde el navegador las admite), naipes que se mezclan mientras se leen las canciones, resultado en cascada con una celebración discreta, esqueletos de carga, deslizar a los lados para cambiar de pestaña y tirar hacia abajo para refrescar. Con «reducir movimiento» no hay animaciones.
 - **Agitar para barajar**: en Inicio, agitar el móvil vuelve a barajar la última mezcla, siempre tras confirmar. En iPhone hay que activarlo con un toque (permiso del acelerómetro); se desactiva en Ajustes.
 
 ![Tema claro](docs/capturas/09-tema-claro.png)
 
-### Barajar
+![Más](docs/capturas/22-mas.png)
+
+### Shuffle
 
 ![Barajar](docs/capturas/02-barajar.png)
+
+- Tres tipos:
+  - **Canciones**: todas, en orden aleatorio.
+  - **Por tiempo**: 15, 30, 45, 60 min o los que quieras. Se baraja de forma uniforme y se llena el tiempo con ±2 min («35 min · Shuffle»), para el trayecto, el gym o correr.
+  - **Por álbumes**: de tus playlists o de tus álbumes guardados. El orden de los álbumes es aleatorio y cada álbum suena entero y en su orden («Rock · Álbumes · Shuffle»).
+- Quitar repetidas, filtros, destino, pegar enlace y guardar como mezcla están plegados en «Más opciones»; sin tocarlos funciona bien.
+
+![Shuffle por tiempo](docs/capturas/24-shuffle-tiempo.png)
 
 - Elige una o varias playlists y Tus me gusta: se combinan y se barajan juntas. Por defecto quita las canciones repetidas (misma URI) al combinar. Hay filtros previos (año, fecha de añadida, duración, explícitas): se aplican antes y luego se baraja de forma uniforme lo que queda.
 - Destino:
@@ -42,6 +53,31 @@ Las funciones salen de quejas reales de usuarios (hilos de Spotify Community, pr
 - Tras barajar puedes reproducirla ya (Premium), volver a barajar, abrirla en Spotify, compartirla o pulsar Deshacer.
 
 ![Resultado de barajar](docs/capturas/03-resultado-barajar.png)
+
+### Una sola playlist por origen, en cualquier dispositivo
+
+- Cada «· Shuffle» lleva al final de la descripción una etiqueta (` · shuffl:src=<hash>`) que identifica su origen sin revelar ids ni nombres. Antes de crear una, Shuffl la busca entre tus playlists: cambiar de móvil, reinstalar o usar Safari y la app instalada no crea duplicadas.
+- Si ya hay copias repetidas, se queda la que se barajó más tarde y las demás se quitan de tu biblioteca (se pueden recuperar durante 90 días en spotify.com). Pregunta la primera vez; en Ajustes se puede hacer siempre sin preguntar. Las que renombraste no se tocan nunca, y la antigua «🔀 Baraja» solo se quita si lo confirmas.
+
+![Copias repetidas](docs/capturas/23-copias-repetidas.png)
+
+### Descubrir
+
+Spotify ya no ofrece recomendaciones a apps como esta, así que Shuffl las busca a partir de lo que escuchas y sigues. Cada opción crea su propia «· Shuffle» con portada y «Reproducir ahora».
+
+- **Novedades**: lanzamientos de los últimos 7, 30 o 90 días de tus artistas más escuchados y de los que sigues (hasta 25), sin lo que ya tienes guardado.
+- **Descubre**: canciones nunca guardadas de los álbumes que escuchas últimamente.
+- **Tal día como hoy**: lo que guardaste en Tus me gusta este mismo mes en años anteriores, por año y con un recuerdo («En noviembre de 2024 te enganchaste a…»).
+- **Olvidadas**: Me gusta de hace más de 1, 2, 3 o 5 años.
+- **Tu resumen**: tus 5 artistas y canciones top (4 semanas, 6 meses o siempre) en una tarjeta vertical para historias (1080×1920) y otra cuadrada, para compartir o descargar. Las carátulas van enteras y sin nada encima, junto al logo de Spotify. Puedes crear «Mi top · Shuffle».
+
+Lo que se lee de Spotify (artistas, lanzamientos, canciones de cada álbum) se guarda 24 h en el dispositivo para gastar menos peticiones.
+
+![Descubrir](docs/capturas/21-descubrir.png)
+
+![Novedades](docs/capturas/25-novedades.png)
+
+![Tu resumen](docs/capturas/26-tu-resumen.png)
 
 ### Elige por mí y «¿Es aleatorio de verdad?»
 
