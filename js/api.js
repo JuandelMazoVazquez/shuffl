@@ -204,6 +204,7 @@ export class SpotifyApi {
 
   /** Deja de seguir (quitar de tu biblioteca) playlists por id: DELETE /me/library con sus URI. Lotes de 40. */
   async unfollowPlaylists(ids) {
+    if (!ids.every((id) => typeof id === 'string' && /^[A-Za-z0-9]{1,64}$/.test(id))) throw new ApiError(0, 'id de playlist no válido');
     for (const part of chunk(ids, LIBRARY_CHUNK)) {
       await this.request('DELETE', `/me/library?uris=${part.map((id) => encodeURIComponent(`spotify:playlist:${id}`)).join(',')}`);
     }
@@ -214,13 +215,6 @@ export class SpotifyApi {
     const q = encodeURIComponent(`genre:"${String(genre).replace(/"/g, '')}"`);
     const data = await this.request('GET', `/search?type=artist&limit=${SEARCH_LIMIT}&offset=${Math.max(0, Math.min(offset, 990))}&q=${q}`);
     return Array.isArray(data?.artists?.items) ? data.artists.items : [];
-  }
-
-  /** Fecha (ms) de la primera canción de una playlist: al sobrescribir, es cuándo se escribió por última vez. */
-  async lastWriteTime(id) {
-    const data = await this.request('GET', `/playlists/${encodeURIComponent(id)}/items?limit=1&fields=${encodeURIComponent('items(added_at)')}`);
-    const t = Date.parse(data?.items?.[0]?.added_at ?? '');
-    return Number.isNaN(t) ? -Infinity : t;
   }
 
   async getRecentlyPlayed() {
@@ -236,11 +230,6 @@ export class SpotifyApi {
   /** `base64` es un JPEG de hasta 256 KB, sin el prefijo data:. */
   setPlaylistImage(id, base64) {
     return this.request('PUT', `/playlists/${encodeURIComponent(id)}/images`, undefined, { rawBody: base64, contentType: 'image/jpeg' });
-  }
-
-  /** Cambia nombre y descripción de una playlist propia (PUT /playlists/{id}). */
-  updatePlaylistDetails(id, { name, description }) {
-    return this.request('PUT', `/playlists/${encodeURIComponent(id)}`, { name, description });
   }
 
   createPlaylist(name, description = '') {

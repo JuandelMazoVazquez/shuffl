@@ -143,4 +143,6 @@ export function logout() {
   removeItem(KEYS.pkce);
   removeItem(KEYS.metaCache);
   removeItem(KEYS.libIndex);
+  removeItem(KEYS.purgeOk);
+  removeItem(KEYS.lastTarget);
 }

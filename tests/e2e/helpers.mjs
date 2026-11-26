@@ -9,7 +9,7 @@ export async function installMock(page, { lang = 'es', logoNotice = false, purge
   await page.addInitScript(({ l, notice, ask }) => {
     if (!localStorage.getItem('baraja.lang')) localStorage.setItem('baraja.lang', JSON.stringify(l));
     // Por defecto el borrado de las playlists antiguas ya está aceptado; los tests de la hoja pasan purgeAsk.
-    if (!ask && localStorage.getItem('baraja.purgeOk') === null) localStorage.setItem('baraja.purgeOk', 'true');
+    if (!ask && localStorage.getItem('baraja.purgeOk') === null) localStorage.setItem('baraja.purgeOk', JSON.stringify({ me: 'me' }));
     if (!notice && localStorage.getItem('baraja.logoNotice.v12') === null) localStorage.setItem('baraja.logoNotice.v12', 'true');
     delete navigator.canShare;
   }, { l: lang, notice: logoNotice, ask: purgeAsk });

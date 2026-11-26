@@ -341,8 +341,8 @@ async function applyUndo(status, expectedId) {
 
 /** Borrar las antiguas antes de crear (por defecto sí; se desactiva en Ajustes). */
 const purgeEnabled = () => getItem(KEYS.purge) !== false;
-/** La primera vez se enseña la lista y se pide confirmación; después es automático. */
-const purgeConfirmed = () => getItem(KEYS.purgeOk) === true;
+/** La primera vez se enseña la lista y se pide confirmación; el «no volver a preguntar» es de esta cuenta. */
+const purgeConfirmed = () => getItem(KEYS.purgeOk)?.me === S.me?.id;
 
 /** Hoja con lo que se va a borrar y un único botón «Borrar y no volver a preguntar» (y Cancelar). Devuelve si se acepta. */
 function confirmPurge(list) {
@@ -367,61 +367,102 @@ class CancelledError extends UserError {}
 
 class RetryableError extends Error {
   constructor(cause, retry) {
-    super(cause?.message);
-    this.cause = cause;
+    super(cause?.message, { cause });
     this.retry = retry;
   }
 }
 
+/** Las playlists de Shuffl que se pueden quitar ahora mismo (lectura fresca), salvo los orígenes y las de `keep`. */
+async function appPlaylistsNow(exclude) {
+  return (await S.api.getMyPlaylists()).filter((p) => isAppPlaylist(p, S.me.id) && !exclude.includes(p.id));
+}
+
+/**
+ * Quita `ids` de tu biblioteca y comprueba con GET /me/library/contains que de verdad se han quitado: si Spotify
+ * respondiera bien sin quitar nada, se vería el error en vez de ir acumulando playlists. Si un Deshacer apuntaba a una
+ * de ellas, se descarta (ya no se puede aplicar). Lanza un error con el motivo real si algo falla.
+ */
+async function removePlaylists(ids) {
+  try {
+    await S.api.unfollowPlaylists(ids);
+    const still = await S.api.libraryContains(ids.map((id) => `spotify:playlist:${id}`));
+    if (still.some(Boolean)) throw new UserError(t('purgeStillThere'));
+  } catch (e) {
+    throw new UserError(t('purgeFailed', { reason: errorMessage(e) }));
+  }
+  if (ids.includes(getItem(KEYS.undo)?.playlistId)) removeItem(KEYS.undo);
+}
+
 /**
  * Crea una playlist de Shuffl con `uris` (ya leídas y barajadas, en memoria). Antes quita de tu biblioteca TODAS las
- * playlists de Shuffl (`isAppPlaylist`: propias, con nombre de la app y con etiqueta o descripción de una versión
- * anterior), salvo `protect` (los orígenes de esta baraja). Si borrar o crear falla, lanza un error con «Reintentar»
- * que repite el paso sin volver a leer. Devuelve { id, notes }.
+ * playlists de Shuffl (`isAppPlaylist`), salvo `protect` (los orígenes de esta baraja).
+ * - La hoja de la primera vez va fuera del candado; dentro se vuelve a leer la biblioteca y solo se quita lo que sigue
+ *   siendo de Shuffl y estaba en la lista que viste (si renombras una mientras la hoja está abierta, se salva).
+ * - Si borrar o crear falla, lanza un error con «Reintentar», que repite solo lo que falta sin volver a leer: si la
+ *   playlist llegó a crearse, se rellena esa en vez de crear otra.
+ * Devuelve { id, notes }.
  */
 async function createAppPlaylist({ key, name, description, uris, protect = [] }, status) {
   const tag = await tagFor(key ?? 'none');
-  const full = withTag(description, tag);
-  const notes = [];
-  const step = async () => withWriteLock(async () => {
-    if (purgeEnabled()) {
+  const full = withTag(description, tag, name);
+  let createdId = null;
+  const step = async () => {
+    const notes = [];
+    let confirmed = null;
+    if (purgeEnabled() && !purgeConfirmed()) {
       status.phase('cleaning');
-      const fresh = (await S.api.getMyPlaylists()).filter(Boolean);
-      const old = fresh.filter((p) => isAppPlaylist(p, S.me.id) && !protect.includes(p.id));
+      const old = await appPlaylistsNow(protect);
       if (old.length) {
-        if (!purgeConfirmed()) {
-          if (!await confirmPurge(old)) throw new CancelledError(t('purgeCancelled'));
-          setItem(KEYS.purgeOk, true);
-        }
-        try {
-          await S.api.unfollowPlaylists(old.map((p) => p.id));
-        } catch (e) {
-          throw new UserError(t('purgeFailed', { reason: errorMessage(e) }));
-        }
-        notes.push(t('purgeDone', { n: fmt(old.length) }));
+        if (!await confirmPurge(old)) throw new CancelledError(t('purgeCancelled'));
+        confirmed = new Set(old.map((p) => p.id));
       }
     }
-    status.phase('creating');
-    let id;
-    try {
-      id = (await S.api.createPlaylist(name, full)).id;
-      await S.api.addItems(id, uris, (d, tot) => status.progress('saving', d, tot));
-    } catch (e) {
-      throw new UserError(t('createFailed', { reason: errorMessage(e) }));
-    }
-    return id;
-  });
+    const id = await withWriteLock(async () => {
+      if (purgeEnabled()) {
+        status.phase('cleaning');
+        const old = (await appPlaylistsNow([...protect, createdId].filter(Boolean)))
+          .filter((p) => !confirmed || confirmed.has(p.id));
+        if (old.length) {
+          await removePlaylists(old.map((p) => p.id));
+          notes.push(t('purgeDone', { n: fmt(old.length) }));
+        }
+        // Solo cuando el borrado ha ido bien: si falla, la próxima vez se vuelve a enseñar la lista.
+        if (confirmed) setItem(KEYS.purgeOk, { me: S.me.id });
+      }
+      status.phase('creating');
+      try {
+        if (createdId) {
+          await S.api.replaceItems(createdId, uris, (d, tot) => status.progress('saving', d, tot));
+        } else {
+          createdId = (await S.api.createPlaylist(name, full)).id;
+          await S.api.addItems(createdId, uris, (d, tot) => status.progress('saving', d, tot));
+        }
+      } catch (e) {
+        throw new UserError(t('createFailed', { reason: errorMessage(e) }));
+      }
+      return createdId;
+    });
+    setItem(KEYS.lastTarget, id);
+    return { id, notes };
+  };
   const attempt = async () => {
     try {
-      const id = await step();
-      setItem(KEYS.lastTarget, id);
-      return { id, notes };
+      return await step();
     } catch (e) {
       if (e instanceof CancelledError) throw e;
       throw new RetryableError(e, attempt);
     }
   };
   return attempt();
+}
+
+/**
+ * «Buscar más» y «Volver a barajar» escriben en la playlist que se acaba de crear. Si otra pestaña o dispositivo la ha
+ * quitado o la has renombrado, no se toca y se avisa.
+ */
+async function assertStillAppPlaylist(id) {
+  const p = (await S.api.getMyPlaylists()).find((x) => x?.id === id);
+  if (!p || !isAppPlaylist(p, S.me.id)) throw new UserError(t('playlistGone'));
 }
 
 /**
@@ -1185,6 +1226,7 @@ function shufflePanel() {
     task(status, async () => {
       const { order, truncated, notes: kindNotes } = arrange(last.base, last.minutes);
       await withWriteLock(async () => {
+        if (last.mode !== 'self') await assertStillAppPlaylist(last.playlistId);
         await assertUnchanged(last.playlistId, last.order.length, last.order);
         saveUndo(last.playlistId, '', last.order.map((x) => x.uri), { soft: true });
         await overwritePlaylist(last.playlistId, order.map((x) => x.uri), status);
@@ -1787,9 +1829,18 @@ function settingsPanel() {
     const missing = auth.missingScopes(getItem(KEYS.tokens));
     rows.push({ label: t('diagScopes'), ok: missing.length === 0, detail: missing.join(', ') });
     // Prueba real de borrado: crea una playlist vacía y la quita con DELETE /me/library. Si falla, se ve el error de Spotify.
+    // También comprueba que Spotify devuelve la etiqueta en la descripción (sin ella no se reconocerían las de Shuffl)
+    // y que la playlist ya no está en la biblioteca. Lleva la etiqueta: si no se pudo quitar, la quitará el próximo shuffle.
     await check(t('diagDelete'), async () => {
-      const probe = await S.api.createPlaylist(t('diagProbeName'), t('diagProbeDesc'));
-      await S.api.unfollowPlaylists([probe.id]);
+      const name = t('diagProbeName');
+      const probe = await S.api.createPlaylist(name, withTag(t('diagProbeDesc'), await tagFor('diag'), name));
+      const seen = (await S.api.getMyPlaylists()).find((p) => p?.id === probe.id);
+      try {
+        if (!seen || !isAppPlaylist(seen, S.me.id)) throw new UserError(t('diagNoTag'));
+        await removePlaylists([probe.id]);
+      } catch (e) {
+        throw new UserError(`${errorMessage(e)} ${t('diagProbeLeft', { name })}`);
+      }
       return t('diagDeleteOk');
     });
     setKids(diagList, rows.map((r) => h('li', { class: r.ok ? 'ok' : 'bad' }, `${r.ok ? '✓' : '✗'} ${r.label}${r.detail ? ` — ${r.detail}` : ''}`)));
@@ -2024,6 +2075,8 @@ async function likedTracks(status) {
 }
 
 const LIB_TTL_MS = 24 * 3600 * 1000;
+/** Más grande no se guarda en el dispositivo (se usa solo en esta sesión): deja sitio a Deshacer y a las mezclas. */
+const MAX_INDEX_CHARS = 1_500_000;
 const IDS_RE = /^[A-Za-z0-9,]*$/;
 
 /**
@@ -2058,7 +2111,8 @@ async function libraryIndex(status) {
     next.liked = e;
     add(e.ids);
   }
-  setItem(KEYS.libIndex, next);
+  if (JSON.stringify(next).length <= MAX_INDEX_CHARS) setItem(KEYS.libIndex, next);
+  else removeItem(KEYS.libIndex);
   return ids;
 }
 
@@ -2280,7 +2334,10 @@ function discoverGenPanel(kind) {
       st.pool = rest;
       if (!taken.length) { status.say(t('noMoreFound')); return; }
       status.phase('saving');
-      await S.api.addItems(st.playlistId, taken.map((x) => x.uri), (d, tot) => status.progress('saving', d, tot));
+      await withWriteLock(async () => {
+        await assertStillAppPlaylist(st.playlistId);
+        await S.api.addItems(st.playlistId, taken.map((x) => x.uri), (d, tot) => status.progress('saving', d, tot));
+      });
       st.tracks = [...st.tracks, ...taken];
       status.clear();
       show([t('addedMore', { n: fmt(taken.length) })]);

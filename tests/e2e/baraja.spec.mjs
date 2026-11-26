@@ -54,9 +54,9 @@ test('barajar dos playlists combinadas en «Mix · Shuffle», volver a barajar y
   const baraja = [...state.lists.values()].find((l) => l.name === 'Mix · Shuffle');
   expect(baraja).toBeTruthy();
   expect(new Set(baraja.tracks.map((t) => t.uri)).size).toBe(180);
-  expect(baraja.description).toMatch(/ · shuffl:src=[a-f0-9]{10}$/);
+  expect(baraja.description).toMatch(/ · shuffl:src=[a-f0-9]{10}.[a-f0-9]{6}$/);
 
-  expect(baraja.description.replace(/ · shuffl:src=[a-f0-9]{10}$/, '')).toBe('Barajada con Shuffl (aleatorio uniforme; reprodúcela con el aleatorio de Spotify apagado). Origen: Rock, Chill');
+  expect(baraja.description.replace(/ · shuffl:src=[a-f0-9]{10}.[a-f0-9]{6}$/, '')).toBe('Barajada con Shuffl (aleatorio uniforme; reprodúcela con el aleatorio de Spotify apagado). Origen: Rock, Chill');
   const natural = [...state.lists.get('pl_rock').tracks, ...state.lists.get('pl_chill').tracks].map((t) => t.name);
   expect(names(baraja)).not.toEqual(natural.slice(0, 180));
   // Playlist nueva: se crea y se llena en bloques de 100 (nada que sobrescribir).

@@ -33,7 +33,7 @@ test.describe('con la hoja ya aceptada', () => {
     await login(page);
     await shuffle(page, 'Rock');
     const [rock] = byName('Rock · Shuffle');
-    expect(rock.description).toMatch(new RegExp(`^${esc(V12_ES)}Rock · shuffl:src=[a-f0-9]{10}$`));
+    expect(rock.description).toMatch(new RegExp(`^${esc(V12_ES)}Rock · shuffl:src=[a-f0-9]{10}.[a-f0-9]{6}$`));
     await shuffle(page, 'Chill');
     expect(byName('Rock · Shuffle')).toHaveLength(0);
     expect(byName('Chill · Shuffle')).toHaveLength(1);
@@ -125,12 +125,63 @@ test.describe('con la hoja ya aceptada', () => {
     expect(state.lists.size).toBe(4);
   });
 
+  test('si Spotify responde bien pero no quita nada, se ve el error (nunca en silencio) y no se crea la nueva', async ({ page }) => {
+    addList('old', 'Rock · Shuffle', 'x · shuffl:src=0123456789');
+    state.unfollowNoop = true;
+    await login(page);
+    await pick(page, 'shuffle', 'Chill');
+    await page.locator('#shuffle-go').click();
+    await expect(page.locator('#panel-shuffle .error')).toContainText('las playlists siguen en tu biblioteca');
+    expect(state.writes.filter((w) => w.op === 'create')).toHaveLength(0);
+    await openPanel(page, 'settings');
+    await page.locator('#run-diag').click();
+    await expect(page.locator('#diag-results')).toContainText('✗ Quitar playlists');
+    await expect(page.locator('#diag-results')).toContainText('Shuffl · prueba de borrado');
+  });
+
+  test('una renombrada que conserva el sufijo no se borra (la etiqueta guarda el nombre original)', async ({ page }) => {
+    await login(page);
+    await shuffle(page, 'Rock');
+    const [rock] = byName('Rock · Shuffle');
+    rock.name = 'Rock del bueno · Shuffle';
+    await shuffle(page, 'Chill');
+    expect(state.lists.has(rock.id)).toBe(true);
+    expect(state.unfollowCalls).toEqual([]);
+  });
+
+  test('si falla añadir canciones tras crear, «Reintentar» rellena la misma playlist (no crea otra)', async ({ page }) => {
+    state.failNextPost = true;
+    await login(page);
+    await pick(page, 'shuffle', 'Chill');
+    await page.locator('#shuffle-go').click();
+    await expect(page.locator('#panel-shuffle .error')).toContainText('No se pudo crear la playlist');
+    await page.locator('#panel-shuffle .error-box button').click();
+    await expect(resultMeta(page)).toContainText('80 canciones');
+    expect(state.writes.filter((w) => w.op === 'create')).toHaveLength(1);
+    expect(byName('Chill · Shuffle')).toHaveLength(1);
+    expect(byName('Chill · Shuffle')[0].tracks).toHaveLength(80);
+  });
+
+  test('«Buscar más» no escribe en una playlist que ya no está (otra pestaña la quitó)', async ({ page }) => {
+    await login(page);
+    await openPanel(page, 'forgotten');
+    await page.locator('#forgotten-go').click();
+    await expect(resultMeta(page)).toBeVisible();
+    await idle(page);
+    const [list] = byName('Olvidadas · Shuffle');
+    state.lists.delete(list.id);
+    await page.locator('#forgotten-again').click();
+    await expect(resultMeta(page)).toBeVisible();
+    await idle(page);
+    expect(byName('Olvidadas · Shuffle')).toHaveLength(1);
+  });
+
   test('el diagnóstico muestra el error real si Spotify no deja borrar', async ({ page }) => {
     state.failUnfollow = true;
     await login(page);
     await openPanel(page, 'settings');
     await page.locator('#run-diag').click();
-    await expect(page.locator('#diag-results')).toContainText('✗ Quitar playlists — Spotify ha denegado el acceso (403)');
+    await expect(page.locator('#diag-results')).toContainText('✗ Quitar playlists — Spotify no ha dejado quitar las playlists antiguas: Spotify ha denegado el acceso (403)');
   });
 
   test('desactivado en Ajustes, no se borra nada', async ({ page }) => {
@@ -177,7 +228,7 @@ test.describe('con la hoja ya aceptada', () => {
     await login(page);
     await shuffle(page, 'Liked Songs');
     const [liked] = byName('Liked Songs · Shuffle');
-    expect(liked.description).toMatch(new RegExp(`^${esc(V12_EN)}Liked Songs · shuffl:src=[a-f0-9]{10}$`));
+    expect(liked.description).toMatch(new RegExp(`^${esc(V12_EN)}Liked Songs · shuffl:src=[a-f0-9]{10}.[a-f0-9]{6}$`));
     await pick(page, 'shuffle', 'Liked Songs');
     await page.locator('#select-library').click();
     await page.locator('#shuffle-go').click();
@@ -219,7 +270,7 @@ test.describe('primera vez', () => {
     await page.locator('#purge-ok').click();
     await expect(resultMeta(page)).toBeVisible();
     await idle(page);
-    expect(await page.evaluate(() => localStorage.getItem('baraja.purgeOk'))).toBe('true');
+    expect(await page.evaluate(() => localStorage.getItem('baraja.purgeOk'))).toBe(JSON.stringify({ me: 'me' }));
     await page.locator('#panel-shuffle .result').getByRole('button', { name: 'Volver', exact: true }).click();
     await pick(page, 'shuffle', 'Rock');
     await pick(page, 'shuffle', 'Chill');

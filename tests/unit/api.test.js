@@ -206,13 +206,12 @@ test('v1.3: dejar de seguir playlists usa DELETE /me/library con sus URI y lotes
   assert.equal(first.searchParams.get('uris').split(',')[0], 'spotify:playlist:p0');
   assert.equal(first.searchParams.get('uris').split(',').length, 40);
   assert.equal(calls[0].body, undefined);
+  await assert.rejects(api.unfollowPlaylists(['ok', 'p1/../x']), ApiError);
+  await assert.rejects(api.unfollowPlaylists(['a,spotify:track:x']), ApiError);
 });
 
-test('v1.3: lanzamientos de un artista con limit 10 y fecha de la última escritura', async () => {
-  const { api, calls } = setup(async (c) => (c.url.includes('/items') ? res(200, { items: [{ added_at: '2026-05-01T10:00:00Z' }] }) : res(200, { items: [{ id: 'a' }] })));
+test('v1.3: lanzamientos de un artista con limit 10', async () => {
+  const { api, calls } = setup(async () => res(200, { items: [{ id: 'a' }] }));
   assert.deepEqual(await api.getArtistAlbums('art/../x', 'single'), [{ id: 'a' }]);
   assert.ok(calls[0].url.includes('/artists/art%2F..%2Fx/albums?include_groups=single&limit=10'));
-  assert.equal(await api.lastWriteTime('p1'), Date.parse('2026-05-01T10:00:00Z'));
-  const empty = setup(async () => res(200, { items: [] }));
-  assert.equal(await empty.api.lastWriteTime('p1'), -Infinity);
 });

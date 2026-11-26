@@ -47,10 +47,6 @@ export function generatedDescription(intro, names) {
 const decodeEntities = (s) => String(s ?? '')
   .replace(/&quot;/g, '"').replace(/&#x27;|&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#x2F;/g, '/').replace(/&amp;/g, '&');
 
-/** Spotify devuelve la descripción con entidades HTML; para compararla hay que deshacerlas. */
-export function sameDescription(fromSpotify, wanted) {
-  return decodeEntities(fromSpotify) === wanted;
-}
 
 // ---------- Etiqueta ----------
 // Cada playlist de Shuffl lleva al final de la descripción « · shuffl:src=<hash>». El hash resume el origen y no revela
@@ -59,7 +55,18 @@ export function sameDescription(fromSpotify, wanted) {
 export const TAG_PREFIX = 'shuffl:src=';
 const TAG_LEN = 10;
 const TAG_SEP = ' · ';
-const TAG_RE = /(?:^| · )shuffl:src=([a-f0-9]{10})\s*$/;
+/** «shuffl:src=<10 hex del origen>.<6 hex del nombre>» (v1.3.1); las de la v1.3 no llevan la parte del nombre. */
+const TAG_RE = /(?:^| · )shuffl:src=([a-f0-9]{10})(?:\.([a-f0-9]{6}))?\s*$/;
+
+/** Resumen corto (FNV-1a, 6 hex) del nombre con el que Shuffl creó la playlist: si cambia, la renombraste. */
+export function nameHash(name) {
+  let h = 0x811c9dc5;
+  for (const ch of String(name ?? '')) {
+    h ^= ch.codePointAt(0);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, '0').slice(0, 6);
+}
 
 /** Primeros 10 caracteres hex del SHA-256 de la clave de origen. */
 export async function tagFor(key) {
@@ -67,55 +74,78 @@ export async function tagFor(key) {
   return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, TAG_LEN);
 }
 
-/** Descripción con la etiqueta al final; el texto se recorta para que la etiqueta quepa siempre. */
-export function withTag(description, tag) {
-  const suffix = `${TAG_SEP}${TAG_PREFIX}${tag}`;
+/** Descripción con la etiqueta al final (origen y, si se pasa, nombre); el texto se recorta para que quepa siempre. */
+export function withTag(description, tag, name = null) {
+  const suffix = `${TAG_SEP}${TAG_PREFIX}${tag}${name == null ? '' : `.${nameHash(name)}`}`;
   return cut(String(description ?? ''), MAX_DESCRIPTION - suffix.length) + suffix;
 }
 
-/** La etiqueta de una descripción de Spotify (viene con entidades HTML), o null. */
+/** La etiqueta de origen de una descripción de Spotify (viene con entidades HTML), o null. */
 export function readTag(description) {
   return TAG_RE.exec(decodeEntities(description))?.[1] ?? null;
 }
 
+/** El resumen del nombre que lleva la etiqueta (v1.3.1), o null si no lo lleva. */
+const readNameHash = (description) => TAG_RE.exec(decodeEntities(description))?.[2] ?? null;
+
 // ---------- Reconocer las playlists de Shuffl ----------
 
 /**
- * Descripciones que pusieron las versiones anteriores, sacadas del historial de git (js/i18n.js): exactas o, las que
- * terminaban con la lista de orígenes, como prefijo. Una playlist sin etiqueta solo es de Shuffl si su descripción es una de estas.
+ * Descripciones que pusieron las versiones anteriores, sacadas del historial de git (js/i18n.js).
+ * `shuffle`: la de «🔀 Baraja» (exacta). `snapshot`: las de las instantáneas (exactas). `fromPrefix`: las de la v1.2,
+ * que terminaban con la lista de orígenes. Una playlist sin etiqueta solo es de Shuffl si su descripción es una de estas
+ * y además su nombre es exactamente el que la app le habría puesto.
  */
 export const LEGACY_DESCRIPTIONS = {
-  exact: [
+  shuffle: [
     'Barajada con Baraja · aleatorio uniforme · reprodúcela con el aleatorio de Spotify apagado',
     'Shuffled with Baraja · uniform random · play it with Spotify shuffle off',
-    'Instantánea creada con Baraja', 'Snapshot created with Baraja',
-    'Instantánea creada con Shuffl', 'Snapshot created with Shuffl',
   ],
-  prefix: [
+  snapshot: ['Instantánea creada con Baraja', 'Snapshot created with Baraja', 'Instantánea creada con Shuffl', 'Snapshot created with Shuffl'],
+  fromPrefix: [
     'Barajada con Shuffl (aleatorio uniforme; reprodúcela con el aleatorio de Spotify apagado). Origen: ',
     'Shuffled with Shuffl (uniform random; play it with Spotify shuffle off). Source: ',
   ],
 };
+/** Nombres de las instantáneas de todas las versiones (es y en). */
+export const SNAPSHOT_LABELS = ['Top 4 semanas', 'Top 6 meses', 'Top siempre', 'Últimas escuchas', 'Top 4 weeks', 'Top 6 months', 'Top all time', 'Recently played'];
+/** «Rock · Shuffle · 26/11/26, 10:00» (v1.2, «una nueva cada vez»): fecha corta con hora, también en formato inglés con AM/PM. */
+const DATED_RE = / · \d{1,2}\/\d{1,2}\/\d{2,4},?[\s ]\d{1,2}:\d{2}(?:[\s ]?[AP]M)?$/;
 
-/** Nombres que pone Shuffl: «… · Shuffle», «… · Shuffle · fecha» (v1.2), «📸 …» y «🔀 Baraja». */
+/** Nombres que pone Shuffl: «… · Shuffle», «📸 …» y «🔀 Baraja» (y la v1.2 con fecha). */
 export function isAppName(name) {
   if (typeof name !== 'string' || !name.trim()) return false;
-  return name.endsWith(SHUFFLE_SUFFIX) || / · Shuffle · .+$/.test(name) || name.startsWith(SNAPSHOT_PREFIX) || name === LEGACY_PLAYLIST;
+  return name.endsWith(SHUFFLE_SUFFIX) || DATED_RE.test(name) || name.startsWith(SNAPSHOT_PREFIX) || name === LEGACY_PLAYLIST;
 }
 
-const isLegacyDescription = (description) => {
+/** Sin etiqueta: el nombre tiene que ser exactamente el que corresponde a su descripción; si no, la renombraste. */
+function isLegacyAppPlaylist(name, description) {
   const d = decodeEntities(description).trim();
   if (!d) return false;
-  return LEGACY_DESCRIPTIONS.exact.includes(d) || LEGACY_DESCRIPTIONS.prefix.some((p) => d.startsWith(p) && d.length > p.length);
-};
+  if (LEGACY_DESCRIPTIONS.shuffle.includes(d)) return name === LEGACY_PLAYLIST;
+  if (LEGACY_DESCRIPTIONS.snapshot.includes(d)) return SNAPSHOT_LABELS.some((l) => name === snapshotName(l));
+  const prefix = LEGACY_DESCRIPTIONS.fromPrefix.find((p) => d.startsWith(p) && d.length > p.length);
+  if (!prefix) return false;
+  const origin = d.slice(prefix.length);
+  const expected = [cut(origin, MAX_NAME - SHUFFLE_SUFFIX.length) + SHUFFLE_SUFFIX];
+  // Varias playlists se llamaban «Mix · Shuffle» y la descripción las listaba separadas por comas.
+  if (origin.includes(', ')) expected.push(`Mix${SHUFFLE_SUFFIX}`);
+  const base = name.replace(DATED_RE, '');
+  return expected.includes(name) || (base !== name && expected.includes(base));
+}
 
 /**
- * Si una playlist (tal como la devuelve GET /me/playlists) la creó Shuffl y se puede borrar: propia, con un nombre de
- * los que pone la app (si la renombraste, es tuya) y con la etiqueta o, sin ella, con una descripción de una versión
- * anterior. Descripción vacía o distinta: no es de Shuffl.
+ * Si una playlist (tal como la devuelve GET /me/playlists) la creó Shuffl y se puede borrar: propia y no colaborativa, y
+ * - con la etiqueta de la v1.3.1: el nombre tiene que seguir siendo el que puso la app (va resumido en la etiqueta);
+ * - con la etiqueta de la v1.3 (sin resumen del nombre): un nombre de los que pone la app;
+ * - sin etiqueta: una descripción de una versión anterior y exactamente el nombre que le correspondía.
+ * Renombrada, descripción vacía o distinta: es tuya y no se toca.
  */
 export function isAppPlaylist(p, meId) {
-  if (!p || !meId || p.owner?.id !== meId || p.collaborative) return false;
-  if (!isAppName(p.name)) return false;
-  return !!readTag(p.description) || isLegacyDescription(p.description);
+  if (!p || !meId || p.owner?.id !== meId || p.collaborative || typeof p.name !== 'string') return false;
+  if (readTag(p.description)) {
+    const hash = readNameHash(p.description);
+    return hash ? hash === nameHash(p.name) : isAppName(p.name);
+  }
+  return isLegacyAppPlaylist(p.name, p.description);
 }
