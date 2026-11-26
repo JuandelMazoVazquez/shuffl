@@ -292,6 +292,19 @@ test.describe('primera vez', () => {
     expect(await page.evaluate(() => localStorage.getItem('baraja.purgeOk'))).toBeNull();
   });
 
+  test('una playlist de Shuffl que aparece entre la lectura previa y la del candado no se borra sin enseñar la hoja', async ({ page }) => {
+    await login(page);
+    await pick(page, 'shuffle', 'Rock');
+    // Justo después de la lectura previa (vacía), otra pestaña crea una playlist de Shuffl.
+    state.afterPlaylists = () => addList('other', 'Chill · Shuffle', 'x · shuffl:src=0123456789');
+    await page.locator('#shuffle-go').click();
+    await expect(resultMeta(page)).toBeVisible();
+    await idle(page);
+    expect(state.lists.has('other')).toBe(true);
+    expect(state.unfollowCalls).toEqual([]);
+    await expect(page.locator('#purge-sheet')).toHaveCount(0);
+  });
+
   test('sin playlists antiguas no hay hoja', async ({ page }) => {
     await login(page);
     await pick(page, 'shuffle', 'Rock');

@@ -224,7 +224,14 @@ export async function mockSpotify(page, state) {
       return route.fulfill({ status: 204, headers: CORS });
     }
     if (method === 'GET' && path === '/me') return json(route, { id: 'me', display_name: 'Usuaria Prueba' });
-    if (method === 'GET' && path === '/me/playlists') return json(route, page_([...state.lists.values()].map(metaOf), url));
+    if (method === 'GET' && path === '/me/playlists') {
+      const body = page_([...state.lists.values()].map(metaOf), url);
+      // Para simular otra pestaña o dispositivo que cambia la biblioteca justo después de una lectura.
+      const after = state.afterPlaylists;
+      state.afterPlaylists = null;
+      after?.();
+      return json(route, body);
+    }
     if (method === 'GET' && path === '/me/tracks') return json(route, page_(state.likedDates ? state.liked.map((item, i) => ({ added_at: state.likedDates(i), item })) : toEntries(state.liked), url));
     if (method === 'POST' && path === '/me/playlists') {
       if (state.failCreate) return json(route, { error: { status: 500, message: 'boom' } }, 500);

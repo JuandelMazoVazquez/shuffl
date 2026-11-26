@@ -372,7 +372,7 @@ class RetryableError extends Error {
   }
 }
 
-/** Las playlists de Shuffl que se pueden quitar ahora mismo (lectura fresca), salvo los orígenes y las de `keep`. */
+/** Las playlists de Shuffl de tu biblioteca ahora mismo (lectura fresca), salvo las de `exclude` (los orígenes). */
 async function appPlaylistsNow(exclude) {
   return (await S.api.getMyPlaylists()).filter((p) => isAppPlaylist(p, S.me.id) && !exclude.includes(p.id));
 }
@@ -385,7 +385,13 @@ async function appPlaylistsNow(exclude) {
 async function removePlaylists(ids) {
   try {
     await S.api.unfollowPlaylists(ids);
-    const still = await S.api.libraryContains(ids.map((id) => `spotify:playlist:${id}`));
+    const uris = ids.map((id) => `spotify:playlist:${id}`);
+    // Spotify puede tardar un momento en reflejar el borrado: se mira otra vez antes de dar el error.
+    let still = await S.api.libraryContains(uris);
+    if (still.some(Boolean)) {
+      await wait(1500);
+      still = await S.api.libraryContains(uris);
+    }
     if (still.some(Boolean)) throw new UserError(t('purgeStillThere'));
   } catch (e) {
     throw new UserError(t('purgeFailed', { reason: errorMessage(e) }));
@@ -418,10 +424,14 @@ async function createAppPlaylist({ key, name, description, uris, protect = [] },
       }
     }
     const id = await withWriteLock(async () => {
+      // Una sola lectura fresca: sirve para saber si la playlist de un intento anterior sigue ahí y para borrar.
+      const fresh = await appPlaylistsNow(protect);
+      if (createdId && !fresh.some((p) => p.id === createdId)) createdId = null;
       if (purgeEnabled()) {
         status.phase('cleaning');
-        const old = (await appPlaylistsNow([...protect, createdId].filter(Boolean)))
-          .filter((p) => !confirmed || confirmed.has(p.id));
+        // Sin la hoja aceptada en esta cuenta solo se borra lo que se enseñó en ella (nada, si no se enseñó).
+        const allowed = confirmed ?? (purgeConfirmed() ? null : new Set());
+        const old = fresh.filter((p) => p.id !== createdId && (allowed === null || allowed.has(p.id)));
         if (old.length) {
           await removePlaylists(old.map((p) => p.id));
           notes.push(t('purgeDone', { n: fmt(old.length) }));
@@ -1834,8 +1844,8 @@ function settingsPanel() {
     await check(t('diagDelete'), async () => {
       const name = t('diagProbeName');
       const probe = await S.api.createPlaylist(name, withTag(t('diagProbeDesc'), await tagFor('diag'), name));
-      const seen = (await S.api.getMyPlaylists()).find((p) => p?.id === probe.id);
       try {
+        const seen = (await S.api.getMyPlaylists()).find((p) => p?.id === probe.id);
         if (!seen || !isAppPlaylist(seen, S.me.id)) throw new UserError(t('diagNoTag'));
         await removePlaylists([probe.id]);
       } catch (e) {

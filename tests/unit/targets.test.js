@@ -111,3 +111,17 @@ test('v1.3.1: sin etiqueta solo vale el nombre exacto que le corresponde a su de
   assert.ok(!isAppPlaylist(pl('Coche · Shuffle', `${V12}Rock`), 'me'), 'mezcla de la v1.2 con otro nombre: no se sabe, no se toca');
   assert.ok(isAppPlaylist(pl('Tus me gusta · Shuffle', `${V12}Tus me gusta`), 'me'));
 });
+
+test('ronda 2: etiqueta v1.3 con descripción conocida exige el nombre exacto; fechas solo tras « · Shuffle»; nombres con entidades', async () => {
+  const v13 = (name, origin) => pl(name, `${V12}${origin} · shuffl:src=0123456789`);
+  assert.ok(isAppPlaylist(v13('Rock · Shuffle', 'Rock'), 'me'));
+  assert.ok(!isAppPlaylist(v13('Rock bueno · Shuffle', 'Rock'), 'me'), 'renombrada conservando el sufijo');
+  assert.ok(isAppPlaylist(v13('35 min · Shuffle', 'Rock'), 'me'), 'por tiempo (v1.3)');
+  assert.ok(isAppPlaylist(v13('Rock · Álbumes · Shuffle', 'Rock'), 'me'), 'por álbumes (v1.3)');
+  assert.ok(isAppPlaylist(v13('Mix · Albums · Shuffle', 'Rock, Chill'), 'me'));
+  assert.ok(isAppPlaylist(pl('New releases · Shuffle', 'Releases from the last 30 days, with Shuffl. · shuffl:src=0123456789'), 'me'), 'v1.3 de Descubrir');
+  assert.ok(!isAppName('Concierto · 12/5/24, 21:00'), 'una fecha sin « · Shuffle» no es un nombre de la app');
+  assert.ok(isAppName('Rock · Shuffle · 12/5/24, 21:00'));
+  const tag = await tagFor('pl:x');
+  assert.ok(isAppPlaylist(pl('Rock &amp; Roll · Shuffle', withTag('d', tag, 'Rock & Roll · Shuffle')), 'me'), 'nombre devuelto con entidades');
+});
