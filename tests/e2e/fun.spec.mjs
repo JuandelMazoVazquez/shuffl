@@ -183,9 +183,11 @@ test('lo nuevo sale en inglés y los botones miden al menos 44 px', async ({ pag
   await login(page);
   await page.locator('#tab-shuffle').click();
   await expect(page.locator('#card-roulette')).toContainText('Pick for me');
+  await expect(page.locator('#card-roulette')).toBeVisible();
   expect((await page.locator('#card-roulette').boundingBox()).height).toBeGreaterThanOrEqual(44);
   await page.locator('#tab-more').click();
   await expect(page.locator('#card-proof')).toContainText('Is it really random?');
+  await expect(page.locator('#card-proof')).toBeVisible();
   expect((await page.locator('#card-proof').boundingBox()).height).toBeGreaterThanOrEqual(44);
   await openPanel(page, 'proof');
   await expect(page.locator('#proof-summary')).toContainText('with Shuffl');
