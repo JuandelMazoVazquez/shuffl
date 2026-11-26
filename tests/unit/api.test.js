@@ -181,3 +181,38 @@ test('respuesta vacía (204) devuelve null', async () => {
   const { api } = setup(async () => ({ ok: true, status: 204, headers: { get: () => null }, text: async () => '' }));
   assert.equal(await api.request('PUT', '/x', {}), null);
 });
+
+test('v1.3: libraryContains va en lotes de 40 y exige una respuesta por URI', async () => {
+  const { api, calls } = setup(async (c) => {
+    const uris = new URL(c.url).searchParams.get('uris').split(',');
+    return res(200, uris.map((u) => u.endsWith('1')));
+  });
+  const uris = Array.from({ length: 85 }, (_, i) => `spotify:track:t${i}`);
+  const out = await api.libraryContains(uris);
+  assert.equal(out.length, 85);
+  assert.deepEqual(calls.map((c) => new URL(c.url).searchParams.get('uris').split(',').length), [40, 40, 5]);
+  assert.equal(out[1], true);
+  assert.equal(out[2], false);
+  const bad = setup(async () => res(200, [true]));
+  await assert.rejects(bad.api.libraryContains(['a', 'b']), ApiError);
+});
+
+test('v1.3: dejar de seguir playlists usa DELETE /me/library con sus URI y lotes de 40', async () => {
+  const { api, calls } = setup(async () => res(200));
+  await api.unfollowPlaylists(Array.from({ length: 41 }, (_, i) => `p${i}`));
+  assert.deepEqual(calls.map((c) => c.method), ['DELETE', 'DELETE']);
+  const first = new URL(calls[0].url);
+  assert.equal(first.pathname, '/v1/me/library');
+  assert.equal(first.searchParams.get('uris').split(',')[0], 'spotify:playlist:p0');
+  assert.equal(first.searchParams.get('uris').split(',').length, 40);
+  assert.equal(calls[0].body, undefined);
+});
+
+test('v1.3: lanzamientos de un artista con limit 10 y fecha de la última escritura', async () => {
+  const { api, calls } = setup(async (c) => (c.url.includes('/items') ? res(200, { items: [{ added_at: '2026-05-01T10:00:00Z' }] }) : res(200, { items: [{ id: 'a' }] })));
+  assert.deepEqual(await api.getArtistAlbums('art/../x', 'single'), [{ id: 'a' }]);
+  assert.ok(calls[0].url.includes('/artists/art%2F..%2Fx/albums?include_groups=single&limit=10'));
+  assert.equal(await api.lastWriteTime('p1'), Date.parse('2026-05-01T10:00:00Z'));
+  const empty = setup(async () => res(200, { items: [] }));
+  assert.equal(await empty.api.lastWriteTime('p1'), -Infinity);
+});

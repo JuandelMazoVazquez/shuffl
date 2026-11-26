@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   sourceKey, generatedName, datedName, generatedDescription, sameDescription, sanitizeTargets, setTarget, removeTarget,
   isGeneratedPlaylist, SHUFFLE_SUFFIX, MAX_NAME, MAX_DESCRIPTION, MAX_TARGETS,
+  isTargetKey, tagFor, withTag, readTag, findCandidates, pickKeep, duplicateGroups, findLegacyBaraja, isManagedName,
 } from '../../js/targets.js';
 
 const es = { liked: 'Tus me gusta', library: 'Toda mi música' };
@@ -75,6 +76,83 @@ test('setTarget no muta, deja la más reciente al final y respeta el tope', () =
   assert.ok(!('pl:p0' in big) && 'pl:p204' in big);
   assert.deepEqual(removeTarget(c, 'pl:a'), { 'pl:b': 'id2' });
   assert.equal(Object.keys(sanitizeTargets({ ...big, 'pl:extra': 'x1' })).length, MAX_TARGETS);
+});
+
+test('claves de la v1.3 válidas y peligrosas', () => {
+  for (const k of ['time:35', 'albums:saved', 'albums:pl:a,b', 'albums:library', 'albums:mix:m1', 'new', 'explore', 'ago:2', 'forgotten', 'top']) assert.ok(isTargetKey(k), k);
+  for (const k of ['time:', 'time:abcd', 'albums:', 'albums:pl:../x', 'ago:x', 'similar:1', 'pl:a/b', '', null]) assert.ok(!isTargetKey(k), String(k));
+});
+
+test('la etiqueta es estable, corta, distinta por origen y no contiene los ids', async () => {
+  const a = await tagFor('pl:abc123');
+  assert.match(a, /^[a-f0-9]{10}$/);
+  assert.equal(await tagFor('pl:abc123'), a);
+  assert.notEqual(await tagFor('pl:abc124'), a);
+  assert.ok(!a.includes('abc123'));
+});
+
+test('withTag y readTag: la etiqueta cabe siempre y se lee también con entidades HTML', () => {
+  const d = withTag('Desde: Rock & Roll', '0123456789');
+  assert.equal(d, 'Desde: Rock & Roll · shuffl:src=0123456789');
+  assert.equal(readTag(d), '0123456789');
+  assert.equal(readTag('Desde: Rock &amp; Roll · shuffl:src=0123456789'), '0123456789');
+  const long = withTag('x'.repeat(400), 'abcdefabcd');
+  assert.equal([...long].length, MAX_DESCRIPTION);
+  assert.equal(readTag(long), 'abcdefabcd');
+  assert.equal(readTag('texto · shuffl:src=XYZ'), null);
+  assert.equal(readTag('shuffl:src=0123456789 y más texto'), null, 'solo al final');
+  assert.equal(readTag(null), null);
+});
+
+const me = { id: 'me' };
+const other = { id: 'otra' };
+const pl = (id, name, description, owner = me) => ({ id, name, description, owner });
+
+test('findCandidates: propias, con la etiqueta y con el nombre «· Shuffle»; las v1.2 sin etiqueta por nombre y descripción', () => {
+  const tag = '0123456789';
+  const list = [
+    pl('a', 'Rock · Shuffle', `Desde: Rock · shuffl:src=${tag}`),
+    pl('b', 'Rock · Shuffle', 'Desde: Rock'),
+    pl('c', 'Mi Rock favorito', `Desde: Rock · shuffl:src=${tag}`),
+    pl('d', 'Rock · Shuffle', `Desde: Rock · shuffl:src=${tag}`, other),
+    pl('e', 'Rock · Shuffle', 'Desde: Rock · shuffl:src=9999999999'),
+    pl('f', 'Rock · Shuffle', 'Desde: Chill'),
+    null,
+  ];
+  assert.deepEqual(findCandidates(list, { meId: 'me', tag, name: 'Rock · Shuffle', legacyDescription: 'Desde: Rock' }).map((p) => p.id), ['a', 'b']);
+  assert.deepEqual(findCandidates(list, { meId: 'me', tag, name: 'Rock · Shuffle', legacyDescription: null }).map((p) => p.id), ['a']);
+});
+
+test('pickKeep se queda con la escrita más tarde; en empate, con la que ya usaba el dispositivo', () => {
+  const cands = [pl('a', 'x · Shuffle'), pl('b', 'x · Shuffle'), pl('c', 'x · Shuffle')];
+  assert.equal(pickKeep(cands, new Map([['a', 10], ['b', 30], ['c', 20]])).id, 'b');
+  assert.equal(pickKeep(cands, new Map([['a', 10], ['b', 10], ['c', 10]]), 'c').id, 'c');
+  assert.equal(pickKeep(cands, new Map()).id, 'a');
+  assert.equal(pickKeep([], new Map()), null);
+});
+
+test('duplicateGroups agrupa copias por etiqueta o (sin etiqueta) por nombre y descripción, y nunca toca renombradas ni ajenas', () => {
+  const t1 = 'aaaaaaaaaa';
+  const list = [
+    pl('1', 'Rock · Shuffle', `Desde: Rock · shuffl:src=${t1}`),
+    pl('2', 'Rock · Shuffle', `Desde: Rock · shuffl:src=${t1}`),
+    pl('3', 'Renombrada', `Desde: Rock · shuffl:src=${t1}`),
+    pl('4', 'Rock · Shuffle', `Desde: Rock · shuffl:src=${t1}`, other),
+    pl('5', 'Mix · Shuffle', 'Desde: A, B'),
+    pl('6', 'Mix · Shuffle', 'Desde: A, B'),
+    pl('7', 'Mix · Shuffle', 'Desde: C, D'),
+    pl('8', 'Solo · Shuffle', 'x'),
+  ];
+  const groups = duplicateGroups(list, 'me');
+  assert.deepEqual(groups.map((g) => g.playlists.map((p) => p.id)), [['1', '2'], ['5', '6']]);
+});
+
+test('findLegacyBaraja encuentra la antigua propia por nombre o id', () => {
+  assert.equal(findLegacyBaraja([pl('z', '🔀 Baraja')], 'me').id, 'z');
+  assert.equal(findLegacyBaraja([pl('z', 'Otra')], 'me', 'z').id, 'z');
+  assert.equal(findLegacyBaraja([pl('z', '🔀 Baraja', '', other)], 'me'), null);
+  assert.equal(isManagedName('Rock · Shuffle'), true);
+  assert.equal(isManagedName('Rock · Shuffle · 26/11'), false);
 });
 
 test('isGeneratedPlaylist reconoce las generadas de ahora, las de antes y las instantáneas', () => {
