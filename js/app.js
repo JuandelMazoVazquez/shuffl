@@ -15,6 +15,7 @@ import { t, setLang, getLang, LANGS } from './i18n.js';
 import { REPO_URL, APP_NAME } from './config.js';
 import { registerUpdates } from './update.js';
 import { makeCover } from './cover.js';
+import { parseDeepLink, buildDeepLink, withoutDeepLink, LINK_PARAMS } from './links.js';
 import { imageDominantColor, rgbCss } from './color.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -61,6 +62,7 @@ const ICONS = {
   orphans: ['M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z'],
   split: ['M12 3v18', 'M3 8l4 4-4 4', 'M21 8l-4 4 4 4'],
   edit: ['M12 20h9', 'M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z'],
+  mic: ['M9 5a3 3 0 0 1 6 0v6a3 3 0 0 1-6 0Z', 'M5 10v1a7 7 0 0 0 14 0v-1', 'M12 18v4', 'M8 22h8'],
   trash: ['M3 6h18', 'M8 6V4h8v2', 'M19 6l-1 14H6L5 6'],
   home: ['M3 11 12 3l9 8', 'M5 9.5V21h14V9.5'],
   shuffle: ['M16 3h5v5', 'M4 20 21 3', 'M21 16v5h-5', 'M15 15l6 6', 'M4 4l5 5'],
@@ -504,6 +506,7 @@ function renderResult(container, status, o) {
       undoBtn,
       h('button', { class: 'btn', type: 'button', onclick: o.onBack }, t('back'))),
   );
+  container.playNow = () => playNow(o.playlistId, info, status);
   container.hidden = false;
   window.scrollTo(0, 0);
   if (o.titleFn && !prefersReducedMotion()) animateCount(title, o.titleFn, o.count);
@@ -721,8 +724,29 @@ function shufflePanel() {
     return mix.library ? n > 0 : n === ids.length;
   }
   /** `origin.mixId`/`origin.mixName`: la mezcla guardada de la que viene, para que tenga su propia playlist generada. */
-  S.runMix = (mix, origin = null) => {
-    if (applyMix(mix)) run(origin); else status.fail(new UserError(t('mixMissing')));
+  S.runMix = (mix, origin = null, opts = {}) => {
+    if (applyMix(mix)) return run(origin, opts);
+    status.fail(new UserError(t('mixMissing')));
+    return Promise.resolve(null);
+  };
+
+  /**
+   * Enlace profundo (Siri, Atajos): solo con sesión válida (lo garantiza boot) y si la mezcla o la playlist
+   * existen en este dispositivo. Siempre escribe en la playlist generada «· Shuffle», nunca en el origen.
+   */
+  S.openDeepLink = async (link) => {
+    S.show('shuffle');
+    let written = null;
+    if (link.kind === 'mix') {
+      const mix = getMixes().find((m) => m.id === link.id);
+      if (!mix) { status.fail(new UserError(t('deepLinkMixMissing'))); return; }
+      written = await S.runMix(mix, mixOrigin(mix), { modeOverride: 'reuse' });
+    } else {
+      const pl = S.playlists.find((p) => p.id === link.id && !baseReason(p));
+      if (!pl) { status.fail(new UserError(t('deepLinkSourceMissing'))); return; }
+      written = await S.runMix({ library: false, ids: [pl.id], filters: emptyFilters(), dedupe: true, mode: 'reuse' }, null, { modeOverride: 'reuse' });
+    }
+    if (written && link.play) await result.playNow?.();
   };
   S.editMix = (mix) => {
     if (!applyMix(mix)) status.fail(new UserError(t('mixMissing')));
@@ -1397,9 +1421,9 @@ function backupPanel() {
 
 // ---------- Ajustes ----------
 
-function copyBox(value) {
-  const input = h('input', { type: 'text', class: 'text mono', readonly: true, value, 'aria-label': t('redirectUri') });
-  const btn = h('button', { class: 'btn', type: 'button', onclick: async () => {
+function copyBox(value, label = t('redirectUri'), id = null) {
+  const input = h('input', { type: 'text', class: 'text mono', readonly: true, value, 'aria-label': label, id });
+  const btn = h('button', { class: 'btn', type: 'button', id: id && `${id}-copy`, onclick: async () => {
     try { await navigator.clipboard.writeText(value); btn.textContent = t('copied'); } catch { input.select(); btn.textContent = t('selected'); }
     setTimeout(() => { btn.textContent = t('copy'); }, 1800);
   } }, t('copy'));
@@ -1471,6 +1495,7 @@ function pinPanel() {
     h('h2', {}, t('pinHow')), h('p', {}, t('pinHowText')),
     h('h2', {}, t('pinWhy')), h('p', {}, t('pinWhyText')),
     h('h2', {}, t('pinHome')), h('p', {}, t('pinHomeText')),
+    h('h2', { id: 'car-title' }, t('carTitle')), h('p', {}, t('carText')), h('p', {}, t('carSiri')),
     slot,
     h('button', { class: 'btn', type: 'button', id: 'pin-back', onclick: () => S.show('shuffle') }, t('back')));
   panel.refresh = () => {
@@ -1495,6 +1520,31 @@ const TABS = [['home', 'tabHome'], ['shuffle', 'tabShuffle'], ['sort', 'tabSort'
 const TAB_ORDER = TABS.map(([key]) => key);
 
 const mixOrigin = (mix) => ({ mixId: mix.id, mixName: mix.name });
+const appBase = () => withoutDeepLink(`${location.origin}${location.pathname}`);
+
+/** Pasos para crear en la app Atajos de iOS un atajo que abre el enlace profundo de una mezcla. */
+function showShortcutSheet(mix) {
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  const close = () => { document.removeEventListener('keydown', onKey); sheet.remove(); };
+  const link = buildDeepLink(appBase(), { mixId: mix.id });
+  const phrase = `${APP_NAME} ${mix.name.toLowerCase()}`;
+  const sheet = h('div', { class: 'sheet-backdrop', onclick: (e) => { if (e.target === sheet) close(); } },
+    h('div', { class: 'sheet', id: 'shortcut-sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('shortcutTitle', { name: mix.name }) },
+      h('h2', {}, t('shortcutTitle', { name: mix.name })),
+      h('p', {}, t('shortcutLead', { phrase })),
+      copyBox(link, t('shortcutLink'), 'shortcut-link'),
+      h('ol', { class: 'howto' },
+        h('li', {}, t('shortcutStep1')),
+        h('li', {}, t('shortcutStep2')),
+        h('li', {}, t('shortcutStep3')),
+        h('li', {}, t('shortcutStep4', { phrase })),
+        h('li', {}, t('shortcutStep5', { phrase }))),
+      h('p', { class: 'muted small' }, t('shortcutSafari')),
+      h('button', { class: 'btn', type: 'button', id: 'shortcut-close', onclick: close }, t('close'))));
+  document.addEventListener('keydown', onKey);
+  document.body.append(sheet);
+  sheet.querySelector('#shortcut-close').focus();
+}
 
 /** «Rock + Chill · filtros · sin repetidas» para las tarjetas de mezcla. */
 function mixSummary(mix) {
@@ -1513,6 +1563,7 @@ function homePanel() {
     h('button', { class: 'card', type: 'button', 'data-mix': mix.id, onclick: () => S.runMix(mix, mixOrigin(mix)) },
       h('span', { class: 'card-icon' }, icon(...ICONS.shuffle)),
       h('span', {}, h('span', { class: 'card-title' }, mix.name), h('span', { class: 'card-sub' }, mixSummary(mix)))),
+    h('button', { class: 'icon-btn', type: 'button', 'data-shortcut': mix.id, 'aria-label': t('shortcutBtn', { name: mix.name }), onclick: () => showShortcutSheet(mix) }, icon(...ICONS.mic)),
     h('button', { class: 'icon-btn', type: 'button', 'aria-label': t('editMix', { name: mix.name }), onclick: () => S.editMix(mix) }, icon(...ICONS.edit)),
     h('button', { class: 'icon-btn', type: 'button', 'aria-label': t('deleteMix', { name: mix.name }), onclick: () => {
       if (!confirm(t('confirmDeleteMix', { name: mix.name }))) return;
@@ -1693,6 +1744,9 @@ async function boot() {
   setLang();
   applyTheme();
   bindGestures();
+  // El enlace profundo se quita de la barra en cuanto se lee: recargar nunca vuelve a barajar ni a reproducir.
+  const link = parseDeepLink(location.search);
+  if (LINK_PARAMS.some((p) => new URLSearchParams(location.search).has(p))) history.replaceState(null, '', withoutDeepLink(location.href));
   let problem = null;
   try {
     await auth.handleCallback();
@@ -1707,6 +1761,7 @@ async function boot() {
     mountApp();
     await loadPlaylists();
     await probeLiked();
+    if (link) await S.openDeepLink(link);
   } catch (e) {
     console.error(e);
     if (e instanceof auth.AuthError) return renderSetup(e);
