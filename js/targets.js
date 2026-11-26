@@ -75,7 +75,7 @@ export async function tagFor(key) {
 
 /** Descripción con la etiqueta al final (origen y, si se pasa, nombre); el texto se recorta para que quepa siempre. */
 export function withTag(description, tag, name = null) {
-  const suffix = `${TAG_SEP}${TAG_PREFIX}${tag}${name == null ? '' : `.${nameHash(name)}`}`;
+  const suffix = `${TAG_SEP}${TAG_PREFIX}${tag}${name == null ? '' : `.${nameHash(decodeEntities(name))}`}`;
   return cut(String(description ?? ''), MAX_DESCRIPTION - suffix.length) + suffix;
 }
 
@@ -165,8 +165,8 @@ export function isAppPlaylist(p, meId) {
     // Spotify podría devolver el nombre con entidades HTML, como la descripción: se compara el texto real.
     if (hash) return hash === nameHash(decodeEntities(p.name));
     // Etiqueta de la v1.3 (sin resumen del nombre): si la descripción es de las conocidas, el nombre tiene que ser el exacto.
-    const rest = decodeEntities(p.description).replace(TAG_RE, '').trim();
-    return isKnownDescription(rest) ? isLegacyAppPlaylist(p.name, rest, true) : isAppName(p.name);
+    const rest = String(p.description ?? '').replace(TAG_RE, '').trim();
+    return isKnownDescription(decodeEntities(rest).trim()) ? isLegacyAppPlaylist(p.name, rest, true) : isAppName(p.name);
   }
   return isLegacyAppPlaylist(p.name, p.description);
 }

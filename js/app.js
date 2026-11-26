@@ -417,7 +417,8 @@ async function createAppPlaylist({ key, name, description, uris, protect = [] },
     let confirmed = null;
     if (purgeEnabled() && !purgeConfirmed()) {
       status.phase('cleaning');
-      const old = await appPlaylistsNow(protect);
+      // La playlist de un intento anterior se rellena, no se quita: no se enseña en la hoja.
+      const old = await appPlaylistsNow([...protect, createdId].filter(Boolean));
       if (old.length) {
         if (!await confirmPurge(old)) throw new CancelledError(t('purgeCancelled'));
         confirmed = new Set(old.map((p) => p.id));
@@ -425,7 +426,8 @@ async function createAppPlaylist({ key, name, description, uris, protect = [] },
     }
     const id = await withWriteLock(async () => {
       // Una sola lectura fresca: sirve para saber si la playlist de un intento anterior sigue ahí y para borrar.
-      const fresh = await appPlaylistsNow(protect);
+      // Con el borrado desactivado y sin intento anterior no hace falta leer la biblioteca.
+      const fresh = purgeEnabled() || createdId ? await appPlaylistsNow(protect) : [];
       if (createdId && !fresh.some((p) => p.id === createdId)) createdId = null;
       if (purgeEnabled()) {
         status.phase('cleaning');
