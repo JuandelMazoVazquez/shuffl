@@ -439,7 +439,7 @@ async function offerCleanup(groups, { protect = [], legacy = null, ask = !autoCl
   let legacyLeft = legacy && !getItem(KEYS.migrationNotice) ? legacy : null;
   if (!pending.length && !legacyLeft) return [];
   if (ask || legacyLeft || pending.some((g) => g.legacy)) {
-    const answer = await confirmCleanup(pending.map((g) => ({ ...g, count: g.count ?? 2 })), legacyLeft);
+    const answer = await confirmCleanup(pending, legacyLeft);
     if (!answer.ok) {
       pending.forEach((g) => S.cleanDeclined.add(g.key));
       // Quien quiere conservar la antigua «🔀 Baraja» no vuelve a ver la pregunta.
@@ -465,9 +465,10 @@ async function offerCleanup(groups, { protect = [], legacy = null, ask = !autoCl
       }
       const old = legacyLeft && findLegacyBaraja(fresh, S.me.id);
       if (old && old.id === legacyLeft.id && !keepSafe.has(old.id)) ids.push(old.id);
-      if (legacyLeft) setItem(KEYS.migrationNotice, true);
       const unique = [...new Set(ids)];
       if (unique.length) await S.api.unfollowPlaylists(unique);
+      // Solo tras quitarla de verdad: si el borrado falla, la antigua «🔀 Baraja» se vuelve a ofrecer.
+      if (legacyLeft) setItem(KEYS.migrationNotice, true);
       return unique.length;
     });
     document.getElementById('clean-notice')?.remove();
@@ -491,9 +492,10 @@ async function checkLibraryDuplicates() {
   if (!groups.length && !legacy) return;
   // En automático solo se limpian sin preguntar las copias con etiqueta.
   const autoGroups = autoClean() ? groups.filter((g) => !g.legacy) : [];
+  // El resultado de la limpieza automática va en su propio aviso para que no lo tape el de lo que queda por revisar.
   if (autoGroups.length) {
     const notes = await offerCleanup(autoGroups, { ask: false });
-    if (notes.length) showNotice('clean-notice', notes.join(' '));
+    if (notes.length) showNotice('clean-done', notes.join(' '));
   }
   const left = groups.filter((g) => !autoGroups.includes(g));
   if (!left.length && !legacy) return;
@@ -827,21 +829,29 @@ function segmented(name, label, options, onChange) {
 
 // ---------- Caché de metadatos de Spotify (24 h, en el dispositivo) ----------
 
+/** { cache, size }: la caché en memoria y sus caracteres en JSON (para no serializarla entera en cada entrada). */
 let metaCache = null;
-const loadCache = () => (metaCache ??= pruneCache(getItem(KEYS.metaCache, {})));
-/** Lee de la caché o pide a Spotify y guarda. Si el almacenamiento está lleno, sigue sin caché. */
+let persistTimer = null;
+const loadCache = () => (metaCache ??= { cache: pruneCache(getItem(KEYS.metaCache, {})) }).cache;
 function dropMetaCache() {
   metaCache = null;
+  clearTimeout(persistTimer);
   removeItem(KEYS.metaCache);
 }
-/** Las claves llevan el id de la cuenta: otra cuenta en el mismo navegador no ve ni usa los datos de la anterior. */
+/**
+ * Lee de la caché o pide a Spotify y guarda. Las claves llevan el id de la cuenta: otra cuenta en el mismo navegador
+ * no ve ni usa los datos de la anterior. Se escribe en localStorage una vez por ráfaga (Novedades hace decenas de
+ * lecturas seguidas); si el almacenamiento está lleno, se sigue con la caché en memoria.
+ */
 async function cached(rawKey, fetcher) {
   const key = `${S.me.id}:${rawKey}`;
   const hit = cacheGet(loadCache(), key);
   if (hit !== undefined) return hit;
   const data = await fetcher();
-  metaCache = cacheSet(loadCache(), key, data);
-  setItem(KEYS.metaCache, metaCache);
+  loadCache();
+  metaCache = cacheSet(metaCache, key, data);
+  clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => { if (metaCache) setItem(KEYS.metaCache, metaCache.cache); }, 800);
   return data;
 }
 

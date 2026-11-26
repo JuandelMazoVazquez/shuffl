@@ -189,6 +189,35 @@ test('barajar no reutiliza nunca un origen aunque tenga la etiqueta (por tiempo 
   expect(state.unfollowCalls).toEqual([]);
 });
 
+test('la limpieza automática nunca quita una copia que es origen de una mezcla guardada o de la última mezcla', async ({ page }) => {
+  const t = tag('pl:pl_rock');
+  addList('dupA', 'Rock · Shuffle', `${DESC_ROCK} · shuffl:src=${t}`, { writtenAt: '2026-01-01T10:00:00Z' });
+  addList('dupB', 'Rock · Shuffle', `${DESC_ROCK} · shuffl:src=${t}`, { writtenAt: '2026-05-01T10:00:00Z' });
+  addList('dupC', 'Rock · Shuffle', `${DESC_ROCK} · shuffl:src=${t}`, { writtenAt: '2026-09-01T10:00:00Z' });
+  await page.addInitScript(() => {
+    localStorage.setItem('baraja.autoClean', 'true');
+    localStorage.setItem('baraja.mixes', JSON.stringify([{ id: 'm1', name: 'Mi copia', ids: ['dupA'], names: ['Rock · Shuffle'] }]));
+    localStorage.setItem('baraja.lastMix', JSON.stringify({ ids: ['dupB'], names: ['Rock · Shuffle'] }));
+  });
+  await login(page);
+  await page.locator('#tab-home').click();
+  await page.waitForTimeout(800);
+  expect(state.unfollowCalls.flat()).not.toContain('spotify:playlist:dupA');
+  expect(state.unfollowCalls.flat()).not.toContain('spotify:playlist:dupB');
+  expect(state.lists.has('dupA') && state.lists.has('dupB') && state.lists.has('dupC')).toBe(true);
+});
+
+test('si quitar la antigua «🔀 Baraja» falla, se vuelve a ofrecer', async ({ page }) => {
+  addList('legacy', '🔀 Baraja', '');
+  state.failUnfollow = true;
+  await login(page);
+  await page.locator('#tab-home').click();
+  await page.locator('#clean-notice').getByRole('button', { name: 'Revisar' }).click();
+  await page.locator('#clean-ok').click();
+  await expect.poll(() => state.unfollowCalls.length).toBe(1);
+  expect(await page.evaluate(() => localStorage.getItem('baraja.migrationNotice'))).toBeNull();
+});
+
 test('si quitar falla no se pierde nada: la baraja está escrita y se avisa', async ({ page }) => {
   const t = tag('pl:pl_rock');
   addList('dupA', 'Rock · Shuffle', `${DESC_ROCK} · shuffl:src=${t}`, { writtenAt: '2026-03-01T10:00:00Z' });

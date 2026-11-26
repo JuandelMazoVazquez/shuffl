@@ -129,23 +129,30 @@ test('albumsFromListening y withoutUris', () => {
 
 test('caché de 24 h: caduca, rechaza formatos raros y tiene tope', () => {
   const now = 1_000_000_000_000;
-  let c = cacheSet({}, 'k', [1, 2], now);
+  let c = cacheSet({ cache: {} }, 'k', [1, 2], now).cache;
   assert.deepEqual(cacheGet(c, 'k', now + 1000), [1, 2]);
   assert.equal(cacheGet(c, 'k', now + CACHE_TTL_MS + 1), undefined);
   assert.equal(cacheGet(c, 'k', now - 1000), undefined, 'fecha en el futuro: no se fía');
   assert.deepEqual(pruneCache({ a: { t: now, d: 1 }, b: { t: now - CACHE_TTL_MS - 1, d: 2 }, c: 5, d: null }, now), { a: { t: now, d: 1 } });
   assert.deepEqual(pruneCache('x', now), {});
   assert.deepEqual(pruneCache([1], now), {});
-  for (let i = 0; i < MAX_CACHE_ENTRIES + 20; i++) c = cacheSet(c, `k${i}`, i, now + i);
+  let st = { cache: c };
+  for (let i = 0; i < MAX_CACHE_ENTRIES + 20; i++) st = cacheSet(st, `k${i}`, i, now + i);
+  c = st.cache;
+  assert.equal(st.size, JSON.stringify(c).length, 'el tamaño llevado a mano coincide');
   assert.equal(Object.keys(c).length, MAX_CACHE_ENTRIES);
   assert.equal(cacheGet(c, `k${MAX_CACHE_ENTRIES + 19}`, now + MAX_CACHE_ENTRIES + 20), MAX_CACHE_ENTRIES + 19);
 });
 
 test('la caché tiene tope de tamaño: se quitan las más antiguas y nunca pasa del máximo', () => {
   const now = 1_000_000_000_000;
-  let c = {};
-  for (let i = 0; i < 50; i++) c = cacheSet(c, `album:${i}`, 'x'.repeat(1000), now + i, 10_000);
+  let st = { cache: {} };
+  for (let i = 0; i < 50; i++) st = cacheSet(st, `album:${i}`, 'x'.repeat(1000), now + i, 10_000);
+  const c = st.cache;
   assert.ok(JSON.stringify(c).length <= 10_000);
+  assert.equal(st.size, JSON.stringify(c).length);
   assert.ok('album:49' in c && !('album:0' in c));
-  assert.deepEqual(cacheSet({}, 'enorme', 'x'.repeat(20_000), now, 10_000), {}, 'una entrada que no cabe no se guarda');
+  assert.deepEqual(cacheSet({ cache: {} }, 'enorme', 'x'.repeat(20_000), now, 10_000).cache, {}, 'una entrada que no cabe no se guarda');
+  const again = cacheSet(cacheSet({ cache: {} }, 'k', 'aaa', now), 'k', 'bbbbbb', now + 1);
+  assert.equal(again.size, JSON.stringify(again.cache).length, 'sustituir una clave descuenta la anterior');
 });

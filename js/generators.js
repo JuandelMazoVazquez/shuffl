@@ -189,16 +189,29 @@ export const cacheGet = (cache, key, now = Date.now()) => {
 /** Tope en caracteres del JSON guardado: deja sitio en localStorage (unos 5 MB) para Deshacer y lo demás. */
 export const MAX_CACHE_CHARS = 1_500_000;
 
-/** Añade una entrada; si se pasa de entradas o de tamaño, quita primero las más antiguas. */
-export function cacheSet(cache, key, data, now = Date.now(), maxChars = MAX_CACHE_CHARS) {
-  let next = { ...cache, [key]: { t: now, d: data } };
-  if (Object.keys(next).length > MAX_CACHE_ENTRIES) next = pruneCache(next, now);
-  let size = JSON.stringify(next).length;
-  if (size <= maxChars) return next;
-  const entries = Object.entries(next).sort((a, b) => a[1].t - b[1].t);
-  while (entries.length && size > maxChars) {
-    const [k, v] = entries.shift();
-    size -= JSON.stringify(k).length + JSON.stringify(v).length + 2;
+/** Caracteres de `"k":v` en el JSON del objeto (la coma de separación se cuenta aparte). */
+const entrySize = (k, v) => JSON.stringify(k).length + JSON.stringify(v).length + 1;
+
+/**
+ * Añade una entrada a `{ cache, size }` (size: caracteres del JSON). Solo serializa la entrada nueva, salvo cuando
+ * hay que recortar: si se pasa de entradas o de tamaño, quita primero las más antiguas. Devuelve `{ cache, size }`.
+ */
+export function cacheSet({ cache, size = JSON.stringify(cache).length }, key, data, now = Date.now(), maxChars = MAX_CACHE_CHARS) {
+  const entry = { t: now, d: data };
+  const old = cache[key];
+  let next = { ...cache, [key]: entry };
+  const comma = !old && Object.keys(cache).length ? 1 : 0;
+  let total = size + entrySize(key, entry) + comma - (old ? entrySize(key, old) : 0);
+  if (Object.keys(next).length > MAX_CACHE_ENTRIES) {
+    next = pruneCache(next, now);
+    total = JSON.stringify(next).length;
   }
-  return Object.fromEntries(entries);
+  if (total <= maxChars) return { cache: next, size: total };
+  const entries = Object.entries(next).sort((a, b) => a[1].t - b[1].t);
+  while (entries.length && total > maxChars) {
+    const [k, v] = entries.shift();
+    total -= entrySize(k, v) + (entries.length ? 1 : 0);
+  }
+  const cache2 = Object.fromEntries(entries);
+  return { cache: cache2, size: JSON.stringify(cache2).length };
 }
