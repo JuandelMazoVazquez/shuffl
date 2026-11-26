@@ -18,4 +18,5 @@ PWA estática (HTML + CSS + JS vanilla con ES modules, sin build ni dependencias
 - Pages despliega solo desde main y solo si el CI pasa.
 - No se usa "Spotify" en el nombre ni el logo de la app.
 - Los logos de `icons/spotify/` son los oficiales sin modificar (un test fija su hash): no se editan ni se recolorean. Donde se muestren carátulas o metadatos de Spotify, añadir `spotifyAttribution()`.
-- Push, merge y hacer público el repo: solo con OK del usuario (ver docs/bandeja.md).
+- Push y merge a main sin pedir OK, siempre que el CI esté en verde y el cambio haya pasado la revisión de seguridad.
+- Siguen necesitando confirmación del usuario (ver docs/bandeja.md): hacer público algo nuevo, borrar ramas con trabajo sin mergear y cualquier acción irreversible fuera del repo.
