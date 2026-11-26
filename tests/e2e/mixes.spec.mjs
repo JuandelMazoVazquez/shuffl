@@ -117,6 +117,7 @@ test('una mezcla de biblioteca incluye las playlists nuevas al volver a barajarl
   await expect(page.getByText('Mezcla «Toda mi biblioteca» guardada.')).toBeVisible();
   state.lists.set('pl_nueva', { id: 'pl_nueva', name: 'Recién llegada', owner: { id: 'me' }, tracks: [...state.lists.get('pl_chill').tracks.slice(0, 0), ...state.catalog.values()].slice(600, 610) });
   await page.locator('#tab-home').click();
+  await expect(page.locator('[data-mix]')).toHaveCount(1);
   await page.evaluate(() => document.querySelector('[data-mix]').click());
   await page.locator('#tab-shuffle').click();
   await expect(page.locator('#panel-shuffle .result-title')).toContainText('Listo:');

@@ -16,6 +16,9 @@ import { REPO_URL, APP_NAME } from './config.js';
 import { registerUpdates } from './update.js';
 import { makeCover } from './cover.js';
 import { parseDeepLink, buildDeepLink, withoutDeepLink, LINK_PARAMS } from './links.js';
+import {
+  createShakeDetector, pickIndex, spinSequence, spinDelays, naiveShuffle, fairShuffle, firstSongHistogram, maxDeviation,
+} from './random.js';
 import { imageDominantColor, rgbCss } from './color.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -63,6 +66,8 @@ const ICONS = {
   split: ['M12 3v18', 'M3 8l4 4-4 4', 'M21 8l-4 4 4 4'],
   edit: ['M12 20h9', 'M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z'],
   mic: ['M9 5a3 3 0 0 1 6 0v6a3 3 0 0 1-6 0Z', 'M5 10v1a7 7 0 0 0 14 0v-1', 'M12 18v4', 'M8 22h8'],
+  roulette: ['M4 4h16v16H4Z', 'M8.5 8.5h.01', 'M15.5 8.5h.01', 'M12 12h.01', 'M8.5 15.5h.01', 'M15.5 15.5h.01'],
+  proof: ['M3 21h18', 'M6 21v-8', 'M10.5 21V9', 'M15 21v-6', 'M19.5 21V5'],
   trash: ['M3 6h18', 'M8 6V4h8v2', 'M19 6l-1 14H6L5 6'],
   home: ['M3 11 12 3l9 8', 'M5 9.5V21h14V9.5'],
   shuffle: ['M16 3h5v5', 'M4 20 21 3', 'M21 16v5h-5', 'M15 15l6 6', 'M4 4l5 5'],
@@ -509,11 +514,52 @@ function renderResult(container, status, o) {
   container.playNow = () => playNow(o.playlistId, info, status);
   container.hidden = false;
   window.scrollTo(0, 0);
+  celebrate(container);
   if (o.titleFn && !prefersReducedMotion()) animateCount(title, o.titleFn, o.count);
   return sync;
 }
 
 const prefersReducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
+
+/** Celebración discreta al terminar: unos naipes lima que caen y se desvanecen (nada con movimiento reducido). */
+function celebrate(container) {
+  if (prefersReducedMotion()) return;
+  const burst = h('div', { class: 'confetti', 'aria-hidden': 'true' },
+    Array.from({ length: 14 }, (_, i) => h('span', { style: `--x:${(i * 37) % 100}%;--r:${(i * 53) % 90 - 45}deg;--d:${(i % 5) * 60}ms` })));
+  container.prepend(burst);
+  setTimeout(() => burst.remove(), 1600);
+}
+
+// ---------- Agitar para barajar ----------
+
+const shakeEnabled = () => getItem(KEYS.shake) !== false;
+/** En iOS el permiso del acelerómetro solo se puede pedir tras un toque. */
+const motionNeedsPermission = () => typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function';
+const SHAKE = { granted: false, tried: false, listening: false, feed: createShakeDetector() };
+
+function onMotion(e) {
+  const a = e.accelerationIncludingGravity;
+  if (!a || !SHAKE.feed(a.x, a.y, a.z, e.timeStamp)) return;
+  if (S.tab === 'home' && !S.busy && shakeEnabled()) S.shakeShuffle?.();
+}
+
+function syncShake() {
+  const want = typeof DeviceMotionEvent !== 'undefined' && shakeEnabled() && (!motionNeedsPermission() || SHAKE.granted);
+  if (want && !SHAKE.listening) window.addEventListener('devicemotion', onMotion);
+  if (!want && SHAKE.listening) window.removeEventListener('devicemotion', onMotion);
+  SHAKE.listening = want;
+}
+
+async function requestMotion() {
+  try {
+    SHAKE.granted = (await DeviceMotionEvent.requestPermission()) === 'granted';
+  } catch {
+    SHAKE.granted = false;
+  }
+  syncShake();
+  return SHAKE.granted;
+}
 
 /** Cuenta de 0 a `target` en ~0,7 s; siempre termina en el texto final. */
 function animateCount(el, textFor, target, ms = 700) {
@@ -1439,6 +1485,12 @@ function settingsPanel() {
     THEMES.map((k) => { const o = h('option', { value: k }, t(`theme_${k}`)); if (k === currentTheme()) o.selected = true; return o; }));
   const coverToggle = h('input', { type: 'checkbox', id: 'cover-toggle', onchange: () => setItem(KEYS.cover, coverToggle.checked) });
   coverToggle.checked = coverEnabled();
+  const shakeToggle = h('input', { type: 'checkbox', id: 'shake-toggle', onchange: async () => {
+    setItem(KEYS.shake, shakeToggle.checked);
+    if (shakeToggle.checked && motionNeedsPermission() && !SHAKE.granted) await requestMotion();
+    syncShake();
+  } });
+  shakeToggle.checked = shakeEnabled();
   const diagList = h('ul', { class: 'diag', id: 'diag-results' });
   async function diagnose() {
     const rows = [];
@@ -1472,6 +1524,8 @@ function settingsPanel() {
     h('h2', {}, t('themeTitle')), themeSel,
     h('h2', {}, t('coverTitle')),
     h('label', { class: 'check' }, coverToggle, h('span', {}, t('coverToggle'))),
+    h('h2', {}, t('shakeTitle')),
+    h('label', { class: 'check' }, shakeToggle, h('span', {}, t('shakeToggle'))),
     h('button', { class: 'btn', type: 'button', id: 'open-pin', onclick: () => S.show('pin') }, t('pinTitle')),
     h('h2', {}, t('undoTitle')), undoInfo, undoBtn,
     h('h2', {}, t('account')), h('p', { class: 'muted' }, S.me?.display_name || S.me?.id || ''),
@@ -1502,6 +1556,107 @@ function pinPanel() {
     const id = getItem(KEYS.lastTarget) ?? getItem(KEYS.barajaId);
     setKids(slot, id ? h('a', { class: 'btn primary', href: spotifyUrl(id), target: '_blank', rel: 'noopener', id: 'pin-open' }, t('openInSpotify')) : null);
   };
+  return panel;
+}
+
+// ---------- Elige por mí ----------
+
+function roulettePanel() {
+  const status = createStatus();
+  const reel = h('div', { class: 'reel', id: 'reel', role: 'status', 'aria-live': 'polite' }, '?');
+  const go = h('button', { class: 'btn primary big', type: 'button', id: 'roulette-go', onclick: () => spin() }, t('rouletteSpin'));
+  const candidates = () => S.playlists.filter((p) => !baseReason(p) && (p.isLiked || !isGenerated(p)) && p.total !== 0);
+
+  /** La elegida sale de pickIndex (uniforme) antes de animar; la ruleta solo lo enseña. */
+  async function spin() {
+    if (S.busy) return;
+    const list = candidates();
+    if (!list.length) { status.fail(new UserError(t('rouletteEmpty'))); return; }
+    status.clear();
+    const chosen = pickIndex(list.length);
+    go.disabled = true;
+    reel.classList.remove('landed');
+    if (!prefersReducedMotion()) {
+      reel.classList.add('spinning');
+      const seq = spinSequence(list.length, chosen);
+      const delays = spinDelays(seq.length);
+      for (let i = 0; i < seq.length; i++) {
+        reel.textContent = list[seq[i]].name;
+        await wait(delays[i]);
+      }
+      reel.classList.remove('spinning');
+    }
+    reel.textContent = list[chosen].name;
+    reel.classList.add('landed');
+    reel.dataset.chosen = list[chosen].id;
+    await wait(prefersReducedMotion() ? 0 : 600);
+    go.disabled = false;
+    S.runMix({ library: false, ids: [list[chosen].id], filters: emptyFilters(), dedupe: true, mode: 'reuse' }, null, { modeOverride: 'reuse' });
+  }
+
+  return h('section', { class: 'panel', id: 'panel-roulette', hidden: true },
+    h('h2', {}, t('rouletteTitle')),
+    h('p', { class: 'lead' }, t('rouletteLead')),
+    h('div', { class: 'reel-frame' }, reel),
+    go, status.el);
+}
+
+// ---------- ¿Es aleatorio de verdad? ----------
+
+const PROOF_SONGS = 10;
+const PROOF_RUNS = 10000;
+
+/**
+ * Simula miles de barajas y enseña cuántas veces suena primero cada canción: con Shuffl todas igual (10 %),
+ * con el error clásico de barajar unas mucho más que otras. Dos gráficos con la misma escala y una tabla.
+ */
+function proofPanel() {
+  const charts = h('div', { class: 'proof-charts' });
+  const summary = h('p', { class: 'proof-summary', id: 'proof-summary', role: 'status' });
+  const tableBox = h('details', { class: 'more', id: 'proof-table' });
+  const pct = (c) => `${((c / PROOF_RUNS) * 100).toLocaleString(getLang(), { maximumFractionDigits: 1 })} %`;
+
+  function chart(id, title, note, counts, scale) {
+    const expected = PROOF_RUNS / PROOF_SONGS;
+    const bars = counts.map((c, i) => h('div', {
+      class: 'bar', tabindex: '0', title: t('proofBarTip', { n: i + 1, p: pct(c) }), 'aria-label': t('proofBarTip', { n: i + 1, p: pct(c) }),
+      style: `--h:${(c / scale) * 100}%;--i:${i}`,
+    }, h('span', { class: 'bar-fill' })));
+    return h('figure', { class: 'proof-chart', id },
+      h('figcaption', {}, h('strong', {}, title), h('span', { class: 'muted small' }, note)),
+      h('div', { class: 'bars', style: `--ref:${(expected / scale) * 100}%` }, bars, h('span', { class: 'ref', 'aria-hidden': 'true' }, t('proofFairLine'))),
+      h('div', { class: 'bar-labels', 'aria-hidden': 'true' }, counts.map((_, i) => h('span', {}, String(i + 1)))));
+  }
+
+  function simulate() {
+    const fair = firstSongHistogram(fairShuffle, PROOF_SONGS, PROOF_RUNS);
+    const biased = firstSongHistogram(naiveShuffle, PROOF_SONGS, PROOF_RUNS);
+    const scale = Math.max(...fair, ...biased) * 1.1;
+    setKids(charts,
+      chart('proof-fair', APP_NAME, t('proofFairNote'), fair, scale),
+      chart('proof-biased', t('proofBiased'), t('proofBiasedNote'), biased, scale));
+    const dev = (c) => `${(maxDeviation(c) * 100).toLocaleString(getLang(), { maximumFractionDigits: 1 })} %`;
+    summary.textContent = t('proofSummary', { fair: dev(fair), biased: dev(biased) });
+    setKids(tableBox, h('summary', {}, t('proofTable')),
+      h('table', {},
+        h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, t('proofSong')), h('th', { scope: 'col' }, APP_NAME), h('th', { scope: 'col' }, t('proofBiased')))),
+        h('tbody', {}, fair.map((c, i) => h('tr', {}, h('th', { scope: 'row' }, String(i + 1)), h('td', {}, pct(c)), h('td', {}, pct(biased[i])))))));
+    if (!prefersReducedMotion()) {
+      charts.classList.remove('grow');
+      requestAnimationFrame(() => requestAnimationFrame(() => charts.classList.add('grow')));
+    } else {
+      charts.classList.add('grow');
+    }
+  }
+
+  const panel = h('section', { class: 'panel', id: 'panel-proof', hidden: true },
+    h('h2', {}, t('proofTitle')),
+    h('p', { class: 'lead' }, t('proofLead', { n: fmt(PROOF_RUNS), songs: PROOF_SONGS })),
+    charts, summary,
+    h('button', { class: 'btn', type: 'button', id: 'proof-again', onclick: () => simulate() }, t('proofAgain')),
+    tableBox,
+    h('p', { class: 'muted small' }, t('proofExplain')));
+  panel.refresh = () => { if (!charts.firstChild) simulate(); };
   return panel;
 }
 
@@ -1575,10 +1730,26 @@ function homePanel() {
     const mix = raw && sanitizeMix({ ...raw, id: 'last', name: 'last' });
     const mixes = getMixes();
     const saved = raw?.mixId && mixes.find((m) => m.id === raw.mixId);
+    const origin = saved ? mixOrigin(saved) : null;
+    /** Agitar: siempre pide confirmación, porque va a sobrescribir la playlist «· Shuffle» de esa mezcla. */
+    S.shakeShuffle = mix ? () => {
+      if (!confirm(t('shakeConfirm', { name: saved?.name ?? mixSources(mix, t('libraryName')) }))) return;
+      navigator.vibrate?.(40);
+      S.runMix(mix, origin);
+    } : null;
+    const touch = matchMedia('(pointer: coarse)').matches && typeof DeviceMotionEvent !== 'undefined';
+    const shakeHint = !mix || !touch || !shakeEnabled() ? null
+      : motionNeedsPermission() && !SHAKE.granted
+        ? h('button', { class: 'btn shortcut', type: 'button', id: 'shake-enable', onclick: async () => { if (await requestMotion()) panel.refresh(); } }, t('shakeEnable'))
+        : h('p', { class: 'muted small', id: 'shake-hint' }, t('shakeHint'));
     setKids(slot,
-      mix ? h('button', { class: 'card hero', type: 'button', id: 'card-last-mix', onclick: () => S.runMix(mix, saved ? mixOrigin(saved) : null) },
+      mix ? h('button', { class: 'card hero', type: 'button', id: 'card-last-mix', onclick: () => S.runMix(mix, origin) },
         h('span', { class: 'card-icon' }, icon(...ICONS.shuffle)),
         h('span', {}, h('span', { class: 'card-title' }, t('lastMix')), h('span', { class: 'card-sub' }, mixSources(mix, t('libraryName'))))) : null,
+      shakeHint,
+      h('div', { class: 'card-pair' },
+        card('roulette', t('rouletteTitle'), t('cardRouletteSub')),
+        card('proof', t('proofTitle'), t('cardProofSub'))),
       mixes.length ? h('h2', {}, t('savedMixes')) : null,
       mixes.map(mixRow),
       h('h2', {}, t('shortcuts')),
@@ -1599,23 +1770,33 @@ function mountApp() {
   const panels = {
     home: homePanel(), shuffle: shufflePanel(), sort: sortPanel(), dups: dupsPanel(), backup: backupPanel(),
     snap: snapPanel(), orphans: orphansPanel(), split: splitPanel(), pin: pinPanel(), settings: settingsPanel(),
+    roulette: roulettePanel(), proof: proofPanel(),
   };
   const tabBtns = {};
   const show = (key, dir) => {
     const from = TAB_ORDER.indexOf(S.tab);
     const to = TAB_ORDER.indexOf(key);
     const dx = dir ?? (from >= 0 && to >= 0 ? Math.sign(to - from) : 0);
+    const changed = S.tab !== key;
     S.tab = key;
-    for (const [k, p] of Object.entries(panels)) {
-      p.hidden = k !== key;
-      if (k === key) p.style.setProperty('--dx', `${dx * 28}px`);
+    const swap = () => {
+      for (const [k, p] of Object.entries(panels)) {
+        p.hidden = k !== key;
+        if (k === key) p.style.setProperty('--dx', `${dx * 28}px`);
+      }
+      for (const [k, b] of Object.entries(tabBtns)) b.setAttribute('aria-current', k === key ? 'page' : 'false');
+      gear.setAttribute('aria-pressed', String(key === 'settings'));
+      for (const p of Object.values(panels)) if (!p.hidden) p.refresh?.();
+      panels.home.refresh();
+      window.scrollTo(0, 0);
+    };
+    // Transición fluida entre pantallas donde el navegador la admite (View Transitions API).
+    if (changed && document.startViewTransition && !prefersReducedMotion()) {
+      root.classList.add('vt');
+      document.startViewTransition(swap).finished.finally(() => root.classList.remove('vt'));
+    } else {
+      swap();
     }
-    for (const [k, b] of Object.entries(tabBtns)) b.setAttribute('aria-current', k === key ? 'page' : 'false');
-    gear.setAttribute('aria-pressed', String(key === 'settings'));
-    panels.home.refresh();
-    panels.settings.refresh();
-    panels.pin.refresh();
-    window.scrollTo(0, 0);
   };
   S.show = show;
   const gear = h('button', { class: 'icon-btn', type: 'button', id: 'open-settings', 'aria-label': t('settings'), onclick: () => show(S.tab === 'settings' ? 'home' : 'settings') }, icon(...ICONS.settings));
@@ -1629,6 +1810,12 @@ function mountApp() {
     h('main', {}, logoNotice(), Object.values(panels)),
     nav);
   show(S.tab);
+  syncShake();
+  // Chrome también expone requestPermission y lo concede sin preguntar; iOS lo rechaza sin un toque y entonces sale el botón.
+  if (shakeEnabled() && motionNeedsPermission() && !SHAKE.granted && !SHAKE.tried) {
+    SHAKE.tried = true;
+    requestMotion().then((ok) => { if (ok) panels.home.refresh(); });
+  }
   S.playlists = S.playlists.length ? S.playlists : [likedEntry()];
   S.pickers.forEach((p) => p.update());
 }
