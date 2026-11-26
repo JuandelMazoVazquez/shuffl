@@ -54,7 +54,8 @@ test('«Elige por mí»: la ruleta se para en una de tus playlists (nunca en una
     await expect(page.locator('#reel')).toHaveClass(/landed/);
     const name = await page.locator('#reel').textContent();
     expect(valid).toContain(name);
-    await expect(page.locator('#panel-shuffle .result-title')).toContainText('Listo');
+    // El resultado anterior sigue en la página: se espera a la escritura de esta baraja.
+    await expect.poll(() => state.writes.filter((w) => w.op === 'put').length).toBe(i + 2);
     await idle(page);
     expect(byName(`${name} · Shuffle`)).toHaveLength(1);
   }
@@ -138,6 +139,32 @@ test('en iOS pide el permiso del acelerómetro con un toque antes de escuchar', 
   await expect(page.locator('#panel-shuffle .result-title')).toContainText('Listo');
   await idle(page);
   expect(state.writes.filter((w) => w.op === 'put')).toHaveLength(2);
+});
+
+test('agitar tras barajar «la propia playlist» escribe en su «· Shuffle», nunca en la original', async ({ page }) => {
+  await noPermissionApi(page);
+  await login(page);
+  await pick(page, 'shuffle', 'Rock');
+  await page.locator('#panel-shuffle label.choice', { hasText: 'La propia playlist' }).click();
+  await page.locator('#shuffle-go').click();
+  await expect(page.locator('#panel-shuffle .result-title')).toContainText('Listo');
+  await idle(page);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('baraja.lastMix')).mode)).toBe('self');
+  const ownPuts = () => state.writes.filter((w) => w.op === 'put' && w.id === 'pl_rock').length;
+  expect(ownPuts()).toBe(1);
+  await page.locator('#tab-home').click();
+  await expect(page.locator('#shake-hint')).toBeVisible();
+  await shake(page);
+  await expect.poll(() => byName('Rock · Shuffle').length).toBe(1);
+  await idle(page);
+  expect(ownPuts()).toBe(1);
+});
+
+test('la ruleta lleva la atribución de Spotify', async ({ page }) => {
+  await login(page);
+  await page.locator('#tab-home').click();
+  await page.locator('#card-roulette').click();
+  await expect(page.locator('#panel-roulette .spotify-attrib')).toBeVisible();
 });
 
 test('celebración al terminar, salvo con movimiento reducido', async ({ page }) => {

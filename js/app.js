@@ -6,7 +6,8 @@ import {
 } from './core.js';
 import { sanitizeMix, sanitizeMixes, upsertMix, removeMix, newMixId, mixSources } from './mixes.js';
 import {
-  sourceKey, generatedName, datedName, generatedDescription, sameDescription, sanitizeTargets, setTarget, isGeneratedPlaylist, LEGACY_PLAYLIST,
+  sourceKey, generatedName, datedName, generatedDescription, sameDescription, sanitizeTargets, setTarget, removeTarget,
+  isGeneratedPlaylist, LEGACY_PLAYLIST, SHUFFLE_SUFFIX,
 } from './targets.js';
 import { SpotifyApi, ApiError } from './api.js';
 import * as auth from './auth.js';
@@ -520,6 +521,8 @@ function renderResult(container, status, o) {
 }
 
 const prefersReducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+/** Web Locks: si dos pestañas (por ejemplo, dos órdenes de Siri seguidas) barajan a la vez, escriben una detrás de otra. */
+const withWriteLock = (fn) => (navigator.locks ? navigator.locks.request('shuffl-write', fn) : fn());
 const wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
 
 /** Celebración discreta al terminar: unos naipes lima que caen y se desvanecen (nada con movimiento reducido). */
@@ -779,19 +782,28 @@ function shufflePanel() {
   /**
    * Enlace profundo (Siri, Atajos): solo con sesión válida (lo garantiza boot) y si la mezcla o la playlist
    * existen en este dispositivo. Siempre escribe en la playlist generada «· Shuffle», nunca en el origen.
+   * Sin la clave de este dispositivo (un enlace de otra web, o el atajo abierto en otro navegador) pide confirmación.
    */
   S.openDeepLink = async (link) => {
     S.show('shuffle');
-    let written = null;
+    const trusted = !!link.key && link.key === getItem(KEYS.linkKey);
+    let mix;
+    let origin = null;
     if (link.kind === 'mix') {
-      const mix = getMixes().find((m) => m.id === link.id);
-      if (!mix) { status.fail(new UserError(t('deepLinkMixMissing'))); return; }
-      written = await S.runMix(mix, mixOrigin(mix), { modeOverride: 'reuse' });
+      const saved = getMixes().find((m) => m.id === link.id);
+      if (!saved) { status.fail(new UserError(t('deepLinkMixMissing'))); return; }
+      mix = saved;
+      origin = mixOrigin(saved);
     } else {
       const pl = S.playlists.find((p) => p.id === link.id && !baseReason(p));
       if (!pl) { status.fail(new UserError(t('deepLinkSourceMissing'))); return; }
-      written = await S.runMix({ library: false, ids: [pl.id], filters: emptyFilters(), dedupe: true, mode: 'reuse' }, null, { modeOverride: 'reuse' });
+      mix = { name: pl.name, library: false, ids: [pl.id], filters: emptyFilters(), dedupe: true, mode: 'reuse' };
     }
+    if (!trusted && !confirm(t(link.play ? 'deepLinkConfirmPlay' : 'deepLinkConfirm', { name: mix.name }))) {
+      status.say(t('deepLinkCancelled'));
+      return;
+    }
+    const written = await S.runMix(mix, origin, { modeOverride: 'reuse' });
     if (written && link.play) await result.playNow?.();
   };
   S.editMix = (mix) => {
@@ -816,7 +828,10 @@ function shufflePanel() {
 
     const key = sourceKey({ mixId: origin?.mixId, library: origin?.library, ids: sel.map((p) => p.id) });
     const storedId = key ? getTargets()[key] : null;
-    const fresh = storedId ? (await S.api.getMyPlaylists()).find((p) => p?.id === storedId && p.owner?.id === S.me.id) : null;
+    // Solo se reutiliza si sigue siendo tuya y sigue llamándose «… · Shuffle»: si la renombraste para conservarla
+    // (o el almacenamiento apunta a otra playlist), se deja intacta y se crea otra.
+    const fresh = storedId ? (await S.api.getMyPlaylists()).find((p) => p?.id === storedId && p.owner?.id === S.me.id && p.name?.endsWith(SHUFFLE_SUFFIX)) : null;
+    if (storedId && !fresh) setItem(KEYS.targets, removeTarget(getTargets(), key));
     if (fresh) {
       const current = normalizeEntries(await S.api.getPlaylistItems(fresh.id)).tracks;
       saveUndo(fresh.id, fresh.name, current.map((x) => x.uri), { soft: true });
@@ -874,21 +889,27 @@ function shufflePanel() {
   function run(fromMix = null, { modeOverride } = {}) {
     let written = null;
     return task(status, async () => {
+      // Todo el formulario se lee antes de esperar a la red: si otra pantalla lo cambia a mitad, esta baraja no se ve afectada.
       const sel = picker.getSelected();
       const mode = modeOverride ?? dest();
       const origin = { mixId: fromMix?.mixId, mixName: fromMix?.mixName, library: libraryMode };
+      const filters = readFilters();
+      const doDedupe = dedupe.checked;
+      const config = { ...currentConfig(), mode, mixId: origin.mixId };
       const { tracks, skipped } = await readSources(sel, status);
       if (mode === 'self' && !confirmOverwrite(sel[0].name, skippedCount(skipped))) { status.clear(); return; }
-      const filters = readFilters();
-      const unique = dedupe.checked ? uniqueByUri(tracks) : tracks;
+      const unique = doDedupe ? uniqueByUri(tracks) : tracks;
       const base = filterTracks(unique, filters);
       if (!base.length) throw new UserError(hasFilters(filters) ? t('errFiltersEmpty') : t('errEmpty'));
       const { tracks: order, truncated } = capPlaylist(shuffle(base));
-      const target = await resolveTarget(mode, sel, tracks, origin);
-      await overwritePlaylist(target.id, order.map((x) => x.uri), status);
+      const target = await withWriteLock(async () => {
+        const found = await resolveTarget(mode, sel, tracks, origin);
+        await overwritePlaylist(found.id, order.map((x) => x.uri), status);
+        return found;
+      });
       const title = coverTitle(sel, origin);
       const coverNotes = [...target.notes, ...await uploadCover(mode, target.id, title)];
-      setItem(KEYS.lastMix, { ...currentConfig(), mixId: origin.mixId });
+      setItem(KEYS.lastMix, config);
       if (mode !== 'self') setItem(KEYS.lastTarget, target.id);
       written = target.id;
       await loadPlaylists();
@@ -1591,6 +1612,7 @@ function roulettePanel() {
     reel.dataset.chosen = list[chosen].id;
     await wait(prefersReducedMotion() ? 0 : 600);
     go.disabled = false;
+    if (S.busy) { status.say(t('rouletteBusy')); return; }
     S.runMix({ library: false, ids: [list[chosen].id], filters: emptyFilters(), dedupe: true, mode: 'reuse' }, null, { modeOverride: 'reuse' });
   }
 
@@ -1598,6 +1620,7 @@ function roulettePanel() {
     h('h2', {}, t('rouletteTitle')),
     h('p', { class: 'lead' }, t('rouletteLead')),
     h('div', { class: 'reel-frame' }, reel),
+    spotifyAttribution(),
     go, status.el);
 }
 
@@ -1675,13 +1698,23 @@ const TABS = [['home', 'tabHome'], ['shuffle', 'tabShuffle'], ['sort', 'tabSort'
 const TAB_ORDER = TABS.map(([key]) => key);
 
 const mixOrigin = (mix) => ({ mixId: mix.id, mixName: mix.name });
-const appBase = () => withoutDeepLink(`${location.origin}${location.pathname}`);
+const appBase = () => `${location.origin}${location.pathname}`;
+
+/** Clave aleatoria de este navegador: los atajos creados aquí la llevan y se ejecutan sin preguntar. */
+function linkKey() {
+  const stored = getItem(KEYS.linkKey);
+  if (typeof stored === 'string' && /^[A-Za-z0-9_-]{22}$/.test(stored)) return stored;
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  const key = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  setItem(KEYS.linkKey, key);
+  return key;
+}
 
 /** Pasos para crear en la app Atajos de iOS un atajo que abre el enlace profundo de una mezcla. */
 function showShortcutSheet(mix) {
   const onKey = (e) => { if (e.key === 'Escape') close(); };
   const close = () => { document.removeEventListener('keydown', onKey); sheet.remove(); };
-  const link = buildDeepLink(appBase(), { mixId: mix.id });
+  const link = buildDeepLink(appBase(), { mixId: mix.id, key: linkKey() });
   const phrase = `${APP_NAME} ${mix.name.toLowerCase()}`;
   const sheet = h('div', { class: 'sheet-backdrop', onclick: (e) => { if (e.target === sheet) close(); } },
     h('div', { class: 'sheet', id: 'shortcut-sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('shortcutTitle', { name: mix.name }) },
@@ -1735,7 +1768,7 @@ function homePanel() {
     S.shakeShuffle = mix ? () => {
       if (!confirm(t('shakeConfirm', { name: saved?.name ?? mixSources(mix, t('libraryName')) }))) return;
       navigator.vibrate?.(40);
-      S.runMix(mix, origin);
+      S.runMix(mix, origin, { modeOverride: 'reuse' });
     } : null;
     const touch = matchMedia('(pointer: coarse)').matches && typeof DeviceMotionEvent !== 'undefined';
     const shakeHint = !mix || !touch || !shakeEnabled() ? null

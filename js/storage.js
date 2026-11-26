@@ -47,4 +47,5 @@ export const KEYS = {
   lastTarget: 'baraja.lastTarget',
   migrationNotice: 'baraja.migrationNotice',
   shake: 'baraja.shake',
+  linkKey: 'baraja.linkKey',
 };

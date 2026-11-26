@@ -13,9 +13,14 @@ test.beforeEach(async ({ page }) => {
 const byName = (name) => [...state.lists.values()].filter((l) => l.name === name);
 const writesTo = (id) => state.writes.filter((w) => w.id === id);
 
-test('?mezcla=<id>&play=1 rebaraja la mezcla en «Coche · Shuffle» y la reproduce, nunca en el origen', async ({ page }) => {
+const KEY = 'AbCdEfGhIjKlMnOpQrSt_-';
+
+test('?mezcla=<id>&play=1&k=<clave> rebaraja la mezcla en «Coche · Shuffle» y la reproduce sin preguntar, nunca en el origen', async ({ page }) => {
+  const dialogs = [];
+  page.on('dialog', (d) => dialogs.push(d.message()));
+  await page.addInitScript((k) => localStorage.setItem('baraja.linkKey', JSON.stringify(k)), KEY);
   await login(page);
-  await page.goto('/?mezcla=m1&play=1');
+  await page.goto(`/?mezcla=m1&play=1&k=${KEY}`);
   await expect(page.getByText('Reproduciendo en iPhone de prueba.')).toBeVisible();
   const [gen] = byName('Coche · Shuffle');
   expect(gen.tracks).toHaveLength(80);
@@ -23,6 +28,7 @@ test('?mezcla=<id>&play=1 rebaraja la mezcla en «Coche · Shuffle» y la reprod
   expect(state.playerCalls.map((c) => c.path)).toEqual(['/me/player/shuffle', '/me/player/play']);
   expect(state.playerCalls[1].body.context_uri).toBe(`spotify:playlist:${gen.id}`);
   expect(page.url()).toBe('http://127.0.0.1:5173/');
+  expect(dialogs).toEqual([]);
 
   const writes = state.writes.length;
   await page.reload();
@@ -74,7 +80,9 @@ test('«Crear atajo de Siri» muestra el enlace de la mezcla, los pasos y el avi
   await page.getByRole('button', { name: 'Crear atajo de Siri para Coche' }).click();
   const sheet = page.locator('#shortcut-sheet');
   await expect(sheet).toBeVisible();
-  await expect(page.locator('#shortcut-link')).toHaveValue('http://127.0.0.1:5173/?mezcla=m1&play=1');
+  await expect(page.locator('#shortcut-link')).toHaveValue(/^http:\/\/127\.0\.0\.1:5173\/\?mezcla=m1&play=1&k=[A-Za-z0-9_-]{22}$/);
+  const key = await page.evaluate(() => JSON.parse(localStorage.getItem('baraja.linkKey')));
+  await expect(page.locator('#shortcut-link')).toHaveValue(new RegExp(`k=${key}$`));
   await expect(sheet).toContainText('«Oye Siri, Shuffl coche»');
   await expect(sheet).toContainText('Abrir URL');
   await expect(sheet).toContainText('Safari');
@@ -95,4 +103,27 @@ test('la ayuda explica CarPlay y el atajo sale en inglés', async ({ page }) => 
   await page.locator('#tab-home').click();
   await page.getByRole('button', { name: 'Create Siri shortcut for Coche' }).click();
   await expect(page.locator('#shortcut-sheet')).toContainText('Open URLs');
+});
+
+test('un enlace sin la clave de este navegador (por ejemplo, desde otra web) pregunta antes y, si se cancela, no hace nada', async ({ page }) => {
+  const dialogs = [];
+  page.on('dialog', (d) => dialogs.push(d.message()));
+  await login(page);
+  state.dismissNext = true;
+  await page.goto('/?origen=__liked__&play=1');
+  await expect(page.getByText('Enlace cancelado: no se ha cambiado nada.')).toBeVisible();
+  expect(dialogs).toEqual(['Un enlace quiere barajar «Tus me gusta» en su playlist «· Shuffle» y reproducirla. ¿Seguir?']);
+  expect(state.writes).toEqual([]);
+  expect(state.playerCalls).toEqual([]);
+
+  state.dismissNext = true;
+  await page.goto('/?mezcla=m1&play=1&k=ClaveDeOtroNavegador01');
+  await expect(page.getByText('Enlace cancelado')).toBeVisible();
+  expect(dialogs[1]).toContain('«Coche»');
+  expect(state.writes).toEqual([]);
+
+  await page.goto('/?origen=pl_chill');
+  await expect(page.locator('#panel-shuffle .result-title')).toContainText('Listo: 80');
+  expect(dialogs[2]).toBe('Un enlace quiere barajar «Chill» en su playlist «· Shuffle». ¿Seguir?');
+  expect(byName('Chill · Shuffle')).toHaveLength(1);
 });

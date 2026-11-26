@@ -113,6 +113,23 @@ test('si no se puede renombrar, la baraja sigue y hay un aviso', async ({ page }
   await expect(page.locator('#panel-shuffle .result-title')).toContainText('Listo: 120');
 });
 
+test('si renombras la generada para conservarla (sin «· Shuffle»), se deja intacta y se crea otra', async ({ page }) => {
+  await login(page);
+  await shuffle(page, 'Rock');
+  const [kept] = byName('Rock · Shuffle');
+  kept.name = 'Rock junio';
+  const before = kept.tracks.map((t) => t.uri);
+  const writesBefore = state.writes.filter((w) => w.id === kept.id).length;
+  await shuffle(page, 'Rock');
+  expect(state.lists.get(kept.id).name).toBe('Rock junio');
+  expect(state.lists.get(kept.id).tracks.map((t) => t.uri)).toEqual(before);
+  expect(state.writes.filter((w) => w.id === kept.id)).toHaveLength(writesBefore);
+  expect(state.images.filter((i) => i.id === kept.id)).toHaveLength(1);
+  const [fresh] = byName('Rock · Shuffle');
+  expect(fresh.id).not.toBe(kept.id);
+  expect(await targets(page)).toEqual({ 'pl:pl_rock': fresh.id });
+});
+
 test('si la generada desaparece se crea otra y se actualiza la correspondencia', async ({ page }) => {
   await login(page);
   await shuffle(page, 'Rock');
