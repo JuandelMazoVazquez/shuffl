@@ -2,10 +2,21 @@
 import { shuffle, randomInt, uniqueByUri } from './core.js';
 
 export const MINUTE = 60000;
-export const TIME_PRESETS = [15, 30, 45, 60];
 export const TIME_MARGIN_MS = 2 * MINUTE;
 export const MIN_MINUTES = 5;
+/** Las mezclas guardadas de antes podían llegar a 600 min; el deslizador va de 5 a 180. */
 export const MAX_MINUTES = 600;
+export const SLIDER_MAX = 180;
+
+/** Accesos rápidos del shuffle por tiempo (v1.3.2). La clave da el texto («Gym») y el nombre de la playlist. */
+export const TIME_PRESETS = [
+  { key: 'commute', emoji: '🚗', minutes: 20 },
+  { key: 'gym', emoji: '🏋️', minutes: 45 },
+  { key: 'run', emoji: '🏃', minutes: 30 },
+  { key: 'trip', emoji: '✈️', minutes: 90 },
+  { key: 'sleep', emoji: '😴', minutes: 30 },
+];
+export const presetByKey = (key) => TIME_PRESETS.find((p) => p.key === key) ?? null;
 
 /** Minutos válidos (enteros de 5 a 600) o null. */
 export function sanitizeMinutes(v) {
@@ -121,9 +132,17 @@ export function withoutUris(tracks, exclude) {
 export const DISCOVER_COUNTS = [15, 30, 50, 100];
 export const DISCOVER_MINUTES = [30, 45, 60, 90];
 export const DEFAULT_DISCOVER_COUNT = 30;
-/** Artistas que se leen de cada vez; «Buscar más» lee el siguiente lote, hasta MAX_DISCOVER_ARTISTS. */
-export const ARTIST_BATCH = 25;
+/**
+ * Artistas que se leen de cada vez (ajustable en «Más opciones»); «Buscar más» sigue con los siguientes, hasta
+ * MAX_DISCOVER_ARTISTS. Cada búsqueda, además, no pasa de READ_BUDGET peticiones de lectura (v1.3.2: cuota).
+ */
+export const ARTISTS_PER_SEARCH = [8, 15, 25];
+export const DEFAULT_ARTISTS_PER_SEARCH = 15;
 export const MAX_DISCOVER_ARTISTS = 100;
+export const READ_BUDGET = 30;
+/** Si la cuota se acaba a medias, con al menos estas canciones se crea la playlist igualmente. */
+export const MIN_TRACKS_ON_QUOTA = 10;
+export const sanitizeArtistsPerSearch = (v) => (ARTISTS_PER_SEARCH.includes(v) ? v : DEFAULT_ARTISTS_PER_SEARCH);
 
 /**
  * Toma de `pool` (ya barajado) lo que se pide: `count` canciones o, con `minutes`, las que llenan esa duración
@@ -177,49 +196,7 @@ export function notInLibrary(tracks, libraryIds) {
   return uniqueByUri(tracks.filter((tr) => !libraryIds.has(tr.id)));
 }
 
-// ---------- Caché de metadatos (24 h) ----------
+// ---------- Caché en el dispositivo (IndexedDB, js/idb.js) ----------
 
+/** Artistas, lanzamientos y búsquedas valen 24 h; las canciones de playlists y álbumes, 30 días (ver app.js). */
 export const CACHE_TTL_MS = 24 * 3600 * 1000;
-export const MAX_CACHE_ENTRIES = 400;
-
-/** Valida y limpia la caché guardada: quita lo caducado y lo que no tiene formato. */
-export function pruneCache(raw, now = Date.now()) {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
-  const ok = Object.entries(raw).filter(([k, v]) => typeof k === 'string' && k.length <= 120 && v && typeof v.t === 'number' && now - v.t < CACHE_TTL_MS && now >= v.t);
-  return Object.fromEntries(ok.sort((a, b) => a[1].t - b[1].t).slice(-MAX_CACHE_ENTRIES));
-}
-
-export const cacheGet = (cache, key, now = Date.now()) => {
-  const v = cache[key];
-  return v && now - v.t < CACHE_TTL_MS && now >= v.t ? v.d : undefined;
-};
-
-/** Tope en caracteres del JSON guardado: deja sitio en localStorage (unos 5 MB) para Deshacer y lo demás. */
-export const MAX_CACHE_CHARS = 1_500_000;
-
-/** Caracteres de `"k":v` en el JSON del objeto (la coma de separación se cuenta aparte). */
-const entrySize = (k, v) => JSON.stringify(k).length + JSON.stringify(v).length + 1;
-
-/**
- * Añade una entrada a `{ cache, size }` (size: caracteres del JSON). Solo serializa la entrada nueva, salvo cuando
- * hay que recortar: si se pasa de entradas o de tamaño, quita primero las más antiguas. Devuelve `{ cache, size }`.
- */
-export function cacheSet({ cache, size = JSON.stringify(cache).length }, key, data, now = Date.now(), maxChars = MAX_CACHE_CHARS) {
-  const entry = { t: now, d: data };
-  const old = cache[key];
-  let next = { ...cache, [key]: entry };
-  const comma = !old && Object.keys(cache).length ? 1 : 0;
-  let total = size + entrySize(key, entry) + comma - (old ? entrySize(key, old) : 0);
-  if (Object.keys(next).length > MAX_CACHE_ENTRIES) {
-    next = pruneCache(next, now);
-    total = JSON.stringify(next).length;
-  }
-  if (total <= maxChars) return { cache: next, size: total };
-  const entries = Object.entries(next).sort((a, b) => a[1].t - b[1].t);
-  while (entries.length && total > maxChars) {
-    const [k, v] = entries.shift();
-    total -= entrySize(k, v) + (entries.length ? 1 : 0);
-  }
-  const cache2 = Object.fromEntries(entries);
-  return { cache: cache2, size: JSON.stringify(cache2).length };
-}

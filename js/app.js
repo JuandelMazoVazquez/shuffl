@@ -3,16 +3,22 @@ import {
   filterByAdded, findDuplicates, removeIndexes, buildBackup, toCsv, validateBackup, MAX_BACKUP_BYTES, MAX_BACKUP_PLAYLISTS,
   EXPLICIT_MODES, emptyFilters, hasFilters, filterTracks, sanitizeFilters, organizePlaylists, parsePlaylistRef,
   SPLIT_MODES, MAX_SPLIT_PARTS, splitTracks, MULTI_KEYS, sortTracksBy, normalizeAlbum, normalizeFollowedArtist, toLibraryCsv,
+  pickThumb,
 } from './core.js';
 import { sanitizeMix, sanitizeMixes, upsertMix, removeMix, newMixId, mixSources } from './mixes.js';
 import {
-  sourceKey, generatedName, snapshotName, generatedDescription, tagFor, withTag, isAppPlaylist,
+  sourceKey, generatedName, snapshotName, generatedDescription, tagFor, withTag, isAppPlaylist, timeName,
 } from './targets.js';
 import { SpotifyApi, ApiError } from './api.js';
 import * as auth from './auth.js';
 import { KEYS, OBSOLETE_KEYS, getItem, setItem, removeItem } from './storage.js';
 import { t, setLang, getLang, LANGS } from './i18n.js';
-import { REPO_URL, APP_NAME } from './config.js';
+import { REPO_URL, APP_NAME, APP_VERSION } from './config.js';
+import { idbGet, idbSet, idbClear, idbPrune } from './idb.js';
+import {
+  countRequest, requestStats, beginAction, endAction, actionSpent, logError, getErrors, clearErrors, buildReport,
+} from './diag.js';
+import { pickDevice, playProblem, checkPlayback } from './player.js';
 import { registerUpdates } from './update.js';
 import { makeCover } from './cover.js';
 import { parseDeepLink, buildDeepLink, withoutDeepLink, LINK_PARAMS } from './links.js';
@@ -21,10 +27,10 @@ import {
 } from './random.js';
 import { imageDominantColor, rgbCss } from './color.js';
 import {
-  MINUTE, TIME_PRESETS, MIN_MINUTES, MAX_MINUTES, sanitizeMinutes, fitDuration, forgottenTracks, FORGOTTEN_YEARS,
-  pickArtists, recentAlbums, RELEASE_DAYS, albumsFromListening, withoutUris, pruneCache, cacheGet, cacheSet,
-  DISCOVER_COUNTS, DISCOVER_MINUTES, DEFAULT_DISCOVER_COUNT, ARTIST_BATCH, MAX_DISCOVER_ARTISTS, takeAmount, topGenres,
-  artistsFromTracks, notInLibrary,
+  MINUTE, TIME_PRESETS, presetByKey, MIN_MINUTES, SLIDER_MAX, sanitizeMinutes, fitDuration, forgottenTracks, FORGOTTEN_YEARS,
+  pickArtists, recentAlbums, RELEASE_DAYS, albumsFromListening, withoutUris, CACHE_TTL_MS,
+  DISCOVER_COUNTS, DISCOVER_MINUTES, DEFAULT_DISCOVER_COUNT, MAX_DISCOVER_ARTISTS, takeAmount, topGenres,
+  artistsFromTracks, notInLibrary, ARTISTS_PER_SEARCH, READ_BUDGET, MIN_TRACKS_ON_QUOTA, sanitizeArtistsPerSearch,
 } from './generators.js';
 import { renderSummary } from './summary.js';
 
@@ -90,8 +96,27 @@ const ICONS = {
   trophy: ['M8 4h8v5a4 4 0 0 1-8 0Z', 'M8 6H4a3 3 0 0 0 4 4', 'M16 6h4a3 3 0 0 1-4 4', 'M12 13v4', 'M8 21h8', 'M10 17h4v4h-4Z'],
   album: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18', 'M12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4'],
   pin: ['M12 17v5', 'M9 4h6l-1 6 3 3H7l3-3Z'],
+  diag: ['M3 12h4l3-8 4 16 3-8h4'],
   settings: ['M4 21v-7', 'M4 10V3', 'M12 21v-9', 'M12 8V3', 'M20 21v-5', 'M20 12V3', 'M1 14h6', 'M9 8h6', 'M17 16h6'],
 };
+
+/** Ilustración de los estados vacíos: tres naipes abiertos en abanico con una nota (SVG, sin imágenes externas). */
+function emptyArt() {
+  const svg = document.createElementNS(SVGNS, 'svg');
+  svg.setAttribute('viewBox', '0 0 120 80');
+  svg.setAttribute('class', 'empty-art');
+  svg.setAttribute('aria-hidden', 'true');
+  const card = (rot, cls) => {
+    const r = document.createElementNS(SVGNS, 'rect');
+    for (const [k, v] of Object.entries({ x: '45', y: '12', width: '30', height: '44', rx: '5', class: cls, transform: `rotate(${rot} 60 70)` })) r.setAttribute(k, v);
+    return r;
+  };
+  const note = document.createElementNS(SVGNS, 'path');
+  note.setAttribute('d', 'M57 42V27l9-2v13 M57 42a3 3 0 1 1-3-3 3 3 0 0 1 3 3 M66 38a3 3 0 1 1-3-3 3 3 0 0 1 3 3');
+  note.setAttribute('class', 'empty-note');
+  svg.append(card(-16, 'empty-card back'), card(16, 'empty-card back'), card(0, 'empty-card'), note);
+  return svg;
+}
 
 const fmt = (n) => Number(n).toLocaleString(getLang());
 const spotifyUrl = (id) => `https://open.spotify.com/playlist/${encodeURIComponent(id)}`;
@@ -107,22 +132,68 @@ const spotifyAttribution = (href = 'https://open.spotify.com/') =>
 const nowLabel = () => new Date().toLocaleString(getLang(), { dateStyle: 'short', timeStyle: 'short' });
 const artistsOf = (tr) => tr.artists.join(', ');
 
-class UserError extends Error {}
-
-function errorMessage(e) {
-  if (e instanceof UserError) return e.message;
-  if (e instanceof auth.AuthError) return t(e.code === 'invalid_grant' ? 'errSession' : `authErr_${e.code}`);
-  if (e instanceof ApiError) {
-    if (e.status === 0) return t('errIncomplete');
-    if (e.reason === 'QUOTA_EXCEEDED') return t('errQuota');
-    if (e.reason === 'PREMIUM_REQUIRED') return t('errPremiumPlayer');
-    if (e.status === 403) return t('err403');
-    if (e.status === 404) return t('err404');
-    if (e.status === 429) return t('errRate');
-    return `${t('errGeneric')} (${e.status}${e.message ? `: ${e.message}` : ''})`;
+/** Error explicado al usuario. `code` es la clave de texto: va al registro en vez del mensaje (que puede llevar nombres). */
+class UserError extends Error {
+  constructor(message, code = 'user', cause = undefined) {
+    super(message, { cause });
+    this.code = code;
   }
-  if (e instanceof TypeError) return t('errNetwork');
-  return e?.message || t('errGeneric');
+}
+
+const isQuota = (e) => e instanceof ApiError && e.reason === 'QUOTA_EXCEEDED';
+const isNetworkError = (e) => (e instanceof TypeError && /fetch|network|load failed|internet/i.test(e.message ?? ''))
+  || (typeof navigator !== 'undefined' && navigator.onLine === false && !(e instanceof UserError));
+
+/**
+ * Qué clase de error es, para elegir el mensaje, la acción («Reintentar», «Volver a conectar») y el registro.
+ * Nunca se enseña un código ni un texto técnico de Spotify.
+ */
+function errorKind(e) {
+  if (e instanceof UserError) return 'user';
+  if (e instanceof auth.AuthError) return e.code === 'invalid_grant' ? 'session' : 'auth';
+  if (e instanceof ApiError) {
+    const msg = String(e.apiMessage ?? '');
+    if (e.status === 0) return 'incomplete';
+    if (e.reason === 'QUOTA_EXCEEDED') return 'quota';
+    if (e.reason === 'PREMIUM_REQUIRED') return 'premium';
+    if (e.status === 401) return 'session';
+    if (e.status === 403 && /scope/i.test(msg)) return 'scope';
+    if (e.status === 403 && /regist|dashboard|user may not/i.test(msg)) return 'notRegistered';
+    if (e.status === 403) return 'forbidden';
+    if (e.status === 404) return 'notFound';
+    if (e.status === 429) return 'rate';
+    if (e.status >= 500) return 'server';
+    return 'other';
+  }
+  if (isNetworkError(e)) return 'network';
+  return 'bug';
+}
+
+const ERROR_TEXT = {
+  session: 'errSession', scope: 'errScope', notRegistered: 'err403', forbidden: 'errForbidden', premium: 'errPremiumPlayer',
+  notFound: 'err404', rate: 'errRate', server: 'errServer', network: 'errNetwork', quota: 'errQuota', incomplete: 'errIncomplete',
+  other: 'errBug', bug: 'errBug',
+};
+/** Se arreglan solos reintentando (red, Spotify caído o lento). La cuota no: reintentar solo gasta más. */
+const TRANSIENT = new Set(['network', 'server', 'rate', 'incomplete', 'other', 'bug']);
+const RECONNECT = new Set(['session', 'scope', 'auth', 'forbidden']);
+
+function errorInfo(e) {
+  const kind = errorKind(e);
+  const text = kind === 'user' ? e.message : kind === 'auth' ? t(`authErr_${e.code}`) : t(ERROR_TEXT[kind]);
+  // Un error explicado («no se pudo crear…») hereda la acción de su causa: sin permiso, «Volver a conectar».
+  const base = kind === 'user' && e.cause ? errorKind(e.cause) : kind;
+  return { kind, base, text, transient: kind !== 'user' && TRANSIENT.has(kind), reconnect: RECONNECT.has(base) };
+}
+
+const errorMessage = (e) => errorInfo(e).text;
+/** El motivo dentro de otra frase («No se pudo crear la playlist: {reason}.»): sin el punto final. */
+const reasonOf = (e) => errorMessage(e).replace(/[.\s]+$/, '');
+
+/** Guarda el error en el registro local (Más → Diagnóstico) sin nombres ni tokens. */
+function recordError(e) {
+  const { kind, base } = errorInfo(e);
+  logError(e.cause instanceof ApiError ? e.cause : e, kind === 'user' ? `user:${e.code}${base !== 'user' ? `/${base}` : ''}` : kind);
 }
 
 // ---------- Estado de tarea (progreso y errores) ----------
@@ -135,7 +206,9 @@ function createStatus({ loader = false } = {}) {
   const bar = h('progress', { hidden: true, max: '1', value: '0' });
   const live = h('p', { class: 'live', role: 'status', 'aria-live': 'polite' });
   const retryBtn = h('button', { class: 'btn primary', type: 'button', hidden: true }, t('retry'));
-  const err = h('div', { class: 'error-box', role: 'alert', hidden: true }, h('p', { class: 'error' }), retryBtn);
+  const reconnectBtn = h('button', { class: 'btn', type: 'button', hidden: true, onclick: () => reconnect() }, t('reconnectBtn'));
+  const openLink = h('a', { class: 'btn', href: 'https://open.spotify.com/', target: '_blank', rel: 'noopener', hidden: true }, t('openInSpotify'));
+  const err = h('div', { class: 'error-box', role: 'alert', hidden: true }, h('p', { class: 'error' }), h('div', { class: 'error-actions' }, retryBtn, reconnectBtn, openLink));
   const cards = loader
     ? h('div', { class: 'loader', 'aria-hidden': 'true' }, h('div', { class: 'deck' }, h('div', { class: 'lcard' }), h('div', { class: 'lcard' }), h('div', { class: 'lcard' })), h('div', { class: 'loader-bar' }))
     : null;
@@ -158,29 +231,44 @@ function createStatus({ loader = false } = {}) {
     },
     stop() { bar.hidden = true; showCards(false); },
     clear() { live.textContent = ''; bar.hidden = true; err.hidden = true; showCards(false); },
-    fail(e, retry = null) {
+    /**
+     * Enseña el error en palabras normales y una acción que lo resuelve: «Reintentar» (si se pasa `retry`),
+     * «Volver a conectar» (sesión caducada o falta un permiso) y, con `open`, «Abrir en Spotify».
+     */
+    fail(e, retry = null, { open = null } = {}) {
       console.error(e);
+      recordError(e);
+      const info = errorInfo(e);
       live.textContent = '';
       bar.hidden = true;
       showCards(false);
-      err.firstChild.textContent = errorMessage(e);
+      err.firstChild.textContent = info.text;
       retryBtn.hidden = !retry;
       retryBtn.onclick = retry;
+      reconnectBtn.hidden = !info.reconnect;
+      openLink.hidden = !open;
+      if (open) openLink.href = open;
       err.hidden = false;
     },
   };
 }
 
-async function task(status, fn) {
+/**
+ * Ejecuta una acción con su estado. Cuenta sus peticiones (Diagnóstico) y, si falla por algo pasajero (red, Spotify
+ * lento o caído), ofrece «Reintentar», que repite la acción entera, igual que volver a pulsar el botón.
+ */
+async function task(status, fn, name = S.tab) {
   if (S.busy) return;
   S.busy = true;
   document.body.classList.add('busy');
+  beginAction(name);
   status.clear();
   try {
     await fn();
   } catch (e) {
-    status.fail(e);
+    status.fail(e, errorInfo(e).transient ? () => task(status, fn, name) : null);
   } finally {
+    endAction();
     S.busy = false;
     document.body.classList.remove('busy');
     status.stop();
@@ -197,6 +285,7 @@ const likedEntry = (prev) => ({
 async function loadPlaylists() {
   const raw = (await S.api.getMyPlaylists()).filter(Boolean);
   S.raw = raw;
+  S.loadedAt = Date.now();
   // Las playlists de Shuffl se borran antes de crear la siguiente: no se ofrecen como origen en ningún selector.
   S.playlists = organizePlaylists([likedEntry(S.playlists.find((p) => p.isLiked)), ...raw.filter((p) => !isAppPlaylist(p, S.me.id)).map((p) => normalizePlaylist(p, S.me.id))]);
   S.loaded = true;
@@ -229,11 +318,15 @@ function askName({ title, value = '' }) {
 let tintToken = 0;
 
 /** El fondo toma un degradado suave del color dominante de la portada seleccionada. */
-async function setTint(pl) {
+function setTint(pl) {
+  return tintFrom(pl && !pl.isLiked ? pl.image : null);
+}
+
+/** Fondo sutil con el color dominante de una carátula (la del origen o la primera del resultado). */
+async function tintFrom(url) {
   const token = ++tintToken;
   const root = document.documentElement;
-  const url = pl && !pl.isLiked && pl.image.startsWith('https://') ? pl.image : null;
-  const color = url ? await imageDominantColor(url) : null;
+  const color = typeof url === 'string' && url.startsWith('https://') ? await imageDominantColor(url) : null;
   if (token !== tintToken) return;
   if (color) root.style.setProperty('--tint', rgbCss(color)); else root.style.removeProperty('--tint');
 }
@@ -250,18 +343,72 @@ async function probeLiked() {
   S.pickers.forEach((p) => p.update());
 }
 
-async function readSource(pl, onProgress) {
-  const entries = pl.isLiked ? await S.api.getLikedTracks(onProgress) : await S.api.getPlaylistItems(pl.id, onProgress);
-  return normalizeEntries(entries);
+// ---------- Caché en el dispositivo (IndexedDB): gastar poca cuota de Spotify ----------
+
+const DAY_MS = CACHE_TTL_MS;
+/** Canciones de una playlist (válidas mientras no cambie su snapshot_id) y de álbumes (no cambian). */
+const LONG_TTL_MS = 30 * DAY_MS;
+/** Las claves llevan el id de la cuenta: otra cuenta en el mismo navegador no ve ni usa los datos de la anterior. */
+const cacheKey = (k) => `${S.me.id}:${k}`;
+
+async function cacheRead(k, maxAge) {
+  const v = await idbGet(cacheKey(k));
+  const now = Date.now();
+  return v && typeof v.t === 'number' && now - v.t < maxAge && now >= v.t ? v.d : undefined;
 }
 
-async function readSources(list, status) {
+/** Lee de la caché o pide a Spotify y guarda (artistas y lanzamientos 24 h; canciones de álbumes 30 días). */
+async function cached(rawKey, fetcher, maxAge = DAY_MS) {
+  const hit = await cacheRead(rawKey, maxAge);
+  if (hit !== undefined) return hit;
+  const data = await fetcher();
+  idbSet(cacheKey(rawKey), data);
+  return data;
+}
+
+/**
+ * Canciones de una playlist o de Tus me gusta. Con `useCache`, si no ha cambiado desde la última lectura no se vuelve a
+ * pedir: las playlists por su snapshot_id y Tus me gusta por el total y la más reciente (una petición en vez de todas).
+ * Lo que escribe en su propio origen (Ordenar, Duplicados, «Barajar la misma playlist»…) lee siempre de Spotify.
+ */
+async function readSource(pl, onProgress, { useCache = false } = {}) {
+  if (pl.isLiked) {
+    const head = useCache ? await S.api.getLikedHead() : null;
+    if (head) {
+      const hit = await cacheRead('liked', LONG_TTL_MS);
+      if (hit && hit.total === head.total && hit.first === head.first) return { tracks: hit.tracks, skipped: hit.skipped };
+    }
+    const r = normalizeEntries(await S.api.getLikedTracks(onProgress));
+    if (head) idbSet(cacheKey('liked'), { total: head.total, first: head.first, tracks: r.tracks, skipped: r.skipped });
+    return r;
+  }
+  const snap = S.raw.find((p) => p?.id === pl.id)?.snapshot_id;
+  if (useCache && snap) {
+    const hit = await cacheRead(`pl:${pl.id}`, LONG_TTL_MS);
+    if (hit?.snap === snap) return { tracks: hit.tracks, skipped: hit.skipped };
+  }
+  const r = normalizeEntries(await S.api.getPlaylistItems(pl.id, onProgress));
+  if (snap) idbSet(cacheKey(`pl:${pl.id}`), { snap, tracks: r.tracks, skipped: r.skipped });
+  return r;
+}
+
+/**
+ * Antes de fiarse de la caché, la lista de playlists (con sus snapshot_id) tiene que ser reciente: si cambiaste una en
+ * Spotify y vuelves a Shuffl, su snapshot_id ya no coincide y se vuelve a leer. Cuesta una petición por cada 50 playlists.
+ */
+const LIBRARY_FRESH_MS = 60000;
+async function ensureFreshLibrary() {
+  if (!S.loadedAt || Date.now() - S.loadedAt > LIBRARY_FRESH_MS) await loadPlaylists();
+}
+
+async function readSources(list, status, opts = {}) {
+  if (opts.useCache && list.some((p) => !p.isLiked)) await ensureFreshLibrary();
   const grand = list.reduce((n, p) => n + (p.total ?? 0), 0);
   const tracks = [];
   const skipped = { local: 0, empty: 0 };
   let base = 0;
   for (const pl of list) {
-    const r = await readSource(pl, (d, tot) => status.progress('reading', base + d, Math.max(grand, base + tot)));
+    const r = await readSource(pl, (d, tot) => status.progress('reading', base + d, Math.max(grand, base + tot)), opts);
     tracks.push(...r.tracks);
     skipped.local += r.skipped.local;
     skipped.empty += r.skipped.empty;
@@ -278,13 +425,12 @@ const skippedCount = (s) => s.local + s.empty;
 function saveUndo(playlistId, name, uris, { soft = false } = {}) {
   const prev = getItem(KEYS.undo);
   if (soft && prev) return;
-  if (prev?.pending) throw new UserError(t('errPending', { name: prev.name || prev.playlistId }));
+  if (prev?.pending) throw new UserError(t('errPending', { name: prev.name || prev.playlistId }), 'errPending');
   const entry = { playlistId, name, uris, pending: true, date: new Date().toISOString() };
   if (setItem(KEYS.undo, entry, { strict: true })) return;
-  // La caché de Descubrir puede haber llenado el almacenamiento: Deshacer va antes.
-  dropMetaCache();
-  removeItem(KEYS.libIndex);
-  if (!setItem(KEYS.undo, entry, { strict: true })) throw new UserError(t('errUndoStorage'));
+  // Deshacer va antes que el registro de errores: si el almacenamiento está lleno, se vacía el registro.
+  clearErrors();
+  if (!setItem(KEYS.undo, entry, { strict: true })) throw new UserError(t('errUndoStorage'), 'errUndoStorage');
 }
 
 /** Marca el Deshacer como seguro de aplicar: la escritura terminó y la playlist tiene `count` elementos. */
@@ -297,7 +443,7 @@ function finishUndo(playlistId, count) {
 function markUndoPending(playlistId) {
   const u = getItem(KEYS.undo);
   if (u?.playlistId !== playlistId || u.pending) return;
-  if (!setItem(KEYS.undo, { ...u, pending: true }, { strict: true })) throw new UserError(t('errUndoStorage'));
+  if (!setItem(KEYS.undo, { ...u, pending: true }, { strict: true })) throw new UserError(t('errUndoStorage'), 'errUndoStorage');
 }
 
 async function overwritePlaylist(id, uris, status) {
@@ -309,11 +455,11 @@ async function overwritePlaylist(id, uris, status) {
 /** Comprueba el total y la primera página (si se pasa `expected`) antes de escribir con datos leídos antes. */
 async function assertUnchanged(playlistId, expectedTotal, expected) {
   const page = await S.api.request('GET', `/playlists/${encodeURIComponent(playlistId)}/items?limit=50&additional_types=track,episode`);
-  if (page.total !== expectedTotal) throw new UserError(t('errChanged'));
+  if (page.total !== expectedTotal) throw new UserError(t('errChanged'), 'errChanged');
   if (!expected) return;
   if (!Array.isArray(page.items)) throw new ApiError(0, 'incomplete');
   const head = normalizeEntries(page.items).tracks;
-  if (head.some((x, i) => x.uri !== expected[i]?.uri)) throw new UserError(t('errChanged'));
+  if (head.some((x, i) => x.uri !== expected[i]?.uri)) throw new UserError(t('errChanged'), 'errChanged');
 }
 
 function confirmOverwrite(name, skipped) {
@@ -324,7 +470,7 @@ function confirmOverwrite(name, skipped) {
 async function applyUndo(status, expectedId) {
   const u = getItem(KEYS.undo);
   if (!u) return false;
-  if (expectedId && u.playlistId !== expectedId) throw new UserError(t('errUndoOther'));
+  if (expectedId && u.playlistId !== expectedId) throw new UserError(t('errUndoOther'), 'errUndoOther');
   if (!u.pending && Number.isInteger(u.after)) await assertUnchanged(u.playlistId, u.after);
   if (!confirm(t('confirmUndo', { name: u.name || u.playlistId, date: new Date(u.date).toLocaleString(getLang()) }))) return false;
   await withWriteLock(async () => {
@@ -392,11 +538,12 @@ async function removePlaylists(ids) {
       await wait(1500);
       still = await S.api.libraryContains(uris);
     }
-    if (still.some(Boolean)) throw new UserError(t('purgeStillThere'));
+    if (still.some(Boolean)) throw new UserError(t('purgeStillThere'), 'purgeStillThere');
   } catch (e) {
-    throw new UserError(t('purgeFailed', { reason: errorMessage(e) }));
+    throw new UserError(t('purgeFailed', { reason: reasonOf(e) }), 'purgeFailed', e);
   }
   if (ids.includes(getItem(KEYS.undo)?.playlistId)) removeItem(KEYS.undo);
+  S.raw = S.raw.filter((p) => !ids.includes(p?.id));
 }
 
 /**
@@ -450,7 +597,7 @@ async function createAppPlaylist({ key, name, description, uris, protect = [] },
           await S.api.addItems(createdId, uris, (d, tot) => status.progress('saving', d, tot));
         }
       } catch (e) {
-        throw new UserError(t('createFailed', { reason: errorMessage(e) }));
+        throw new UserError(t('createFailed', { reason: reasonOf(e) }), 'createFailed', e);
       }
       return createdId;
     });
@@ -473,8 +620,15 @@ async function createAppPlaylist({ key, name, description, uris, protect = [] },
  * quitado o la has renombrado, no se toca y se avisa.
  */
 async function assertStillAppPlaylist(id) {
-  const p = (await S.api.getMyPlaylists()).find((x) => x?.id === id);
-  if (!p || !isAppPlaylist(p, S.me.id)) throw new UserError(t('playlistGone'));
+  // Dos peticiones en vez de leer toda tu biblioteca: sus datos y si sigue en tu biblioteca.
+  let info = null;
+  try {
+    info = await S.api.getPlaylistInfo(id);
+  } catch (e) {
+    if (!(e instanceof ApiError) || e.status !== 404) throw e;
+  }
+  const [inLibrary] = info ? await S.api.libraryContains([`spotify:playlist:${id}`]) : [false];
+  if (!inLibrary || !isAppPlaylist(info, S.me.id)) throw new UserError(t('playlistGone'), 'playlistGone');
 }
 
 /**
@@ -649,30 +803,66 @@ function chooseDevice(devices) {
   });
 }
 
-function showNoDevice(info) {
+/** Espera antes de mirar qué suena: Spotify tarda un momento en cambiar de playlist. */
+const VERIFY_DELAY_MS = 1200;
+/** Merece la pena repetir la orden una vez (el móvil estaba dormido, o Spotify la aceptó sin hacerla). */
+const PLAY_RETRY = new Set(['shuffle', 'paused', 'idle', 'other', 'asleep', 'device']);
+
+/**
+ * Da la orden (reproducir desde la primera y apagar el aleatorio) y mira con GET /me/player si de verdad suena esta
+ * playlist en orden. Devuelve 'ok', 'sent' (no se pudo comprobar) o el problema (ver player.js).
+ */
+async function startAndVerify(playlistId, device) {
+  try {
+    await S.api.play(playlistId, device.id);
+    await S.api.setShuffle(false, device.id);
+  } catch (e) {
+    const problem = playProblem(e);
+    if (problem) return problem;
+    throw e;
+  }
+  await wait(VERIFY_DELAY_MS);
+  try {
+    return checkPlayback(await S.api.getPlayer(), playlistId);
+  } catch (e) {
+    if (isQuota(e)) throw e;
+    return 'sent';
+  }
+}
+
+/** Mensaje claro de lo que ha pasado al reproducir, con la acción que lo arregla («Abrir en Spotify», «Volver a intentar»). */
+function showPlayOutcome(info, outcome, { device, playlistId, again }) {
+  const open = h('a', { class: 'btn', href: spotifyUrl(playlistId), target: '_blank', rel: 'noopener', id: 'play-open' }, t('openInSpotify'));
+  const retry = h('button', { class: 'btn primary', type: 'button', id: 'play-again', onclick: again }, t('playAgain'));
+  const name = device?.name ?? '';
+  const msg = {
+    ok: t('playOk', { device: name }), sent: t('playSent', { device: name }),
+    none: t('playNoDevice'), device: t('playNoDevice'), asleep: t('playAsleep', { device: name || 'Spotify' }),
+    restricted: t('playRestricted'), premium: t('playPremium'), forbidden: t('playForbidden'),
+    shuffle: t('playShuffleOn', { device: name }), paused: t('playNotStarted'), idle: t('playNotStarted'), other: t('playNotStarted'),
+  }[outcome] ?? t('playNotStarted');
+  const ok = outcome === 'ok' || outcome === 'sent';
+  const canRetry = ['none', 'device', 'asleep', 'paused', 'idle', 'other'].includes(outcome);
   setKids(info,
-    h('p', {}, t('noDevice')),
-    h('a', { class: 'btn', href: 'https://open.spotify.com/', target: '_blank', rel: 'noopener' }, t('listenOnSpotify')),
-    h('p', { class: 'muted small' }, t('shuffleReminder')));
+    h('p', { class: ok ? 'play-ok' : 'play-warn', id: 'play-msg' }, msg),
+    ok ? null : h('div', { class: 'actions' }, canRetry ? retry : null, open));
 }
 
 async function playNow(playlistId, info, status) {
   setKids(info);
-  let devices = null;
-  await task(status, async () => { devices = await S.api.getDevices(); });
-  if (!devices) return;
-  if (!devices.length) return showNoDevice(info);
-  const target = devices.find((d) => d.is_active) ?? await chooseDevice(devices);
-  if (!target) return;
+  const again = () => playNow(playlistId, info, status);
   await task(status, async () => {
-    try {
-      await S.api.playPlaylist(playlistId, target.id);
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 404) return showNoDevice(info);
-      throw e;
-    }
-    setKids(info, h('p', {}, t('playingOn', { device: target.name })), h('p', { class: 'muted small' }, t('shuffleOffNote')));
-  });
+    status.phase('devices');
+    const pick = pickDevice(await S.api.getDevices());
+    if (pick.problem) { status.clear(); showPlayOutcome(info, pick.problem, { playlistId, again }); return; }
+    const device = pick.device ?? await chooseDevice(pick.choose);
+    if (!device) { status.clear(); return; }
+    status.phase('starting');
+    let outcome = await startAndVerify(playlistId, device);
+    if (PLAY_RETRY.has(outcome)) outcome = await startAndVerify(playlistId, device);
+    status.clear();
+    showPlayOutcome(info, outcome, { device, playlistId, again });
+  }, 'play');
 }
 
 // ---------- Resultado compartido ----------
@@ -683,13 +873,63 @@ function formatDuration(ms) {
   return min >= 60 ? t('durationHours', { h: Math.floor(min / 60), m: min % 60 }) : t('minutesShort', { n: min });
 }
 
-/** Fila de canción: carátula entera a 48 px (sin recortar ni nada encima), título y artista. */
-const trackRow = (tr, i) => h('li', { class: 'track', style: `--i:${Math.min(i, 12)}` },
-  tr.thumb?.startsWith('https://') ? h('img', { class: 'track-cover', src: tr.thumb, alt: '', loading: 'lazy', width: '48', height: '48' })
-    : h('span', { class: 'track-cover', 'aria-hidden': 'true' }, '♪'),
-  h('span', { class: 'track-text' }, h('span', { class: 'track-name' }, tr.name), h('span', { class: 'track-artist' }, artistsOf(tr))));
+/**
+ * Hueco de carátula de 48 px: siempre ocupa lo mismo (nada salta al cargar). Dentro, la imagen que ya trae la respuesta
+ * de Spotify, entera (sin recortar, deformar ni nada encima) y en diferido; si no hay o falla, queda el hueco con ♪.
+ */
+function coverSlot(url) {
+  const slot = h('span', { class: 'cover-slot', 'aria-hidden': 'true' }, h('span', { class: 'cover-note' }, '♪'));
+  if (typeof url === 'string' && url.startsWith('https://')) {
+    const img = h('img', { class: 'track-cover', src: url, alt: '', loading: 'lazy', decoding: 'async', width: '48', height: '48' });
+    img.addEventListener('error', () => img.remove(), { once: true });
+    slot.append(img);
+  }
+  return slot;
+}
+
+/** Fila común de canción (o álbum, o artista): carátula, título y debajo artistas u otro dato. */
+function trackRow(tr, i = 0, { extra = null } = {}) {
+  return h('li', { class: 'track', style: `--i:${Math.min(i, 12)}` },
+    coverSlot(tr.thumb),
+    h('span', { class: 'track-text' }, h('span', { class: 'track-name' }, tr.name), h('span', { class: 'track-artist' }, tr.sub ?? artistsOf(tr))),
+    extra);
+}
 
 const RESULT_ROWS = 30;
+
+/**
+ * Deslizar una fila hacia la izquierda (o tocar su ×) la quita de la lista. `onRemove(tr)` hace el resto.
+ * Solo se mueve la propia fila con transform (sin tocar el layout hasta que se va): fluido en el iPhone.
+ */
+function makeRemovable(li, tr, onRemove) {
+  const btn = h('button', { class: 'track-remove', type: 'button', 'aria-label': t('removeSong', { name: tr.name }), onclick: () => go() }, '×');
+  li.append(btn);
+  li.classList.add('removable');
+  let x0 = null;
+  let y0 = 0;
+  let dx = 0;
+  const go = () => {
+    if (li.classList.contains('gone')) return;
+    if (S.busy) { li.style.transform = ''; return; }
+    li.classList.add('gone');
+    onRemove(tr);
+    if (prefersReducedMotion()) li.remove(); else setTimeout(() => li.remove(), 220);
+  };
+  li.addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; dx = 0; li.style.transition = 'none'; }, { passive: true });
+  li.addEventListener('touchmove', (e) => {
+    if (x0 === null) return;
+    const p = e.touches[0];
+    // Si el dedo va más en vertical, es scroll: la fila no se mueve.
+    if (Math.abs(p.clientY - y0) > Math.abs(p.clientX - x0)) { dx = 0; li.style.transform = ''; return; }
+    dx = Math.min(0, p.clientX - x0);
+    li.style.transform = `translateX(${dx}px)`;
+  }, { passive: true });
+  li.addEventListener('touchend', () => {
+    li.style.transition = '';
+    if (dx < -90) go(); else li.style.transform = '';
+    x0 = null;
+  }, { passive: true });
+}
 
 /**
  * Resultado común: arriba el nombre de la playlist, canciones y duración, «▶ Reproducir ahora» y «Abrir en Spotify»;
@@ -703,30 +943,97 @@ function renderResult(container, status, o) {
   sync();
   const info = h('div', { class: 'play-info', role: 'status' });
   const name = o.name ?? S.raw.find((p) => p.id === o.playlistId)?.name ?? '';
-  const totalMs = o.tracks.reduce((n, tr) => n + (tr.durationMs || 0), 0);
+  let tracks = [...o.tracks];
+  const meta = h('p', { class: 'result-meta', id: 'result-meta' });
+  const moreNote = h('p', { class: 'muted small', id: 'more-tracks' });
+  const syncMeta = () => {
+    meta.textContent = t('resultMeta', { n: fmt(tracks.length), dur: formatDuration(tracks.reduce((n, tr) => n + (tr.durationMs || 0), 0)) });
+    moreNote.textContent = tracks.length > RESULT_ROWS ? t('moreTracks', { n: fmt(tracks.length - RESULT_ROWS) }) : '';
+    moreNote.hidden = tracks.length <= RESULT_ROWS;
+  };
+  syncMeta();
+
+  // Quitar canciones (solo en playlists de Shuffl): se guarda en Spotify un momento después del último gesto, de una vez.
+  container.cancelPending?.();
+  let saveTimer = null;
+  let pending = false;
+  let rev = 0;
+  /** Guarda lo quitado. «Pendiente» solo se limpia cuando Spotify lo ha guardado entero: si falla, «Reintentar» lo repite. */
+  const writeRemovals = async () => {
+    clearTimeout(saveTimer);
+    if (!pending) return;
+    const v = ++rev;
+    const uris = tracks.map((x) => x.uri);
+    // Errores que reintentar no arregla (la quitaste toda, o ya no es de Shuffl): no queda nada que guardar ahí.
+    if (!uris.length) { pending = false; throw new UserError(t('errEmpty'), 'errEmpty'); }
+    status.phase('saving');
+    try {
+      await withWriteLock(async () => {
+        await assertStillAppPlaylist(o.playlistId);
+        await overwritePlaylist(o.playlistId, uris, status);
+      });
+    } catch (e) {
+      if (e instanceof UserError && e.code === 'playlistGone') pending = false;
+      throw e;
+    }
+    if (rev === v) pending = false;
+  };
+  const saveRemovals = () => {
+    if (S.busy) { saveTimer = setTimeout(saveRemovals, 800); return; }
+    task(status, async () => { await writeRemovals(); status.say(t('removedSaved')); }, 'remove');
+  };
+  const back = () => {
+    if (!pending) { o.onBack?.(); return; }
+    if (S.busy) return;
+    clearTimeout(saveTimer);
+    task(status, writeRemovals, 'remove').then(() => { if (!pending) o.onBack?.(); });
+  };
+  const onRemove = (tr) => {
+    tracks = tracks.filter((x) => x !== tr);
+    o.onTracks?.(tracks, tr);
+    syncMeta();
+    pending = true;
+    rev++;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveRemovals, 1200);
+  };
+  const rows = o.tracks.slice(0, RESULT_ROWS).map((tr, i) => {
+    const li = trackRow(tr, i);
+    if (o.editable) makeRemovable(li, tr, onRemove);
+    return li;
+  });
+
   setKids(container,
     h('header', { class: 'result-head' },
       h('p', { class: 'result-kicker' }, o.kicker ?? o.title ?? t('resultDone')),
       h('h2', { class: 'result-title', id: 'result-playlist' }, name),
-      h('p', { class: 'result-meta', id: 'result-meta' }, t('resultMeta', { n: fmt(o.tracks.length), dur: formatDuration(totalMs) })),
+      meta,
       h('div', { class: 'result-main' },
         h('button', { class: 'btn primary', type: 'button', id: 'play-now', onclick: () => playNow(o.playlistId, info, status) }, t('playNow')),
         h('a', { class: 'btn', href: spotifyUrl(o.playlistId), target: '_blank', rel: 'noopener', id: 'open-spotify' }, t('openInSpotify'))),
       o.headExtra ?? null,
       info),
     ...o.notes.map((n) => h('p', { class: 'note' }, n)),
-    h('ol', { class: 'tracks', 'aria-label': t('preview') }, o.tracks.slice(0, RESULT_ROWS).map(trackRow)),
-    o.tracks.length > RESULT_ROWS ? h('p', { class: 'muted small' }, t('moreTracks', { n: fmt(o.tracks.length - RESULT_ROWS) })) : null,
+    o.editable ? h('p', { class: 'muted small', id: 'swipe-hint' }, t(o.reshuffle ? 'swipeHintPull' : 'swipeHint')) : null,
+    h('ol', { class: 'tracks', 'aria-label': t('preview') }, rows),
+    moreNote,
     spotifyAttribution(spotifyUrl(o.playlistId)),
     h('div', { class: 'actions' },
       h('button', { class: 'btn', type: 'button', id: 'share-link', onclick: () => shareLink(o.playlistId, info) }, t('share')),
       ...(o.extra ?? []),
       undoBtn,
-      h('button', { class: 'btn', type: 'button', onclick: o.onBack }, t('back'))),
+      h('button', { class: 'btn', type: 'button', onclick: () => back() }, t('back'))),
   );
   container.playNow = () => playNow(o.playlistId, info, status);
+  // Tirar hacia abajo en el resultado rebaraja (si la pantalla lo permite); fuera del resultado, refresca las playlists.
+  container.pullAction = o.reshuffle ?? null;
+  container.lastOptions = o;
+  container.cancelPending = () => { clearTimeout(saveTimer); pending = false; };
+  /** Para usar dentro de otra tarea (p. ej. «Buscar más») antes de escribir en la misma playlist. */
+  container.flushPending = writeRemovals;
   container.hidden = false;
   window.scrollTo(0, 0);
+  if (o.tint !== false) tintFrom(o.tintUrl ?? tracks.find((x) => x.thumb)?.thumb);
   celebrate(container);
   return sync;
 }
@@ -741,7 +1048,7 @@ async function withWriteLock(fn) {
   try {
     return await navigator.locks.request('shuffl-write', { signal: AbortSignal.timeout(30000) }, fn);
   } catch (e) {
-    if (e?.name === 'AbortError' || e?.name === 'TimeoutError') throw new UserError(t('errOtherTab'));
+    if (e?.name === 'AbortError' || e?.name === 'TimeoutError') throw new UserError(t('errOtherTab'), 'errOtherTab');
     throw e;
   }
 }
@@ -821,40 +1128,18 @@ function segmented(name, label, options, onChange) {
   };
 }
 
-// ---------- Caché de metadatos de Spotify (24 h, en el dispositivo) ----------
+// ---------- Álbumes ----------
 
-/** { cache, size }: la caché en memoria y sus caracteres en JSON (para no serializarla entera en cada entrada). */
-let metaCache = null;
-let persistTimer = null;
-const loadCache = () => (metaCache ??= { cache: pruneCache(getItem(KEYS.metaCache, {})) }).cache;
-function dropMetaCache() {
-  metaCache = null;
-  clearTimeout(persistTimer);
-  removeItem(KEYS.metaCache);
-}
-/**
- * Lee de la caché o pide a Spotify y guarda. Las claves llevan el id de la cuenta: otra cuenta en el mismo navegador
- * no ve ni usa los datos de la anterior. Se escribe en localStorage una vez por ráfaga (Novedades hace decenas de
- * lecturas seguidas); si el almacenamiento está lleno, se sigue con la caché en memoria.
- */
-async function cached(rawKey, fetcher) {
-  const key = `${S.me.id}:${rawKey}`;
-  const hit = cacheGet(loadCache(), key);
-  if (hit !== undefined) return hit;
-  const data = await fetcher();
-  loadCache();
-  metaCache = cacheSet(metaCache, key, data);
-  clearTimeout(persistTimer);
-  persistTimer = setTimeout(() => { if (metaCache) setItem(KEYS.metaCache, metaCache.cache); }, 800);
-  return data;
-}
-
-const albumInfo = (a) => ({ id: a.id, name: a.name ?? '', release_date: a.release_date ?? '', release_date_precision: a.release_date_precision ?? '', images: (a.images ?? []).slice(-2), album_type: a.album_type ?? '' });
+/** Lo que se guarda de un álbum: sus imágenes con tamaño (para elegir la miniatura) y su fecha. */
+const albumInfo = (a) => ({
+  id: a.id, name: a.name ?? '', release_date: a.release_date ?? '', release_date_precision: a.release_date_precision ?? '', album_type: a.album_type ?? '',
+  images: (Array.isArray(a.images) ? a.images : []).filter((i) => typeof i?.url === 'string').map(({ url, width, height }) => ({ url, width, height })),
+});
 
 /** Canciones completas de un álbum (las devuelve sin datos del álbum: se los añadimos). */
 async function albumTracks(album) {
   const items = await cached(`album:${album.id}`, async () => (await S.api.getAlbumTracks(album.id))
-    .map((tr) => ({ id: tr.id, uri: tr.uri, name: tr.name, type: 'track', artists: (tr.artists ?? []).map((x) => ({ name: x.name })), duration_ms: tr.duration_ms, explicit: tr.explicit, disc_number: tr.disc_number, track_number: tr.track_number, is_local: tr.is_local })));
+    .map((tr) => ({ id: tr.id, uri: tr.uri, name: tr.name, type: 'track', artists: (tr.artists ?? []).map((x) => ({ id: x.id, name: x.name })), duration_ms: tr.duration_ms, explicit: tr.explicit, disc_number: tr.disc_number, track_number: tr.track_number, is_local: tr.is_local })), LONG_TTL_MS);
   return normalizeEntries(items.map((tr) => ({ track: { ...tr, album: albumInfo(album) } }))).tracks;
 }
 
@@ -875,17 +1160,34 @@ function shufflePanel() {
   radios.reuse.checked = true;
   const go = h('button', { class: 'btn primary big', type: 'button', id: 'shuffle-go', disabled: true, onclick: () => run() }, t('shuffleBtn'));
 
-  // Por tiempo: interruptor dentro de «Más opciones»
-  const timeOn = h('input', { type: 'checkbox', id: 'sh-time', onchange: () => syncTime() });
-  const minutesSel = segmented('sh-minutes', t('timeLabel'), [...TIME_PRESETS.map((m) => [String(m), t('minutesShort', { n: m })]), ['custom', t('timeCustom')]], () => syncTime());
-  minutesSel.set('30');
-  const customMin = h('input', { type: 'number', class: 'text', id: 'sh-custom-min', inputmode: 'numeric', min: String(MIN_MINUTES), max: String(MAX_MINUTES), value: '35', 'aria-label': t('timeCustomLabel') });
-  const customLabel = h('label', { class: 'field-wide', hidden: true }, t('timeCustomLabel'), customMin);
-  const timeBox = h('div', { id: 'time-box', hidden: true }, h('p', { class: 'muted small' }, t('timeHint')), minutesSel.el, customLabel);
-  const readMinutes = () => (timeOn.checked ? sanitizeMinutes(minutesSel.value === 'custom' ? customMin.value : minutesSel.value) : null);
+  // Toda la playlist o por tiempo (v1.3.2: a la vista, junto al botón). Por tiempo: accesos rápidos o personalizado.
+  const kindSel = segmented('sh-kind', t('kindLabel'), [['songs', t('kindAll')], ['time', t('kindTime')]], () => syncTime());
+  let preset = 'gym';
+  const presetBtns = new Map();
+  const presetBtn = (key, emoji, label, sub) => {
+    const b = h('button', { type: 'button', class: 'preset', id: `sh-preset-${key}`, 'aria-pressed': 'false', onclick: () => { preset = key; syncTime(); } },
+      h('span', { class: 'preset-emoji', 'aria-hidden': 'true' }, emoji), h('span', { class: 'preset-name' }, label), sub ? h('span', { class: 'preset-min' }, sub) : null);
+    presetBtns.set(key, b);
+    return b;
+  };
+  const slider = h('input', { type: 'range', id: 'sh-slider', min: String(MIN_MINUTES), max: String(SLIDER_MAX), step: '5', value: '45', 'aria-label': t('timeCustomLabel'), oninput: () => syncTime() });
+  const sliderOut = h('output', { id: 'sh-slider-out', for: 'sh-slider' });
+  const customBox = h('label', { class: 'slider-box', id: 'sh-custom', hidden: true }, h('span', { class: 'slider-head' }, t('timeCustomLabel'), sliderOut), slider);
+  const timeBox = h('div', { id: 'time-box', hidden: true },
+    h('div', { class: 'presets', role: 'group', 'aria-label': t('presetsLabel') },
+      TIME_PRESETS.map((p) => presetBtn(p.key, p.emoji, t(`preset_${p.key}`), t('minutesShort', { n: p.minutes }))),
+      presetBtn('custom', '⏱️', t('timeCustom'), '')),
+    customBox,
+    h('p', { class: 'muted small' }, t('timeHint')));
+  const isTime = () => kindSel.value === 'time';
+  const readPreset = () => (isTime() && preset !== 'custom' && presetByKey(preset) ? preset : null);
+  const readMinutes = () => (!isTime() ? null : readPreset() ? presetByKey(preset).minutes : sanitizeMinutes(Number(slider.value)));
   function syncTime() {
-    timeBox.hidden = !timeOn.checked;
-    customLabel.hidden = minutesSel.value !== 'custom';
+    timeBox.hidden = !isTime();
+    for (const [key, b] of presetBtns) b.setAttribute('aria-pressed', String(key === preset));
+    customBox.hidden = preset !== 'custom';
+    sliderOut.textContent = t('minutesShort', { n: slider.value });
+    go.textContent = isTime() && readMinutes() ? t('shuffleTimeBtn', { n: readMinutes() }) : t('shuffleBtn');
     syncDestination();
   }
 
@@ -942,7 +1244,7 @@ function shufflePanel() {
       const tracks = [];
       for (const pl of sel) {
         const key = `${pl.id}:${pl.total}`;
-        if (!S.sourceCache.has(key)) S.sourceCache.set(key, readSource(pl).then((r) => r.tracks));
+        if (!S.sourceCache.has(key)) S.sourceCache.set(key, readSource(pl, null, { useCache: true }).then((r) => r.tracks));
         tracks.push(...await S.sourceCache.get(key));
       }
       if (token !== countToken) return;
@@ -955,7 +1257,7 @@ function shufflePanel() {
   }
   function syncDestination() {
     const sel = picker.getSelected();
-    const selfOk = !timeOn.checked && !libraryMode && sel.length === 1 && sel[0].owned && !sel[0].isLiked && !hasFilters(readFilters());
+    const selfOk = !isTime() && !libraryMode && sel.length === 1 && sel[0].owned && !sel[0].isLiked && !hasFilters(readFilters());
     radios.self.disabled = !selfOk;
     if (!selfOk && radios.self.checked) radios.reuse.checked = true;
   }
@@ -995,7 +1297,7 @@ function shufflePanel() {
     const minutes = readMinutes();
     return {
       library: libraryMode, ids: sel.map((p) => p.id), names: sel.map((p) => p.name), filters: readFilters(), dedupe: dedupe.checked, mode: dest(),
-      kind: minutes ? 'time' : 'songs', ...(minutes ? { minutes } : {}),
+      kind: minutes ? 'time' : 'songs', ...(minutes ? { minutes } : {}), ...(readPreset() ? { preset: readPreset() } : {}),
     };
   };
   async function saveMix() {
@@ -1005,7 +1307,7 @@ function shufflePanel() {
     if (!name) return;
     const mix = sanitizeMix({ ...cfg, id: editingId ?? newMixId(), name });
     const { list, ok } = upsertMix(getMixes(), mix);
-    if (!ok) { status.fail(new UserError(t('errMixLimit'))); return; }
+    if (!ok) { status.fail(new UserError(t('errMixLimit'), 'errMixLimit')); return; }
     setMixes(list);
     setEditing(null);
     status.say(t('mixSaved', { name: mix.name }));
@@ -1043,9 +1345,9 @@ function shufflePanel() {
     h('button', { class: 'btn', type: 'button', id: 'link-check', onclick: () => checkLink() }, t('linkCheck')), linkMsg);
 
   const sourceBox = h('div', {}, h('h2', {}, t('source')), libBtn, picker.el, selInfo);
+  const kindBox = h('div', { class: 'kind-box' }, h('h2', {}, t('kindTitle')), kindSel.el, timeBox);
   const moreBox = h('details', { class: 'more', id: 'shuffle-more' },
     h('summary', {}, t('moreOptions')),
-    h('label', { class: 'check' }, timeOn, h('span', {}, t('timeToggle'))), timeBox,
     h('label', { class: 'check' }, dedupe, h('span', {}, t('dedupeOpt'))),
     filtersBox,
     h('h2', {}, t('destination')), destBox,
@@ -1054,7 +1356,7 @@ function shufflePanel() {
   const form = h('div', {},
     h('h2', { class: 'tool-title' }, t('tabShuffle')),
     h('p', { class: 'lead' }, t('shuffleLead')),
-    sourceBox, go, moreBox);
+    sourceBox, kindBox, go, moreBox);
   const rouletteCard = h('button', { class: 'card compact', type: 'button', id: 'card-roulette', onclick: () => S.show('roulette') },
     h('span', { class: 'card-icon' }, icon(...ICONS.roulette)),
     h('span', {}, h('span', { class: 'card-title' }, t('rouletteTitle')), h('span', { class: 'card-sub' }, t('cardRouletteSub'))));
@@ -1069,11 +1371,11 @@ function shufflePanel() {
   function applyMix(mix) {
     S.show('shuffle');
     showForm();
-    timeOn.checked = mix.kind === 'time' && !!mix.minutes;
-    if (timeOn.checked) {
-      const preset = TIME_PRESETS.includes(mix.minutes);
-      minutesSel.set(preset ? String(mix.minutes) : 'custom');
-      if (!preset) customMin.value = String(mix.minutes);
+    const timed = mix.kind === 'time' && !!mix.minutes;
+    kindSel.set(timed ? 'time' : 'songs');
+    if (timed) {
+      preset = presetByKey(mix.preset)?.minutes === mix.minutes ? mix.preset : 'custom';
+      if (preset === 'custom') slider.value = String(Math.min(mix.minutes, SLIDER_MAX));
     }
     syncTime();
     const ids = mix.library ? libraryIds() : mix.ids;
@@ -1082,7 +1384,7 @@ function shufflePanel() {
     programmatic = false;
     libraryMode = !!mix.library;
     setFilters(mix.filters ?? emptyFilters());
-    if (hasFilters(mix.filters) || timeOn.checked) moreBox.open = true;
+    if (hasFilters(mix.filters)) moreBox.open = true;
     if (hasFilters(mix.filters)) filtersBox.open = true;
     dedupe.checked = mix.dedupe !== false;
     syncSelection(picker.getSelected());
@@ -1092,7 +1394,7 @@ function shufflePanel() {
   /** `origin.mixId`/`origin.mixName`: la mezcla guardada de la que viene, para nombrar su playlist. */
   S.runMix = (mix, origin = null, opts = {}) => {
     if (applyMix(mix)) return run(origin, opts);
-    status.fail(new UserError(t('mixMissing')));
+    status.fail(new UserError(t('mixMissing'), 'mixMissing'));
     return Promise.resolve(null);
   };
 
@@ -1108,12 +1410,12 @@ function shufflePanel() {
     let origin = null;
     if (link.kind === 'mix') {
       const saved = getMixes().find((m) => m.id === link.id);
-      if (!saved) { status.fail(new UserError(t('deepLinkMixMissing'))); return; }
+      if (!saved) { status.fail(new UserError(t('deepLinkMixMissing'), 'deepLinkMixMissing')); return; }
       mix = saved;
       origin = mixOrigin(saved);
     } else {
       const pl = S.playlists.find((p) => p.id === link.id && !baseReason(p));
-      if (!pl) { status.fail(new UserError(t('deepLinkSourceMissing'))); return; }
+      if (!pl) { status.fail(new UserError(t('deepLinkSourceMissing'), 'deepLinkSourceMissing')); return; }
       mix = { name: pl.name, library: false, ids: [pl.id], filters: emptyFilters(), dedupe: true, mode: 'reuse' };
     }
     if (!trusted && !confirm(t(link.play ? 'deepLinkConfirmPlay' : 'deepLinkConfirm', { name: mix.name }))) {
@@ -1124,7 +1426,7 @@ function shufflePanel() {
     if (written && link.play) await result.playNow?.();
   };
   S.editMix = (mix) => {
-    if (!applyMix(mix)) status.fail(new UserError(t('mixMissing')));
+    if (!applyMix(mix)) status.fail(new UserError(t('mixMissing'), 'mixMissing'));
     setEditing(mix);
   };
 
@@ -1138,7 +1440,7 @@ function shufflePanel() {
   function arrange(base, minutes) {
     if (minutes) {
       const fit = fitDuration(base, minutes);
-      if (!fit.tracks.length) throw new UserError(t('errTimeEmpty'));
+      if (!fit.tracks.length) throw new UserError(t('errTimeEmpty'), 'errTimeEmpty');
       return { order: fit.tracks, truncated: 0, notes: fit.reached ? [] : [t('timeShort', { got: fmt(Math.round(fit.totalMs / MINUTE)), m: fmt(minutes) })] };
     }
     const capped = capPlaylist(shuffle(base));
@@ -1155,12 +1457,22 @@ function shufflePanel() {
     if (info.dedupRemoved) notes.push(t('dedupRemoved', { n: fmt(info.dedupRemoved) }));
     if (info.filteredOut) notes.push(t('filteredOut', { n: fmt(info.filteredOut) }));
     if (info.truncated) notes.push(t('truncated', { n: fmt(info.truncated) }));
+    const app = info.mode !== 'self';
     renderResult(result, status, {
       name: info.name, notes, tracks: info.order, playlistId: info.playlistId,
-      extra: [
-        h('button', { class: 'btn', type: 'button', id: 'reshuffle', onclick: () => reshuffle() }, t('reshuffle')),
-        h('button', { class: 'btn', type: 'button', id: 'open-pin-result', onclick: () => S.show('pin') }, t('pinTitle')),
-      ],
+      kicker: info.minutes ? t('timeKicker', { n: info.minutes }) : null,
+      headExtra: h('button', { class: 'btn reshuffle', type: 'button', id: 'reshuffle', onclick: () => reshuffle() },
+        icon(...ICONS.shuffle), h('span', {}, t('reshuffle'))),
+      extra: [h('button', { class: 'btn', type: 'button', id: 'open-pin-result', onclick: () => S.show('pin') }, t('pinTitle'))],
+      // Quitar canciones deslizando solo en la playlist de Shuffl, nunca en tu propia playlist.
+      editable: app,
+      onTracks: (list) => {
+        const keep = new Set(list);
+        last.removed = new Set([...(last.removed ?? []), ...info.order.filter((x) => !keep.has(x)).map((x) => x.uri)]);
+        last.order = list;
+      },
+      reshuffle: () => reshuffle(),
+      tintUrl: info.tintUrl,
       onBack: () => { status.clear(); showForm(); },
     });
   }
@@ -1186,28 +1498,36 @@ function shufflePanel() {
       const mode = minutes && (modeOverride ?? dest()) === 'self' ? 'reuse' : modeOverride ?? dest();
       const filters = readFilters();
       const doDedupe = dedupe.checked;
+      const presetKey = readPreset();
       const config = { ...currentConfig(), mode, mixId: origin.mixId, at: new Date().toISOString() };
-      if (timeOn.checked && !minutes) throw new UserError(t('errMinutes', { min: MIN_MINUTES, max: MAX_MINUTES }));
+      if (isTime() && !minutes) throw new UserError(t('errMinutes', { min: MIN_MINUTES, max: SLIDER_MAX }), 'errMinutes');
       status.phase('reading');
-      const { tracks, skipped } = await readSources(sel, status);
+      // Si una playlist no ha cambiado desde la última vez, no se vuelve a leer (cuota). Para escribir en ella misma, sí.
+      const { tracks, skipped } = await readSources(sel, status, { useCache: mode !== 'self' });
       if (mode === 'self' && !confirmOverwrite(sel[0].name, skippedCount(skipped))) { status.clear(); showForm(); return; }
       status.phase('shuffling');
       const unique = doDedupe ? uniqueByUri(tracks) : tracks;
       const base = filterTracks(unique, filters);
-      if (!base.length) throw new UserError(hasFilters(filters) ? t('errFiltersEmpty') : t('errEmpty'));
+      if (!base.length) throw hasFilters(filters) ? new UserError(t('errFiltersEmpty'), 'errFiltersEmpty') : new UserError(t('errEmpty'), 'errEmpty');
       const { order, truncated, notes: kindNotes } = arrange(base, minutes);
-      const title = minutes && !origin.mixName ? t('minutesShort', { n: minutes }) : coverTitle(sel, origin);
-      const name = generatedName({ mixName: minutes ? title : origin.mixName, library: origin.library, sources: sel }, nameLabels());
+      const source = coverTitle(sel, origin);
+      const presetLabel = presetKey ? t(`preset_${presetKey}`) : '';
+      // «Gym 45 min · Shuffle» con un acceso rápido; «Rock · 45 min · Shuffle» si es personalizado.
+      const name = minutes ? timeName({ minutes, presetLabel, base: source })
+        : generatedName({ mixName: origin.mixName, library: origin.library, sources: sel }, nameLabels());
+      const title = minutes ? (presetLabel ? `${presetLabel} ${t('minutesShort', { n: minutes })}` : `${source} · ${t('minutesShort', { n: minutes })}`) : source;
       const uris = order.map((x) => x.uri);
+      const tintUrl = sel.length === 1 && !sel[0].isLiked ? sel[0].image : null;
       const finish = async (w, purgeNotes) => {
         const coverNotes = mode === 'self' ? [] : await uploadCover(w.id, title);
         setItem(KEYS.lastMix, config);
         written = w.id;
-        await loadPlaylists();
+        // Solo al escribir en tu propia playlist cambia tu biblioteca: la de Shuffl no sale en los selectores.
+        if (mode === 'self') await loadPlaylists();
         status.clear();
         showResult({
           base, order, skipped, truncated, dedupRemoved: tracks.length - unique.length, filteredOut: unique.length - base.length,
-          playlistId: w.id, name: mode === 'self' ? sel[0].name : name, mode, coverNotes, kindNotes, purgeNotes, title, minutes,
+          playlistId: w.id, name: mode === 'self' ? sel[0].name : name, mode, coverNotes, kindNotes, purgeNotes, title, minutes, tintUrl,
         });
       };
       if (mode === 'self') {
@@ -1233,22 +1553,35 @@ function shufflePanel() {
   }
   S.shuffleWith = run;
 
-  /** «Volver a barajar» reordena la misma playlist (no crea otra): no hay nada que borrar. */
+  /**
+   * «Volver a barajar» (botón 🔀 o tirar hacia abajo) reordena la misma playlist sin crear otra. Las canciones que
+   * quitaste no vuelven. En la playlist de Shuffl basta con comprobar que sigue siendo de Shuffl; en la tuya, además,
+   * que nadie la ha cambiado desde que se leyó.
+   */
   function reshuffle() {
+    if (S.busy || !last) return;
+    result.cancelPending?.();
     task(status, async () => {
-      const { order, truncated, notes: kindNotes } = arrange(last.base, last.minutes);
+      const base = last.removed?.size ? last.base.filter((x) => !last.removed.has(x.uri)) : last.base;
+      const { order, truncated, notes: kindNotes } = arrange(base, last.minutes);
       await withWriteLock(async () => {
-        if (last.mode !== 'self') await assertStillAppPlaylist(last.playlistId);
-        await assertUnchanged(last.playlistId, last.order.length, last.order);
-        saveUndo(last.playlistId, '', last.order.map((x) => x.uri), { soft: true });
-        await overwritePlaylist(last.playlistId, order.map((x) => x.uri), status);
+        if (last.mode !== 'self') {
+          await assertStillAppPlaylist(last.playlistId);
+          saveUndo(last.playlistId, '', last.order.map((x) => x.uri), { soft: true });
+          await overwritePlaylist(last.playlistId, order.map((x) => x.uri), status);
+        } else {
+          await assertUnchanged(last.playlistId, last.order.length, last.order);
+          saveUndo(last.playlistId, '', last.order.map((x) => x.uri), { soft: true });
+          await overwritePlaylist(last.playlistId, order.map((x) => x.uri), status);
+        }
       });
-      const coverNotes = last.mode === 'self' ? [] : await uploadCover(last.playlistId, last.title);
       status.clear();
-      showResult({ ...last, order, truncated, kindNotes, coverNotes, purgeNotes: [] });
-    });
+      navigator.vibrate?.(20);
+      showResult({ ...last, base, order, truncated, kindNotes, coverNotes: [], purgeNotes: [], removed: null });
+    }, 'reshuffle');
   }
 
+  syncTime();
   return h('section', { class: 'panel', id: 'panel-shuffle' }, working, status.el, back, form, result, rouletteCard);
 }
 
@@ -1328,10 +1661,10 @@ function sortPanel() {
       const { tracks, skipped } = await readSources([sel], status);
       if (overwrite && !confirmOverwrite(sel.name, skippedCount(skipped))) { status.clear(); return; }
       const keys = criteria();
-      if (new Set(keys).size !== keys.length) throw new UserError(t('sortDup'));
+      if (new Set(keys).size !== keys.length) throw new UserError(t('sortDup'), 'sortDup');
       const filtered = filterByAdded(tracks, from.value, to.value);
       const sorted = keys.length === 1 ? sortTracks(filtered, keys[0]) : sortTracksBy(filtered, keys);
-      if (!sorted.length) throw new UserError(t('errEmpty'));
+      if (!sorted.length) throw new UserError(t('errEmpty'), 'errEmpty');
       let playlistId;
       if (overwrite) {
         saveUndo(sel.id, sel.name, tracks.map((x) => x.uri));
@@ -1351,7 +1684,7 @@ function sortPanel() {
     task(status, async () => {
       const liked = S.playlists.find((p) => p.isLiked);
       const { tracks, skipped } = await readSource(liked, (d, tot) => status.progress('reading', d, tot));
-      if (!tracks.length) throw new UserError(t('errEmpty'));
+      if (!tracks.length) throw new UserError(t('errEmpty'), 'errEmpty');
       const id = (await S.api.createPlaylist(t('likedCopyName'), t('barajaDesc'))).id;
       await S.api.addItems(id, tracks.map((x) => x.uri), (d, tot) => status.progress('saving', d, tot));
       await loadPlaylists();
@@ -1408,7 +1741,8 @@ function dupsPanel() {
     const boxes = [];
     const count = h('p', { class: 'note', 'aria-live': 'polite' });
     const items = groups.map((g) => h('li', { class: 'dup-group' },
-      h('p', { class: 'dup-head' }, h('strong', {}, g.keep.track.name), ' ', h('span', { class: 'muted' }, artistsOf(g.keep.track))),
+      h('div', { class: 'dup-head track' }, coverSlot(g.keep.track.thumb),
+        h('span', { class: 'track-text' }, h('strong', { class: 'track-name' }, g.keep.track.name), h('span', { class: 'track-artist' }, artistsOf(g.keep.track)))),
       h('p', { class: 'dup-keep' }, t('keeps', { pos: g.keep.index + 1 })),
       g.dupes.map((d) => {
         const box = h('input', { type: 'checkbox', 'data-index': String(d.index) });
@@ -1506,15 +1840,14 @@ function snapPanel() {
       status.phase('reading');
       const entries = range ? (await S.api.getTopTracks(range)).map((track) => ({ track })) : await S.api.getRecentlyPlayed();
       const tracks = uniqueByUri(normalizeEntries(entries).tracks);
-      if (!tracks.length) throw new UserError(t('errEmpty'));
+      if (!tracks.length) throw new UserError(t('errEmpty'), 'errEmpty');
       const order = shuffleBox.checked ? shuffle(tracks) : tracks;
       const name = snapshotName(t(labelKey));
       await commitApp({ key: `snap:${kind}`, name, description: t('snapDesc'), uris: order.map((x) => x.uri) }, status, async (w) => {
-        await loadPlaylists();
         status.clear();
         form.hidden = true;
         renderResult(result, status, {
-          name, notes: w.notes, tracks: order, playlistId: w.id,
+          name, notes: w.notes, tracks: order, playlistId: w.id, editable: true,
           onBack: () => { result.hidden = true; form.hidden = false; status.clear(); },
         });
       });
@@ -1536,18 +1869,19 @@ function orphansPanel() {
 
   function scan() {
     task(status, async () => {
+      await ensureFreshLibrary();
       const liked = S.playlists.find((p) => p.isLiked);
       const mine = S.playlists.filter((p) => !p.isLiked && p.readable);
-      const likedRead = await readSource(liked, (d, tot) => status.progress('reading', d, tot));
+      const likedRead = await readSource(liked, (d, tot) => status.progress('reading', d, tot), { useCache: true });
       const inPlaylists = new Set();
       let done = 0;
       for (const pl of mine) {
         status.say(t('orphansReading', { i: fmt(++done), n: fmt(mine.length) }));
-        for (const tr of (await readSource(pl)).tracks) inPlaylists.add(tr.uri);
+        for (const tr of (await readSource(pl, null, { useCache: true })).tracks) inPlaylists.add(tr.uri);
       }
       orphans = uniqueByUri(likedRead.tracks.filter((tr) => !inPlaylists.has(tr.uri)));
       status.clear();
-      if (!orphans.length) { setKids(found, h('p', { class: 'note', id: 'orphans-none' }, t('orphansNone'))); found.hidden = false; return; }
+      if (!orphans.length) { setKids(found, h('div', { class: 'empty' }, emptyArt(), h('p', { class: 'note', id: 'orphans-none' }, t('orphansNone')))); found.hidden = false; return; }
       setKids(found,
         h('h2', { class: 'result-title', id: 'orphans-count' }, t('orphansFound', { n: fmt(orphans.length), p: fmt(mine.length) })),
         h('label', { class: 'check' }, shuffleBox, h('span', {}, t('snapShuffle'))),
@@ -1608,17 +1942,18 @@ function splitPanel() {
       try {
         groups = splitTracks(tracks, mode, { parts: partsIn.value, minArtist: minIn.value });
       } catch (e) {
-        if (e.code === 'tooMany') throw new UserError(t('splitTooMany', { n: fmt(e.count), max: fmt(MAX_SPLIT_PARTS) }));
+        if (e.code === 'tooMany') throw new UserError(t('splitTooMany', { n: fmt(e.count), max: fmt(MAX_SPLIT_PARTS) }), 'splitTooMany');
         throw e;
       }
-      if (groups.length < 2) throw new UserError(t('splitOneGroup'));
+      if (groups.length < 2) throw new UserError(t('splitOneGroup'), 'splitOneGroup');
       status.clear();
       const rows = groups.map((g) => ({ g, input: h('input', { type: 'text', class: 'text', maxlength: '100', value: nameOf(pl.name, mode, g), 'aria-label': t('newName') }), done: false }));
       const createBtn = h('button', { class: 'btn primary big', type: 'button', id: 'split-create', onclick: () => create() }, t('splitCreate', { n: fmt(groups.length) }));
       setKids(preview,
         h('h2', { class: 'result-title', id: 'split-summary' }, t('splitSummary', { n: fmt(groups.length), m: fmt(tracks.length) })),
         skippedCount(skipped) ? h('p', { class: 'note' }, t('skipped', { n: fmt(skippedCount(skipped)) })) : null,
-        h('ul', { class: 'restore-list' }, rows.map(({ g, input }) => h('li', {}, input, h('span', { class: 'muted small' }, t('songs', { n: fmt(g.tracks.length) }))))),
+        h('ul', { class: 'restore-list split-list' }, rows.map(({ g, input }) => h('li', { class: 'split-row' }, coverSlot(g.tracks.find((x) => x.thumb)?.thumb),
+          h('span', { class: 'split-fields' }, input, h('span', { class: 'muted small' }, t('songs', { n: fmt(g.tracks.length) })))))),
         createBtn);
       preview.hidden = false;
 
@@ -1685,7 +2020,7 @@ function backupPanel() {
   function prepare() {
     task(status, async () => {
       const sel = picker.getSelected();
-      if (sel.length > MAX_BACKUP_PLAYLISTS) throw new UserError(t('errBackupLimit'));
+      if (sel.length > MAX_BACKUP_PLAYLISTS) throw new UserError(t('errBackupLimit'), 'errBackupLimit');
       const lists = [];
       let skippedTotal = 0;
       for (const pl of sel) {
@@ -1707,7 +2042,7 @@ function backupPanel() {
       const mixes = getMixes();
       const extra = { ...(mixes.length ? { mixes } : {}), ...(incAlbums.checked ? { albums } : {}), ...(incArtists.checked ? { artists } : {}) };
       const jsonBlob = new Blob([JSON.stringify(buildBackup(lists, new Date(), extra))], { type: 'application/json' });
-      if (jsonBlob.size > MAX_BACKUP_BYTES) throw new UserError(t('errBackupLimit'));
+      if (jsonBlob.size > MAX_BACKUP_BYTES) throw new UserError(t('errBackupLimit'), 'errBackupLimit');
       const csvBlob = new Blob(['﻿', toCsv(lists)], { type: 'text/csv' });
       const libraryBlob = new Blob(['﻿', toLibraryCsv(albums, artists)], { type: 'text/csv' });
       const total = lists.reduce((n, p) => n + p.tracks.length, 0);
@@ -1730,11 +2065,11 @@ function backupPanel() {
     const file = fileIn.files[0];
     if (!file) return;
     try {
-      if (file.size > MAX_BACKUP_BYTES) throw new UserError(t('errBackupSize'));
+      if (file.size > MAX_BACKUP_BYTES) throw new UserError(t('errBackupSize'), 'errBackupSize');
       const parsed = JSON.parse(await file.text());
       showRestore(validateBackup(parsed), sanitizeMixes(parsed.mixes), [parsed.albums, parsed.artists].map((x) => (Array.isArray(x) ? x.length : 0)));
     } catch (e) {
-      status.fail(e instanceof UserError ? e : e instanceof SyntaxError ? new UserError(t('restoreBad_notBackup')) : new UserError(t(`restoreBad_${typeof e.code === 'string' ? e.code : 'notBackup'}`)));
+      status.fail(e instanceof UserError ? e : e instanceof SyntaxError ? new UserError(t('restoreBad_notBackup'), 'restoreBad_notBackup') : new UserError(t(`restoreBad_${typeof e.code === 'string' ? e.code : 'notBackup'}`)));
     }
   }
 
@@ -1830,34 +2165,6 @@ function settingsPanel() {
   shakeToggle.checked = shakeEnabled();
   const purgeToggle = h('input', { type: 'checkbox', id: 'purge-toggle', onchange: () => setItem(KEYS.purge, purgeToggle.checked) });
   purgeToggle.checked = purgeEnabled();
-  const diagList = h('ul', { class: 'diag', id: 'diag-results' });
-  async function diagnose() {
-    const rows = [];
-    const check = async (label, fn) => {
-      try { rows.push({ label, ok: true, detail: await fn() }); } catch (e) { rows.push({ label, ok: false, detail: errorMessage(e) }); }
-    };
-    await check(t('diagAccount'), async () => { const me = await S.api.getMe(); return me.display_name || me.id; });
-    await check(t('diagPlaylists'), async () => { await S.api.request('GET', '/me/playlists?limit=1'); return ''; });
-    const missing = auth.missingScopes(getItem(KEYS.tokens));
-    rows.push({ label: t('diagScopes'), ok: missing.length === 0, detail: missing.join(', ') });
-    // Prueba real de borrado: crea una playlist vacía y la quita con DELETE /me/library. Si falla, se ve el error de Spotify.
-    // También comprueba que Spotify devuelve la etiqueta en la descripción (sin ella no se reconocerían las de Shuffl)
-    // y que la playlist ya no está en la biblioteca. Lleva la etiqueta: si no se pudo quitar, la quitará el próximo shuffle.
-    await check(t('diagDelete'), async () => {
-      const name = t('diagProbeName');
-      const probe = await S.api.createPlaylist(name, withTag(t('diagProbeDesc'), await tagFor('diag'), name));
-      try {
-        const seen = (await S.api.getMyPlaylists()).find((p) => p?.id === probe.id);
-        if (!seen || !isAppPlaylist(seen, S.me.id)) throw new UserError(t('diagNoTag'));
-        await removePlaylists([probe.id]);
-      } catch (e) {
-        throw new UserError(`${errorMessage(e)} ${t('diagProbeLeft', { name })}`);
-      }
-      return t('diagDeleteOk');
-    });
-    setKids(diagList, rows.map((r) => h('li', { class: r.ok ? 'ok' : 'bad' }, `${r.ok ? '✓' : '✗'} ${r.label}${r.detail ? ` — ${r.detail}` : ''}`)));
-  }
-  const diagBtn = h('button', { class: 'btn', type: 'button', id: 'run-diag', onclick: () => task(status, diagnose) }, t('diagRun'));
   const undoInfo = h('p', { class: 'muted' });
   const undoBtn = h('button', { class: 'btn', type: 'button', onclick: () => task(status, async () => {
     if (await applyUndo(status)) status.say(t('undone'));
@@ -1875,7 +2182,6 @@ function settingsPanel() {
     h('button', { class: 'btn', type: 'button', onclick: () => { auth.setClientId(idIn.value); status.say(t('saved')); } }, t('save')),
     h('h2', {}, t('redirectUri')), copyBox(auth.redirectUri()),
     h('h2', {}, t('language')), langSel,
-    h('h2', {}, t('diagRun')), h('p', { class: 'muted' }, t('diagLead')), diagBtn, diagList,
     h('h2', {}, t('themeTitle')), themeSel,
     h('h2', {}, t('coverTitle')),
     h('label', { class: 'check' }, coverToggle, h('span', {}, t('coverToggle'))),
@@ -1887,13 +2193,204 @@ function settingsPanel() {
 
     h('h2', {}, t('undoTitle')), undoInfo, undoBtn,
     h('h2', {}, t('account')), h('p', { class: 'muted' }, S.me?.display_name || S.me?.id || ''),
-    h('button', { class: 'btn danger', type: 'button', id: 'logout', onclick: () => { auth.logout(); renderSetup(); } }, t('logout')),
+    h('button', { class: 'btn danger', type: 'button', id: 'logout', onclick: () => { auth.logout(); idbClear(); renderSetup(); } }, t('logout')),
     h('h2', {}, t('privacyTitle')), h('p', { class: 'muted' }, t('privacy')),
     h('h2', {}, t('aboutTitle')),
     h('p', { class: 'muted', id: 'about-notice' }, t('notAffiliated')),
     h('p', {}, h('a', { href: REPO_URL, target: '_blank', rel: 'noopener' }, t('repoLink'))),
     status.el);
   panel.refresh = () => { syncUndo(); purgeToggle.checked = purgeEnabled(); };
+  return panel;
+}
+
+// ---------- Diagnóstico: peticiones, comprobaciones, prueba completa y registro de errores ----------
+
+/** Una canción para la playlist de prueba: la más reciente de Tus me gusta o, si no hay, la primera de una playlist tuya. */
+async function probeTrackUri() {
+  const liked = await S.api.request('GET', '/me/tracks?limit=1');
+  const fromLiked = normalizeEntries(liked?.items ?? []).tracks[0];
+  if (fromLiked) return fromLiked.uri;
+  const own = S.playlists.find((p) => !p.isLiked && p.readable && p.total);
+  if (!own) return null;
+  const page = await S.api.request('GET', `/playlists/${encodeURIComponent(own.id)}/items?limit=1&additional_types=track`);
+  return normalizeEntries(page?.items ?? []).tracks[0]?.uri ?? null;
+}
+
+function diagPanel() {
+  const status = createStatus();
+  const counts = h('p', { class: 'diag-counts', id: 'req-counts', role: 'status' });
+  const actions = h('ul', { class: 'diag-actions', id: 'req-actions' });
+  const syncCounts = () => {
+    const s = requestStats();
+    counts.textContent = t('reqCounts', { session: fmt(s.session), today: fmt(s.today) });
+    setKids(actions, s.actions.map((a) => h('li', {}, t('reqAction', { name: t(`act_${a.name}`) === `act_${a.name}` ? a.name : t(`act_${a.name}`), n: fmt(a.n) }))));
+  };
+
+  // «Comprobar conexión» (rápida): cuenta, playlists, permisos y borrado de verdad con una playlist vacía.
+  const diagList = h('ul', { class: 'diag', id: 'diag-results' });
+  async function diagnose() {
+    const rows = [];
+    const check = async (label, fn) => {
+      try { rows.push({ label, ok: true, detail: await fn() }); } catch (e) { recordError(e); rows.push({ label, ok: false, detail: errorMessage(e) }); }
+    };
+    await check(t('diagAccount'), async () => { const me = await S.api.getMe(); return me.display_name || me.id; });
+    await check(t('diagPlaylists'), async () => { await S.api.request('GET', '/me/playlists?limit=1'); return ''; });
+    const missing = auth.missingScopes(getItem(KEYS.tokens));
+    rows.push({ label: t('diagScopes'), ok: missing.length === 0, detail: missing.join(', ') });
+    // Prueba real de borrado: crea una playlist vacía y la quita con DELETE /me/library. Si falla, se ve el error de Spotify.
+    // También comprueba que Spotify devuelve la etiqueta en la descripción (sin ella no se reconocerían las de Shuffl)
+    // y que la playlist ya no está en la biblioteca. Lleva la etiqueta: si no se pudo quitar, la quitará el próximo shuffle.
+    await check(t('diagDelete'), async () => {
+      const name = t('diagProbeName');
+      const probe = await S.api.createPlaylist(name, withTag(t('diagProbeDesc'), await tagFor('diag'), name));
+      try {
+        const seen = await S.api.getPlaylistInfo(probe.id);
+        if (!isAppPlaylist(seen, S.me.id)) throw new UserError(t('diagNoTag'), 'diagNoTag');
+        await removePlaylists([probe.id]);
+      } catch (e) {
+        throw new UserError(`${errorMessage(e)} ${t('diagProbeLeft', { name })}`, 'diagProbeLeft', e);
+      }
+      return t('diagDeleteOk');
+    });
+    setKids(diagList, rows.map((r) => h('li', { class: r.ok ? 'ok' : 'bad' }, `${r.ok ? '✓' : '✗'} ${r.label}${r.detail ? ` — ${r.detail}` : ''}`)));
+  }
+  const diagBtn = h('button', { class: 'btn', type: 'button', id: 'run-diag', onclick: () => task(status, diagnose, 'diag').then(syncCounts) }, t('diagRun'));
+
+  // «Prueba completa»: todo lo que hace la app con tu cuenta, paso a paso, con una playlist de prueba que se borra al final.
+  const playBox = h('input', { type: 'checkbox', id: 'full-test-play', checked: true });
+  const fullList = h('ol', { class: 'diag', id: 'full-results' });
+  let lastSteps = null;
+  async function fullTest() {
+    const steps = [];
+    lastSteps = steps;
+    const render = () => setKids(fullList, steps.map((r) => h('li', { class: r.ok === null ? 'skip' : r.ok ? 'ok' : 'bad' },
+      `${r.ok === null ? '–' : r.ok ? '✓' : '✗'} ${t(`full_${r.key}`)}${r.text ? ` — ${r.text}` : ''}`)));
+    /** `detail`: dato sin nombres para el informe; `text`: lo que se ve en pantalla. */
+    const step = async (key, fn) => {
+      status.say(t(`full_${key}`));
+      try {
+        const out = (await fn()) ?? {};
+        steps.push({ key, ok: out.skip ? null : true, text: out.text ?? '', detail: out.detail ?? '' });
+        render();
+        return true;
+      } catch (e) {
+        recordError(e);
+        const { kind } = errorInfo(e);
+        steps.push({ key, ok: false, text: errorMessage(e), detail: kind === 'user' ? `user:${e.code}` : `${kind}${e.status ? ` ${e.status}` : ''}${e.reason ? ` ${e.reason}` : ''}` });
+        render();
+        return false;
+      }
+    };
+    setKids(fullList);
+    if (!await step('login', async () => { const me = await S.api.getMe(); return { text: me.display_name || me.id }; })) return;
+    await step('read', async () => {
+      const page = await S.api.request('GET', '/me/playlists?limit=1');
+      return { text: t('fullPlaylistsN', { n: fmt(page?.total ?? 0) }), detail: `total ${page?.total ?? 0}` };
+    });
+    await step('scopes', async () => {
+      const missing = auth.missingScopes(getItem(KEYS.tokens));
+      if (missing.length) throw new UserError(t('fullScopesMissing', { list: missing.join(', ') }), 'scopes');
+    });
+    let uri = null;
+    await step('track', async () => {
+      uri = await probeTrackUri();
+      if (!uri) throw new UserError(t('fullNoTrack'), 'noTrack');
+    });
+    const name = t('diagProbeName');
+    let probeId = null;
+    const created = await step('create', async () => {
+      probeId = (await S.api.createPlaylist(name, withTag(t('diagProbeDesc'), await tagFor('diag'), name))).id;
+      if (uri) await S.api.addItems(probeId, [uri]);
+    });
+    if (created && probeId) {
+      await step('overwrite', async () => {
+        if (!uri) return { skip: true };
+        await S.api.replaceItems(probeId, [uri, uri]);
+        const page = await S.api.request('GET', `/playlists/${encodeURIComponent(probeId)}/items?limit=1`);
+        if (page?.total !== 2) throw new UserError(t('fullOverwriteBad'), 'overwriteBad');
+      });
+      await step('recognize', async () => {
+        if (!isAppPlaylist(await S.api.getPlaylistInfo(probeId), S.me.id)) throw new UserError(t('diagNoTag'), 'diagNoTag');
+      });
+    }
+    let device = null;
+    let cancelled = false;
+    const willPlay = () => playBox.checked && probeId && uri;
+    await step('devices', async () => {
+      const devices = await S.api.getDevices();
+      const pick = pickDevice(devices);
+      device = pick.device ?? (pick.choose && willPlay() ? await chooseDevice(pick.choose) : null);
+      cancelled = !!pick.choose && willPlay() && !device;
+      const n = devices.length;
+      if (pick.problem === 'restricted') throw new UserError(t('playRestricted'), 'restricted');
+      return { text: n ? t('fullDevices', { n: fmt(n), name: device?.name ?? '' }) : t('fullNoDevice'), detail: `${n} ${device?.type ?? '-'}${device?.is_active ? ' activo' : ''}` };
+    });
+    await step('play', async () => {
+      if (!willPlay() || cancelled) return { skip: true, text: t('fullSkipped') };
+      if (!device) return { skip: true, text: t('playNoDevice') };
+      let outcome = await startAndVerify(probeId, device);
+      if (PLAY_RETRY.has(outcome)) outcome = await startAndVerify(probeId, device);
+      if (outcome !== 'ok' && outcome !== 'sent') throw new UserError(t(`fullPlay_${['premium', 'restricted', 'forbidden', 'shuffle'].includes(outcome) ? outcome : 'other'}`), `play:${outcome}`);
+      return { text: t('playOk', { device: device.name }), detail: outcome };
+    });
+    if (probeId) {
+      await step('delete', async () => {
+        try {
+          await removePlaylists([probeId]);
+        } catch (e) {
+          throw new UserError(`${errorMessage(e)} ${t('diagProbeLeft', { name })}`, 'diagProbeLeft', e);
+        }
+      });
+    }
+    status.say(steps.every((s) => s.ok !== false) ? t('fullAllOk') : t('fullSomeBad'));
+  }
+  const fullBtn = h('button', { class: 'btn primary', type: 'button', id: 'full-test', onclick: () => task(status, fullTest, 'fulltest').then(() => { syncCounts(); syncErrors(); }) }, t('fullRun'));
+
+  // Registro de errores e informe para copiar
+  const errList = h('ul', { class: 'diag errors', id: 'error-log' });
+  const report = () => buildReport({
+    version: APP_VERSION, lang: getLang(), standalone: matchMedia('(display-mode: standalone)').matches || navigator.standalone === true,
+    steps: lastSteps?.map((s) => ({ ok: s.ok !== false, key: s.key, detail: s.detail })) ?? null,
+  });
+  const copyMsg = h('p', { class: 'muted small', id: 'copy-msg', role: 'status' });
+  const copyArea = h('div', { id: 'report-box' });
+  async function copyReport() {
+    const text = report();
+    try {
+      await navigator.clipboard.writeText(text);
+      copyMsg.textContent = t('reportCopied');
+      setKids(copyArea);
+    } catch {
+      // Sin portapapeles (o sin permiso): el informe sale en un cuadro para seleccionarlo y copiarlo a mano.
+      copyMsg.textContent = t('reportManual');
+      const area = h('textarea', { class: 'text mono report', id: 'report-text', readonly: true, rows: '10' });
+      area.value = text;
+      setKids(copyArea, area);
+      area.focus();
+      area.select();
+    }
+  }
+  function syncErrors() {
+    const list = getErrors();
+    setKids(errList, list.length ? list.slice(0, 10).map((e) => h('li', {},
+      `${new Date(e.at).toLocaleString(getLang(), { dateStyle: 'short', timeStyle: 'short' })} · ${e.where || '—'} · ${e.kind}${e.status !== undefined ? ` ${e.status}` : ''}`))
+      : h('li', { class: 'muted' }, t('noErrors')));
+  }
+
+  const panel = h('section', { class: 'panel', id: 'panel-diag', hidden: true },
+    backBar(), h('h2', { class: 'tool-title' }, t('diagTitle2')),
+    h('p', { class: 'lead' }, t('diagPanelLead')),
+    h('h2', {}, t('reqTitle')), counts, actions, h('p', { class: 'muted small' }, t('reqNote')),
+    h('h2', {}, t('fullTitle')), h('p', { class: 'muted' }, t('fullLead')),
+    h('label', { class: 'check' }, playBox, h('span', {}, t('fullPlayOpt'))),
+    fullBtn, fullList, status.el,
+    h('h2', {}, t('diagRun')), h('p', { class: 'muted' }, t('diagLead')), diagBtn, diagList,
+    h('h2', {}, t('errorsTitle')), errList,
+    h('div', { class: 'actions' },
+      h('button', { class: 'btn primary', type: 'button', id: 'copy-report', onclick: () => copyReport() }, t('copyReport')),
+      h('button', { class: 'btn', type: 'button', id: 'clear-errors', onclick: () => { clearErrors(); syncErrors(); } }, t('clearErrors'))),
+    copyMsg, copyArea);
+  panel.refresh = () => { syncCounts(); syncErrors(); };
   return panel;
 }
 
@@ -1929,7 +2426,7 @@ function roulettePanel() {
   async function spin() {
     if (S.busy) return;
     const list = candidates();
-    if (!list.length) { status.fail(new UserError(t('rouletteEmpty'))); return; }
+    if (!list.length) { status.fail(new UserError(t('rouletteEmpty'), 'rouletteEmpty')); return; }
     status.clear();
     const chosen = pickIndex(list.length);
     go.disabled = true;
@@ -2076,55 +2573,38 @@ function rememberRecent(panel) {
 }
 const recentPanels = () => (Array.isArray(getItem(KEYS.recent)) ? getItem(KEYS.recent) : []).filter((x) => PANEL_LABEL[x]).slice(0, RECENT_MAX);
 
-/** Lectura de Tus me gusta compartida por Olvidadas y el índice de la biblioteca (una vez por sesión). */
+/** Tus me gusta para Olvidadas: si no han cambiado desde la última lectura, de la copia del dispositivo (una petición). */
 async function likedTracks(status) {
   const liked = S.playlists.find((p) => p.isLiked);
-  if (liked?.error) throw new UserError(t('likedUnavailable'));
-  if (S.likedRead && S.likedRead.total === liked?.total) return S.likedRead.tracks;
-  const r = await readSource(liked ?? likedEntry(), (d, tot) => status.progress('reading', d, tot));
-  S.likedRead = { total: liked?.total, tracks: r.tracks };
-  return r.tracks;
+  if (liked?.error) throw new UserError(t('likedUnavailable'), 'likedUnavailable');
+  return (await readSource(liked ?? likedEntry(), (d, tot) => status.progress('reading', d, tot), { useCache: true })).tracks;
 }
 
-const LIB_TTL_MS = 24 * 3600 * 1000;
-/** Más grande no se guarda en el dispositivo (se usa solo en esta sesión): deja sitio a Deshacer y a las mezclas. */
-const MAX_INDEX_CHARS = 1_500_000;
-const IDS_RE = /^[A-Za-z0-9,]*$/;
+/** Peticiones como mucho para poner al día el índice de tus playlists en cada búsqueda de Descubrir. */
+const INDEX_BUDGET = 8;
 
 /**
- * Ids de todas las canciones que ya tienes: tus playlists (propias y colaborativas, sin las de Shuffl) y Tus me gusta.
- * Se guarda en el dispositivo por playlist con su `snapshot_id`: solo se vuelve a leer la que cambió o lleva más de 24 h.
+ * Ids de las canciones de tus playlists (propias y colaborativas, sin las de Shuffl), para no proponerte lo que ya
+ * tienes. Usa la copia guardada de cada playlist (vale mientras no cambie su snapshot_id); las que cambiaron se leen
+ * con un tope de INDEX_BUDGET peticiones por búsqueda, y si no caben se usa su copia anterior (o se leen la próxima vez).
+ * Tus me gusta no se lee entera: se pregunta a Spotify solo por las candidatas (`dropSaved`).
  */
-async function libraryIndex(status) {
-  const stored = getItem(KEYS.libIndex);
-  const prev = stored?.me === S.me.id && stored.lists && typeof stored.lists === 'object' ? stored : { lists: {} };
-  const now = Date.now();
-  const fresh = (e) => e && typeof e.ids === 'string' && IDS_RE.test(e.ids) && typeof e.at === 'number' && now - e.at < LIB_TTL_MS && now >= e.at;
-  const next = { me: S.me.id, lists: {}, liked: null };
+async function playlistIndex(status) {
+  await ensureFreshLibrary();
   const ids = new Set();
-  const add = (s) => { for (const id of s.split(',')) if (id) ids.add(id); };
-  const mine = S.raw.filter((p) => (p.owner?.id === S.me.id || p.collaborative) && !isAppPlaylist(p, S.me.id));
+  const mine = S.raw.filter((p) => p?.id && (p.owner?.id === S.me.id || p.collaborative) && !isAppPlaylist(p, S.me.id));
+  let spent = 0;
   for (const [i, p] of mine.entries()) {
-    let e = prev.lists[p.id];
-    if (!fresh(e) || e.snap !== (p.snapshot_id ?? '')) {
+    const hit = await cacheRead(`pl:${p.id}`, LONG_TTL_MS);
+    let tracks = hit?.snap && hit.snap === p.snapshot_id ? hit.tracks : null;
+    const pages = Math.max(1, Math.ceil((p.items?.total ?? p.tracks?.total ?? 0) / 50));
+    if (!tracks && spent + pages <= INDEX_BUDGET) {
       status.progress('readingLibrary', i, mine.length);
-      const r = await readSource({ id: p.id, isLiked: false });
-      e = { snap: p.snapshot_id ?? '', at: now, ids: r.tracks.map((x) => x.id).filter((id) => /^[A-Za-z0-9]+$/.test(id)).join(',') };
+      tracks = (await readSource({ id: p.id }, null, { useCache: true })).tracks;
+      spent += pages;
     }
-    next.lists[p.id] = e;
-    add(e.ids);
+    for (const tr of tracks ?? hit?.tracks ?? []) ids.add(tr.id);
   }
-  const liked = S.playlists.find((p) => p.isLiked);
-  if (liked && !liked.error) {
-    let e = prev.liked;
-    if (!fresh(e) || e.total !== liked.total) {
-      e = { total: liked.total, at: now, ids: (await likedTracks(status)).map((x) => x.id).filter((id) => /^[A-Za-z0-9]+$/.test(id)).join(',') };
-    }
-    next.liked = e;
-    add(e.ids);
-  }
-  if (JSON.stringify(next).length <= MAX_INDEX_CHARS) setItem(KEYS.libIndex, next);
-  else removeItem(KEYS.libIndex);
   return ids;
 }
 
@@ -2136,16 +2616,19 @@ const topArtistLists = async () => [
   await cached('topArtists:short_term', async () => slimArtists(await S.api.getTopArtists('short_term'))),
   await cached('topArtists:medium_term', async () => slimArtists(await S.api.getTopArtists('medium_term'))),
 ];
-/** Lanzamientos (álbumes y singles, los 10 últimos de cada tipo) de un artista. */
-const artistReleases = (id) => cached(`artistAlbums:${id}`, async () => [
-  ...await S.api.getArtistAlbums(id, 'album'), ...await S.api.getArtistAlbums(id, 'single'),
-].map(albumInfo));
+/** Lanzamientos de un artista (los 10 últimos entre álbumes y singles, en una petición). 24 h en el dispositivo. */
+const artistReleases = (id) => cached(`releases:${id}`, async () => (await S.api.getArtistAlbums(id)).map(albumInfo));
 
 const MAX_GENRE_PAGES = 3;
+/** Álbumes de lo que escuchas últimamente con los que empieza Descubre. */
+const LISTENING_ALBUMS = 8;
 
 /**
  * Novedades y Descubre: cuántas canciones (o cuánto tiempo), de quién («tus artistas», «como mi playlist…» o un
- * género) y sin lo que ya tienes en tus playlists o en Tus me gusta. «Buscar más» añade otra tanda a la misma playlist.
+ * género) y sin lo que ya tienes en tus playlists o en Tus me gusta. «Buscar más» añade otra tanda a la misma playlist
+ * y sigue con los artistas donde se quedó (lo ya leído está en la caché del dispositivo).
+ * Cada búsqueda gasta como mucho READ_BUDGET peticiones de lectura; si Spotify agota la cuota a mitad, se guarda lo
+ * conseguido si llega a MIN_TRACKS_ON_QUOTA canciones.
  */
 function discoverGenPanel(kind) {
   const isNew = kind === 'new';
@@ -2160,6 +2643,9 @@ function discoverGenPanel(kind) {
   minSel.set('60');
   const amountBox = h('div', {}, h('p', { class: 'field-label' }, t('amountLabel')), countSel.el);
   const timeBox = h('div', { hidden: true }, h('p', { class: 'field-label' }, t('timeLabel')), minSel.el);
+  const perSearch = segmented(`${kind}-artists`, t('artistsPerSearch'), ARTISTS_PER_SEARCH.map((n) => [String(n), String(n)]),
+    (v) => setItem(KEYS.artistsPerSearch, Number(v)));
+  perSearch.set(String(sanitizeArtistsPerSearch(getItem(KEYS.artistsPerSearch))));
 
   const styleSel = segmented(`${kind}-style`, t('styleLabel'), [['mine', t('style_mine')], ['playlist', t('style_playlist')], ['genre', t('style_genre')]], () => sync());
   const genreOption = styleSel.el.querySelector(`label[for="${kind}-style-genre"]`);
@@ -2196,6 +2682,7 @@ function discoverGenPanel(kind) {
     h('details', { class: 'more', id: `${kind}-more` }, h('summary', {}, t('moreOptions')),
       h('label', { class: 'check' }, byTime, h('span', {}, t('byTimeToggle'))), amountBox, timeBox,
       isNew ? h('p', { class: 'field-label' }, t('newDaysLabel')) : null, days?.el,
+      h('p', { class: 'field-label' }, t('artistsPerSearch')), perSearch.el,
       h('p', { class: 'muted small' }, t('quotaNote'))));
 
   /** Se rellenan al abrir la pantalla: tus playlists para «Como mi playlist…» y los géneros de tus artistas. */
@@ -2218,12 +2705,13 @@ function discoverGenPanel(kind) {
     sync();
   }
 
-  // Estado de la tanda en curso: lo que queda por proponer y en qué playlist se está escribiendo.
+  // Estado de la tanda en curso: artistas por recorrer, canciones por proponer y en qué playlist se escribe.
   let st = null;
+  const overBudget = () => actionSpent() >= READ_BUDGET;
 
   async function artistsFor(s) {
     if (s === 'playlist') {
-      const { tracks } = await readSources([seed()], status);
+      const { tracks } = await readSources([seed()], status, { useCache: true });
       return artistsFromTracks(tracks).slice(0, MAX_DISCOVER_ARTISTS);
     }
     const tops = await topArtistLists();
@@ -2232,47 +2720,73 @@ function discoverGenPanel(kind) {
       const out = tops.flat().filter((a) => a.genres?.includes(g));
       for (let page = 0; page < MAX_GENRE_PAGES; page++) {
         status.phase('searchingGenre');
-        const found = slimArtists(await cached(`genre:${g}:${page}`, async () => slimArtists(await S.api.searchArtistsByGenre(g, page * 10))));
+        const found = await cached(`genre:${g}:${page}`, async () => slimArtists(await S.api.searchArtistsByGenre(g, page * 10)));
         out.push(...found);
         if (found.length < 10) break;
       }
       return pickArtists([out], MAX_DISCOVER_ARTISTS);
     }
     status.phase('readingArtists');
-    const followed = await cached('followed', async () => slimArtists(await S.api.getFollowedArtists()));
+    // Las dos primeras páginas de seguidos (100 artistas) bastan: nunca se recorren más.
+    const followed = await cached('followed', async () => slimArtists(await S.api.getFollowedArtists(2)));
     return pickArtists([...tops, followed], MAX_DISCOVER_ARTISTS);
   }
 
-  /** Canciones de un lote de artistas: lanzamientos recientes (Novedades) o sus últimos álbumes (Descubre). */
-  async function tracksFor(batch, from) {
-    const albums = [];
-    for (const [i, a] of batch.entries()) {
-      status.progress('discoverReading', from + i, st.artists.length);
-      const rel = await artistReleases(a.id);
-      if (isNew) albums.push(...recentAlbums(rel, st.days));
-      else albums.push(...rel.filter((al) => al.album_type === 'album').slice(0, 3));
+  /** Canciones nuevas de un artista: lanzamientos recientes (Novedades) o sus dos últimos álbumes (Descubre). */
+  async function artistTracks(a) {
+    const rel = await artistReleases(a.id);
+    const albums = isNew ? recentAlbums(rel, st.days) : rel.filter((al) => al.album_type === 'album').slice(0, 2);
+    const out = [];
+    for (const al of albums) {
+      if (overBudget()) break;
+      out.push(...await albumTracks(al));
     }
-    const tracks = [];
-    for (const [i, al] of albums.entries()) {
-      status.progress('readingAlbums', i, albums.length);
-      tracks.push(...await albumTracks(al));
-    }
-    return tracks;
+    return out;
   }
 
-  /** Añade al pool (barajado) canciones nuevas hasta tener `need` o quedarse sin artistas. */
+  /** Añade al pool (barajado) canciones nuevas hasta tener `need`, recorrer los artistas de esta búsqueda o gastar el tope. */
   async function fill(need) {
-    while (st.pool.length < need && st.next < st.artists.length) {
-      const from = st.next;
-      const batch = st.artists.slice(from, from + ARTIST_BATCH);
-      st.next += batch.length;
-      const fresh = notInLibrary(await tracksFor(batch, from), st.libIds).filter((x) => !st.seen.has(x.uri));
+    const stop = Math.min(st.artists.length, st.next + st.perSearch);
+    while (st.pool.length < need && st.next < stop && !overBudget()) {
+      status.progress('discoverReading', st.next, st.artists.length);
+      const a = st.artists[st.next++];
+      const fresh = notInLibrary(await artistTracks(a), st.libIds).filter((x) => !st.seen.has(x.uri));
       fresh.forEach((x) => st.seen.add(x.uri));
       st.pool.push(...shuffle(fresh));
     }
   }
 
-  const need = (a) => (a.minutes ? Math.ceil(a.minutes / 2.5) + 10 : a.count);
+  /** Quita del pool las que están en Tus me gusta, preguntando solo por las primeras `n` (lotes de 40, una petición cada uno). */
+  async function dropSaved(n) {
+    const toCheck = st.pool.slice(0, n).filter((x) => !st.checked.has(x.uri));
+    if (!toCheck.length) return;
+    status.phase('checkingLiked');
+    const saved = await S.api.libraryContains(toCheck.map((x) => x.uri));
+    toCheck.forEach((x) => st.checked.add(x.uri));
+    const drop = new Set(toCheck.filter((_, i) => saved[i]).map((x) => x.uri));
+    if (drop.size) st.pool = st.pool.filter((x) => !drop.has(x.uri));
+  }
+
+  /**
+   * Busca hasta tener lo pedido. Si la cuota se agota a mitad, no reintenta: devuelve lo conseguido y lo marca.
+   * Devuelve { taken, quota }.
+   */
+  async function gather() {
+    const want = need(st.amount);
+    let quota = false;
+    try {
+      await fill(want + 10);
+      await dropSaved(want + 10);
+    } catch (e) {
+      if (!isQuota(e)) throw e;
+      quota = true;
+    }
+    const { taken, rest } = takeAmount(st.pool, st.amount);
+    st.pool = rest;
+    return { taken, quota };
+  }
+
+  const need = (a) => (a.minutes ? Math.ceil(a.minutes / 3) + 5 : a.count);
   const name = () => generatedName({ mixName: t(isNew ? 'newName' : 'exploreName') }, nameLabels());
 
   function show(notes) {
@@ -2280,8 +2794,16 @@ function discoverGenPanel(kind) {
     renderResult(result, status, {
       name: st.name, notes, tracks: st.tracks, playlistId: st.playlistId,
       headExtra: h('button', { class: 'btn find-more', type: 'button', id: `${kind}-more-songs`, onclick: () => more() }, t('findMore')),
+      editable: true,
+      onTracks: (list) => { st.tracks = list; },
       onBack: () => { result.hidden = true; form.hidden = false; status.clear(); },
     });
+  }
+
+  function showEmpty(title, text) {
+    status.clear();
+    setKids(empty, emptyArt(), h('p', { class: 'empty-title' }, title), h('p', { class: 'muted' }, text));
+    empty.hidden = false;
   }
 
   function run() {
@@ -2289,38 +2811,46 @@ function discoverGenPanel(kind) {
       empty.hidden = true;
       status.phase('readingLibrary');
       const s = style();
-      st = { pool: [], next: 0, seen: new Set(), artists: [], tracks: [], days: days ? Number(days.value) : 0, name: name(), amount: amount() };
-      st.libIds = await libraryIndex(status);
-      st.artists = await artistsFor(s);
-      if (!isNew && s === 'mine') {
-        // Descubre empieza por los álbumes que escuchas últimamente.
-        status.phase('readingListening');
-        const recent = normalizeEntries(await S.api.getRecentlyPlayed()).tracks;
-        const top = normalizeEntries((await S.api.getTopTracks('short_term')).map((track) => ({ track }))).tracks;
-        const listened = [...recent, ...top];
-        const byId = new Map(listened.map((tr) => [tr.albumId, tr]));
-        const tracks = [];
-        for (const id of albumsFromListening(listened)) tracks.push(...await albumTracks({ id, name: byId.get(id)?.album ?? '' }));
-        const fresh = notInLibrary(withoutUris(tracks, listened.map((x) => x.uri)), st.libIds);
-        fresh.forEach((x) => st.seen.add(x.uri));
-        st.pool.push(...shuffle(fresh));
+      st = {
+        pool: [], next: 0, seen: new Set(), checked: new Set(), artists: [], tracks: [], days: days ? Number(days.value) : 0,
+        name: name(), amount: amount(), perSearch: sanitizeArtistsPerSearch(Number(perSearch.value)),
+      };
+      let quota = false;
+      try {
+        st.libIds = await playlistIndex(status);
+        st.artists = await artistsFor(s);
+        if (!isNew && s === 'mine') {
+          // Descubre empieza por los álbumes que escuchas últimamente.
+          status.phase('readingListening');
+          const recent = normalizeEntries(await S.api.getRecentlyPlayed()).tracks;
+          const top = normalizeEntries((await S.api.getTopTracks('short_term')).map((track) => ({ track }))).tracks;
+          const listened = [...recent, ...top];
+          const byId = new Map(listened.map((tr) => [tr.albumId, tr]));
+          const tracks = [];
+          for (const id of albumsFromListening(listened, LISTENING_ALBUMS)) {
+            if (overBudget()) break;
+            const tr = byId.get(id);
+            tracks.push(...await albumTracks({ id, name: tr?.album ?? '', images: tr?.thumb ? [{ url: tr.thumb }] : [] }));
+          }
+          const fresh = notInLibrary(withoutUris(tracks, listened.map((x) => x.uri)), st.libIds);
+          fresh.forEach((x) => st.seen.add(x.uri));
+          st.pool.push(...shuffle(fresh));
+        }
+      } catch (e) {
+        if (!isQuota(e)) throw e;
+        quota = true;
+        st.libIds ??= new Set();
       }
-      if (!st.artists.length && !st.pool.length) {
-        status.clear();
+      if (!quota && !st.artists.length && !st.pool.length) {
         const key = s === 'playlist' ? 'seedNoArtists' : s === 'genre' ? 'genreNoArtists' : 'newNoArtists';
-        setKids(empty, h('p', { class: 'empty-title' }, t('noArtistsTitle')), h('p', { class: 'muted' }, t(key)));
-        empty.hidden = false;
+        showEmpty(t('noArtistsTitle'), t(key));
         return;
       }
-      await fill(need(st.amount));
-      const { taken, rest } = takeAmount(st.pool, st.amount);
-      st.pool = rest;
+      const got = quota ? { taken: takeAmount(st.pool, st.amount).taken, quota } : await gather();
+      const { taken } = got;
+      if (got.quota && taken.length < MIN_TRACKS_ON_QUOTA) throw new ApiError(429, 'QUOTA_EXCEEDED', { error: { reason: 'QUOTA_EXCEEDED' } });
       if (!taken.length) {
-        status.clear();
-        setKids(empty,
-          h('p', { class: 'empty-title' }, isNew ? t('newEmptyTitle', { n: st.days }) : t('exploreNoneTitle')),
-          h('p', { class: 'muted' }, t(isNew ? 'newEmpty' : 'exploreNone')));
-        empty.hidden = false;
+        showEmpty(isNew ? t('newEmptyTitle', { n: st.days }) : t('exploreNoneTitle'), t(isNew ? 'newEmpty' : 'exploreNone'));
         return;
       }
       status.phase('shuffling');
@@ -2329,22 +2859,25 @@ function discoverGenPanel(kind) {
         st.playlistId = w.id;
         st.tracks = taken;
         const notes = [...w.notes, ...await uploadCover(w.id, t(isNew ? 'newName' : 'exploreName'))];
-        if (!st.amount.minutes && taken.length < st.amount.count) notes.push(t('fewerFound', { n: fmt(taken.length) }));
+        if (got.quota) notes.push(t('quotaPartial', { n: fmt(taken.length) }));
+        else if (!st.amount.minutes && taken.length < st.amount.count) notes.push(t('fewerFound', { n: fmt(taken.length) }));
         rememberRecent(kind);
-        await loadPlaylists();
         status.clear();
         show(notes);
       });
-    });
+    }, kind);
   }
 
   /** «Buscar más»: otra tanda a la misma playlist (no se crea otra, así que no hay nada que borrar). */
   function more() {
     task(status, async () => {
-      await fill(need(st.amount));
-      const { taken, rest } = takeAmount(st.pool, st.amount);
-      st.pool = rest;
-      if (!taken.length) { status.say(t('noMoreFound')); return; }
+      const { taken, quota } = await gather();
+      if (!taken.length) {
+        if (quota) throw new ApiError(429, 'QUOTA_EXCEEDED', { error: { reason: 'QUOTA_EXCEEDED' } });
+        status.say(t(st.next >= st.artists.length ? 'noMoreFound' : 'noMoreYet'));
+        return;
+      }
+      await result.flushPending?.();
       status.phase('saving');
       await withWriteLock(async () => {
         await assertStillAppPlaylist(st.playlistId);
@@ -2352,8 +2885,8 @@ function discoverGenPanel(kind) {
       });
       st.tracks = [...st.tracks, ...taken];
       status.clear();
-      show([t('addedMore', { n: fmt(taken.length) })]);
-    });
+      show([t(quota ? 'quotaPartial' : 'addedMore', { n: fmt(taken.length) })]);
+    }, `${kind}-more`);
   }
 
   const panel = h('section', { class: 'panel', id: `panel-${kind}`, hidden: true },
@@ -2363,7 +2896,9 @@ function discoverGenPanel(kind) {
   return panel;
 }
 
-/** Olvidadas: Tus me gusta de hace años. Como toda playlist de Shuffl, sustituye a la anterior. */
+/** Olvidadas: Tus me gusta de hace años; como mucho 100, elegidas al azar entre todas las olvidadas (crear una de miles gastaría mucha cuota). */
+const FORGOTTEN_MAX = 100;
+
 function forgottenPanel() {
   const status = createStatus({ loader: true });
   const result = h('div', { class: 'result', hidden: true });
@@ -2381,23 +2916,41 @@ function forgottenPanel() {
       const list = forgottenTracks(await likedTracks(status), n);
       if (!list.length) {
         status.clear();
-        setKids(empty, h('p', { class: 'empty-title' }, t('forgottenEmptyTitle')), h('p', { class: 'muted' }, t('forgottenEmpty', { n })));
+        setKids(empty, emptyArt(), h('p', { class: 'empty-title' }, t('forgottenEmptyTitle')), h('p', { class: 'muted' }, t('forgottenEmpty', { n })));
         empty.hidden = false;
         return;
       }
-      const { tracks } = capPlaylist(shuffle(list));
+      const tracks = shuffle(list).slice(0, FORGOTTEN_MAX);
       const name = generatedName({ mixName: t('forgottenName') }, nameLabels());
       await commitApp({ key: 'forgotten', name, description: genDescription('forgottenDesc', { n }), uris: tracks.map((x) => x.uri) }, status, async (w) => {
         const notes = [...w.notes, ...await uploadCover(w.id, t('forgottenName'))];
+        if (list.length > tracks.length) notes.push(t('forgottenSample', { n: fmt(tracks.length), m: fmt(list.length) }));
         rememberRecent('forgotten');
-        await loadPlaylists();
         status.clear();
         form.hidden = true;
+        const removed = new Set();
         renderResult(result, status, {
           name, notes, tracks, playlistId: w.id,
-          extra: [h('button', { class: 'btn', type: 'button', id: 'forgotten-again', onclick: () => { result.hidden = true; form.hidden = false; run(); } }, t('reshuffle'))],
+          headExtra: h('button', { class: 'btn reshuffle', type: 'button', id: 'forgotten-again', onclick: () => again() }, icon(...ICONS.shuffle), h('span', {}, t('reshuffle'))),
+          editable: true,
+          onTracks: (_left, tr) => { removed.add(tr.uri); },
+          reshuffle: () => again(),
           onBack: () => { result.hidden = true; form.hidden = false; status.clear(); },
         });
+        /** Otras 100 al azar entre todas las olvidadas (nunca las que quitaste), en la misma playlist. */
+        function again() {
+          if (S.busy) return;
+          result.cancelPending?.();
+          task(status, async () => {
+            const order = shuffle(list.filter((x) => !removed.has(x.uri))).slice(0, FORGOTTEN_MAX);
+            await withWriteLock(async () => {
+              await assertStillAppPlaylist(w.id);
+              await S.api.replaceItems(w.id, order.map((x) => x.uri), (d, tot) => status.progress('saving', d, tot));
+            });
+            status.clear();
+            renderResult(result, status, { ...result.lastOptions, tracks: order, notes: [] });
+          }, 'reshuffle');
+        }
       });
     });
   }
@@ -2419,9 +2972,6 @@ function summaryPanel() {
   let topTracks = [];
   let previewUrl = null;
 
-  const itemRow = (img, title, sub) => h('li', { class: 'row' },
-    img ? h('img', { class: 'cover', src: img, alt: '', loading: 'lazy' }) : h('span', { class: 'cover', 'aria-hidden': 'true' }, '♪'),
-    h('span', { class: 'row-text' }, h('span', { class: 'row-name' }, title), sub ? h('span', { class: 'row-meta' }, sub) : null));
 
   function run() {
     task(status, async () => {
@@ -2434,7 +2984,7 @@ function summaryPanel() {
       topTracks = normalizeEntries(rawTop.map((track) => ({ track }))).tracks;
       if (!artists.length && !topTracks.length) {
         status.clear();
-        setKids(empty, h('p', { class: 'empty-title' }, t('summaryEmptyTitle')), h('p', { class: 'muted' }, t('summaryEmpty')));
+        setKids(empty, emptyArt(), h('p', { class: 'empty-title' }, t('summaryEmptyTitle')), h('p', { class: 'muted' }, t('summaryEmpty')));
         empty.hidden = false;
         return;
       }
@@ -2447,7 +2997,7 @@ function summaryPanel() {
       };
       status.say(t('summaryDrawing'));
       const [story, square] = await Promise.all([renderSummary(data, 'story'), renderSummary(data, 'square')])
-        .catch((e) => { throw e?.message === 'spotifyLogo' ? new UserError(t('summaryNoLogo')) : e; });
+        .catch((e) => { throw e?.message === 'spotifyLogo' ? new UserError(t('summaryNoLogo'), 'summaryNoLogo') : e; });
       status.clear();
       const stamp = new Date().toISOString().slice(0, 10);
       if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -2459,8 +3009,8 @@ function summaryPanel() {
         h('div', { class: 'actions' },
           h('button', { class: 'btn primary', type: 'button', id: 'summary-share-story', onclick: () => saveFile(story.blob, `shuffl-resumen-${stamp}.png`, status) }, t('summaryShareStory')),
           h('button', { class: 'btn', type: 'button', id: 'summary-share-square', onclick: () => saveFile(square.blob, `shuffl-resumen-cuadrado-${stamp}.png`, status) }, t('summaryShareSquare'))),
-        h('h2', {}, t('summaryArtists')), h('ol', { class: 'summary-list' }, data.artists.map((a) => itemRow(a.image, a.name))),
-        h('h2', {}, t('summaryTracks')), h('ol', { class: 'summary-list' }, data.tracks.map((tr) => itemRow(tr.image, tr.name, tr.sub))),
+        h('h2', {}, t('summaryArtists')), h('ol', { class: 'tracks summary-list', id: 'summary-artists' }, artists.map((a, i) => trackRow({ name: a.name ?? '', sub: '', thumb: pickThumb(a.images) }, i))),
+        h('h2', {}, t('summaryTracks')), h('ol', { class: 'tracks summary-list', id: 'summary-tracks' }, topTracks.slice(0, 5).map((tr, i) => trackRow(tr, i))),
         spotifyAttribution(),
         topTracks.length ? h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', id: 'summary-playlist', onclick: () => makeTopPlaylist() }, t('summaryMakePlaylist'))) : null,
         result);
@@ -2477,10 +3027,9 @@ function summaryPanel() {
       const description = genDescription('topDesc', { range: t(SUMMARY_RANGES.find(([k]) => k === range.value)[1]) });
       await commitApp({ key: 'top', name, description, uris: order.map((x) => x.uri) }, status, async (w) => {
         const notes = [...w.notes, ...await uploadCover(w.id, t('topName'))];
-        await loadPlaylists();
         status.clear();
         renderResult(result, status, {
-          name, notes, tracks: order, playlistId: w.id,
+          name, notes, tracks: order, playlistId: w.id, editable: true,
           onBack: () => { result.hidden = true; },
         });
       });
@@ -2506,17 +3055,17 @@ const TAB_LABEL = Object.fromEntries(TABS);
 const PARENT = {
   roulette: 'shuffle',
   new: 'discover', explore: 'discover', forgotten: 'discover', summary: 'discover',
-  sort: 'more', dups: 'more', backup: 'more', snap: 'more', orphans: 'more', split: 'more', proof: 'more', pin: 'more', settings: 'more',
+  sort: 'more', dups: 'more', backup: 'more', snap: 'more', orphans: 'more', split: 'more', proof: 'more', pin: 'more', settings: 'more', diag: 'more',
 };
 const PANEL_LABEL = {
   new: 'newTitle', explore: 'exploreTitle', forgotten: 'forgottenTitle', summary: 'summaryTitle',
   sort: 'tabSort', dups: 'tabDups', backup: 'tabBackup', snap: 'snapTitle', orphans: 'orphansTitle', split: 'splitTitle',
-  roulette: 'rouletteTitle', proof: 'proofTitle',
+  roulette: 'rouletteTitle', proof: 'proofTitle', diag: 'diagTitle2',
 };
 const PANEL_ICON = {
   new: 'spark', explore: 'compass', forgotten: 'clock', summary: 'trophy',
   sort: 'sort', dups: 'dups', backup: 'backup', snap: 'snap', orphans: 'orphans', split: 'split',
-  roulette: 'roulette', proof: 'proof', pin: 'pin', settings: 'settings',
+  roulette: 'roulette', proof: 'proof', pin: 'pin', settings: 'settings', diag: 'diag',
 };
 const tabOf = (key) => PARENT[key] ?? key;
 
@@ -2554,6 +3103,7 @@ function morePanel() {
     h('div', { class: 'cards' },
       navCard('pin', t('pinTitle'), t('cardPinSub')),
       navCard('proof', t('proofTitle'), t('cardProofSub')),
+      navCard('diag', t('diagTitle2'), t('cardDiagSub')),
       navCard('settings', t('settings'), t('cardSettingsSub'))));
 }
 
@@ -2638,7 +3188,9 @@ function homePanel() {
 
 const mixLabel = (mix) => {
   const src = mixSources(mix, t('libraryName'));
-  return mix.kind === 'time' ? `${t('minutesShort', { n: mix.minutes })} · ${src}` : src;
+  if (mix.kind !== 'time') return src;
+  const p = presetByKey(mix.preset);
+  return `${p ? `${p.emoji} ${t(`preset_${p.key}`)} ` : ''}${t('minutesShort', { n: mix.minutes })} · ${src}`;
 };
 
 function mountApp() {
@@ -2649,7 +3201,7 @@ function mountApp() {
     new: discoverGenPanel('new'), explore: discoverGenPanel('explore'), forgotten: forgottenPanel(), summary: summaryPanel(),
     sort: sortPanel(), dups: dupsPanel(), backup: backupPanel(),
     snap: snapPanel(), orphans: orphansPanel(), split: splitPanel(), pin: pinPanel(), settings: settingsPanel(),
-    roulette: roulettePanel(), proof: proofPanel(),
+    roulette: roulettePanel(), proof: proofPanel(), diag: diagPanel(),
   };
   const tabBtns = {};
   let prev = null;
@@ -2769,13 +3321,65 @@ const THEMES = ['dark', 'light', 'auto'];
 const currentTheme = () => (THEMES.includes(getItem(KEYS.theme)) ? getItem(KEYS.theme) : 'dark');
 const applyTheme = () => { document.documentElement.dataset.theme = currentTheme(); };
 
-async function refreshPlaylists() {
-  if (S.busy || !S.api) return;
+function ptrIndicator() {
   let ind = document.getElementById('ptr');
   if (!ind) {
     ind = h('div', { id: 'ptr', class: 'ptr', role: 'status' });
     document.body.append(ind);
   }
+  return ind;
+}
+
+/** Aviso breve arriba al tirar hacia abajo. */
+function pullHint(text) {
+  const ind = ptrIndicator();
+  ind.textContent = text;
+  ind.classList.add('show');
+  setTimeout(() => ind.classList.remove('show'), 1200);
+}
+
+/** Vuelve a pedir permiso a Spotify (sesión caducada o falta un permiso). */
+async function reconnect() {
+  try {
+    await auth.startLogin();
+  } catch (e) {
+    recordError(e);
+    showToast(errorMessage(e));
+  }
+}
+
+let toastTimer = null;
+/** Mensaje flotante abajo, para errores que no son de ninguna pantalla. Con «Diagnóstico» para copiar el informe. */
+function showToast(text) {
+  document.getElementById('toast')?.remove();
+  const box = h('div', { class: 'toast', id: 'toast', role: 'alert' },
+    h('p', {}, text),
+    S.show ? h('button', { class: 'btn', type: 'button', onclick: () => { box.remove(); S.show('diag'); } }, t('diagTitle2')) : null,
+    h('button', { class: 'btn', type: 'button', 'aria-label': t('close'), onclick: () => box.remove() }, '×'));
+  document.body.append(box);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => box.remove(), 8000);
+}
+
+let lastCrash = 0;
+/**
+ * Red de seguridad: un error que no ha recogido ninguna pantalla se registra y se explica en un aviso, nunca una
+ * pantalla en blanco ni un botón que se queda sin hacer nada. Como mucho un aviso cada 3 s.
+ */
+function onCrash(err) {
+  if (!err || err?.name === 'AbortError') return;
+  recordError(err);
+  console.error(err);
+  if (Date.now() - lastCrash < 3000) return;
+  lastCrash = Date.now();
+  showToast(errorMessage(err));
+}
+window.addEventListener('error', (e) => { if (e.error) onCrash(e.error); });
+window.addEventListener('unhandledrejection', (e) => onCrash(e.reason));
+
+async function refreshPlaylists() {
+  if (S.busy || !S.api) return;
+  const ind = ptrIndicator();
   ind.textContent = t('refreshing');
   ind.classList.add('show');
   S.busy = true;
@@ -2797,7 +3401,7 @@ function bindGestures() {
   let start = null;
   document.addEventListener('touchstart', (e) => {
     const p = e.touches[0];
-    start = { x: p.clientX, y: p.clientY, ignore: !!e.target.closest?.('.picker, input, select, textarea, .sheet-backdrop') };
+    start = { x: p.clientX, y: p.clientY, ignore: !!e.target.closest?.('.picker, input, select, textarea, .sheet-backdrop, .removable') };
   }, { passive: true });
   document.addEventListener('touchend', (e) => {
     const s = start;
@@ -2810,7 +3414,9 @@ function bindGestures() {
       const next = TAB_ORDER[TAB_ORDER.indexOf(S.tab) + (dx < 0 ? 1 : -1)];
       if (TAB_ORDER.includes(S.tab) && next) S.show(next, dx < 0 ? 1 : -1);
     } else if (dy > 90 && Math.abs(dx) < 40 && window.scrollY <= 0) {
-      refreshPlaylists();
+      // En un resultado que se puede rebarajar, tirar hacia abajo rebaraja; en el resto, refresca tus playlists.
+      const result = document.querySelector(`#panel-${S.tab} .result:not([hidden])`);
+      if (result?.pullAction && !S.busy) { pullHint(t('pullReshuffle')); result.pullAction(); } else refreshPlaylists();
     }
   }, { passive: true });
 }
@@ -2833,9 +3439,10 @@ async function boot() {
   }
   if (!auth.getClientId() || !auth.isLoggedIn()) return renderSetup(problem);
   if (auth.needsReconnect()) return renderReconnect();
-  S.api = new SpotifyApi({ auth });
+  S.api = new SpotifyApi({ auth, onRequest: countRequest });
   try {
     S.me = await S.api.getMe();
+    idbPrune(LONG_TTL_MS);
     mountApp();
     await loadPlaylists();
     await probeLiked();
@@ -2843,8 +3450,11 @@ async function boot() {
   } catch (e) {
     console.error(e);
     if (e instanceof auth.AuthError) return renderSetup(e);
-    setKids(root,h('main', { class: 'setup' }, h('p', { class: 'error', role: 'alert' }, errorMessage(e)),
-      h('button', { class: 'btn primary', type: 'button', onclick: () => location.reload() }, t('retry'))));
+    recordError(e);
+    const info = errorInfo(e);
+    setKids(root, h('main', { class: 'setup', id: 'boot-error' }, h('p', { class: 'error', role: 'alert' }, info.text),
+      h('button', { class: 'btn primary', type: 'button', onclick: () => location.reload() }, t('retry')),
+      info.reconnect ? h('button', { class: 'btn', type: 'button', onclick: () => reconnect() }, t('reconnectBtn')) : null));
   }
 }
 

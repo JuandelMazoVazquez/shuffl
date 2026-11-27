@@ -21,12 +21,12 @@ test('?mezcla=<id>&play=1&k=<clave> rebaraja la mezcla en «Coche · Shuffle» y
   await page.addInitScript((k) => localStorage.setItem('baraja.linkKey', JSON.stringify(k)), KEY);
   await login(page);
   await page.goto(`/?mezcla=m1&play=1&k=${KEY}`);
-  await expect(page.getByText('Reproduciendo en iPhone de prueba.')).toBeVisible();
+  await expect(page.locator('#play-msg')).toContainText('Sonando en iPhone de prueba');
   const [gen] = byName('Coche · Shuffle');
   expect(gen.tracks).toHaveLength(80);
   expect(writesTo('pl_rock')).toEqual([]);
-  expect(state.playerCalls.map((c) => c.path)).toEqual(['/me/player/shuffle', '/me/player/play']);
-  expect(state.playerCalls[1].body.context_uri).toBe(`spotify:playlist:${gen.id}`);
+  expect(state.playerCalls.map((c) => c.path)).toEqual(['/me/player/play', '/me/player/shuffle', '/me/player']);
+  expect(state.playerCalls[0].body.context_uri).toBe(`spotify:playlist:${gen.id}`);
   expect(page.url()).toBe('http://127.0.0.1:5173/');
   expect(dialogs).toEqual([]);
 
@@ -40,7 +40,7 @@ test('?mezcla=<id>&play=1&k=<clave> rebaraja la mezcla en «Coche · Shuffle» y
 test('?origen=<playlist>&play=1 baraja esa playlist en su «· Shuffle»; sin play no reproduce', async ({ page }) => {
   await login(page);
   await page.goto('/?origen=pl_chill&play=1');
-  await expect(page.getByText('Reproduciendo en iPhone de prueba.')).toBeVisible();
+  await expect(page.locator('#play-msg')).toContainText('Sonando en iPhone de prueba');
   expect(byName('Chill · Shuffle')[0].tracks).toHaveLength(80);
 
   await page.goto('/?origen=pl_rock');

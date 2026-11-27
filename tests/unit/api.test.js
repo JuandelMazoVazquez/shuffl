@@ -61,21 +61,46 @@ test('playlist vacía: una sola petición y lista vacía', async () => {
   assert.match(calls[0].url, /\/playlists\/p\/items\?/);
 });
 
-test('429 respeta Retry-After con tope de 30 s y 5 reintentos', async () => {
-  const { api, sleeps } = setup(async (_c, n) => (n <= 2 ? res(429, {}, { 'Retry-After': n === 1 ? '3' : '999' }) : res(200, { ok: 1 })));
+test('429 respeta Retry-After (hasta 30 s) con 2 reintentos; una espera más larga no se hace', async () => {
+  const { api, sleeps } = setup(async (_c, n) => (n === 1 ? res(429, {}, { 'Retry-After': '3' }) : res(200, { ok: 1 })));
   assert.deepEqual(await api.getMe(), { ok: 1 });
-  assert.deepEqual(sleeps, [3000, 30000]);
+  assert.deepEqual(sleeps, [3000]);
 
   const always = setup(async () => res(429, {}, { 'Retry-After': '1' }));
   await assert.rejects(() => always.api.getMe(), (e) => e instanceof ApiError && e.status === 429);
-  assert.equal(always.calls.length, 6);
+  assert.equal(always.calls.length, 3);
+
+  const long = setup(async () => res(429, {}, { 'Retry-After': '999' }));
+  await assert.rejects(() => long.api.getMe(), (e) => e.status === 429);
+  assert.equal(long.calls.length, 1);
+  assert.deepEqual(long.sleeps, []);
 });
 
-test('5xx: 3 reintentos con backoff y después error', async () => {
+test('5xx: 2 reintentos con backoff y después error con la ruta (sin ids ni consulta)', async () => {
   const { api, calls, sleeps } = setup(async () => res(503, { error: { message: 'down' } }));
-  await assert.rejects(() => api.getMe(), (e) => e.status === 503 && e.message === 'down');
-  assert.equal(calls.length, 4);
-  assert.deepEqual(sleeps, [500, 1000, 2000]);
+  await assert.rejects(() => api.getMe(), (e) => e.status === 503 && e.message === 'down' && e.path === 'GET /me' && e.apiMessage === 'down');
+  assert.equal(calls.length, 3);
+  assert.deepEqual(sleeps, [500, 1000]);
+});
+
+test('onRequest cuenta cada petición, reintentos incluidos', async () => {
+  let n = 0;
+  const calls = [];
+  const auth = { getAccessToken: async () => 't', refresh: async () => {} };
+  const api = new SpotifyApi({ auth, sleep: async () => {}, onRequest: () => { n++; }, fetchImpl: async (url) => { calls.push(url); return calls.length === 1 ? res(503, {}) : res(200, { id: 'me' }); } });
+  await api.getMe();
+  assert.equal(n, 2);
+});
+
+test('respuestas raras: JSON roto, playlist creada sin id y Me gusta sin total dan «incompleto», no un fallo raro', async () => {
+  const broken = setup(async () => ({ ok: true, status: 200, headers: { get: () => null }, text: async () => '{roto', clone() { return this; } }));
+  await assert.rejects(() => broken.api.getMe(), (e) => e instanceof ApiError && e.status === 0);
+  const noId = setup(async () => res(201, { name: 'x' }));
+  await assert.rejects(() => noId.api.createPlaylist('x'), (e) => e instanceof ApiError && e.status === 0);
+  const noTotal = setup(async () => res(200, { items: [] }));
+  await assert.rejects(() => noTotal.api.getLikedHead(), (e) => e.status === 0);
+  const head = setup(async () => res(200, { total: 3, items: [{ added_at: 'A', track: { uri: 'spotify:track:x' } }] }));
+  assert.deepEqual(await head.api.getLikedHead(), { total: 3, first: 'A|spotify:track:x' });
 });
 
 test('401 refresca el token una vez y repite; si vuelve a fallar, error', async () => {
@@ -162,14 +187,24 @@ test('429 con QUOTA_EXCEEDED no se reintenta y expone la razón', async () => {
   assert.equal(sleeps.length, 0);
 });
 
-test('playPlaylist apaga el aleatorio y reproduce desde la posición 0 en el dispositivo', async () => {
+test('play reproduce desde la posición 0 en el dispositivo; setShuffle y getPlayer (204 = no suena nada)', async () => {
   const { api, calls } = setup(async () => ({ ok: true, status: 204, headers: { get: () => null }, text: async () => '' }));
-  await api.playPlaylist('pl1', 'dev 1');
+  await api.play('pl1', 'dev 1');
+  await api.setShuffle(false, 'dev 1');
+  assert.equal(await api.getPlayer(), null);
   assert.deepEqual(calls.map((c) => [c.method, c.url]), [
-    ['PUT', 'https://api.spotify.com/v1/me/player/shuffle?state=false&device_id=dev%201'],
     ['PUT', 'https://api.spotify.com/v1/me/player/play?device_id=dev%201'],
+    ['PUT', 'https://api.spotify.com/v1/me/player/shuffle?state=false&device_id=dev%201'],
+    ['GET', 'https://api.spotify.com/v1/me/player'],
   ]);
-  assert.deepEqual(calls[1].body, { context_uri: 'spotify:playlist:pl1', offset: { position: 0 } });
+  assert.deepEqual(calls[0].body, { context_uri: 'spotify:playlist:pl1', offset: { position: 0 } });
+});
+
+test('lanzamientos de un artista: álbumes y singles en una sola petición de 10', async () => {
+  const { api, calls } = setup(async () => res(200, { items: [{ id: 'a' }, null, { name: 'sin id' }] }));
+  assert.deepEqual(await api.getArtistAlbums('art1'), [{ id: 'a' }]);
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0].url.endsWith('/artists/art1/albums?include_groups=album%2Csingle&limit=10'));
 });
 
 test('getDevices tolera respuestas sin lista', async () => {

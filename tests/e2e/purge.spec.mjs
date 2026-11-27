@@ -88,11 +88,13 @@ test.describe('con la hoja ya aceptada', () => {
     await pick(page, 'shuffle', 'Chill');
     await page.locator('#shuffle-go').click();
     await expect(page.locator('#panel-shuffle .error')).toContainText('Spotify no ha dejado quitar las playlists antiguas');
-    await expect(page.locator('#panel-shuffle .error')).toContainText('403');
+    await expect(page.locator('#panel-shuffle .error')).toContainText('Spotify no ha permitido hacerlo');
+    await expect(page.locator('#panel-shuffle .error')).not.toContainText(/403|\.\./);
+    await expect(page.locator('#panel-shuffle .error-box').getByRole('button', { name: 'Volver a conectar' })).toBeVisible();
     expect(state.writes.filter((w) => w.op === 'create')).toHaveLength(0);
     const reads = state.itemRequests.length;
     state.failUnfollow = false;
-    await page.locator('#panel-shuffle .error-box button').click();
+    await page.locator('#panel-shuffle .error-box').getByRole('button', { name: 'Reintentar' }).click();
     await expect(resultMeta(page)).toContainText('80 canciones');
     expect(state.itemRequests.length).toBe(reads);
     expect(state.lists.has('old')).toBe(false);
@@ -110,7 +112,7 @@ test.describe('con la hoja ya aceptada', () => {
     expect(state.lists.has('old')).toBe(false);
     const reads = state.itemRequests.length;
     state.failCreate = false;
-    await page.locator('#panel-shuffle .error-box button').click();
+    await page.locator('#panel-shuffle .error-box').getByRole('button', { name: 'Reintentar' }).click();
     await expect(resultMeta(page)).toContainText('80 canciones');
     expect(state.itemRequests.length).toBe(reads);
     expect(appLists()).toHaveLength(1);
@@ -118,7 +120,7 @@ test.describe('con la hoja ya aceptada', () => {
 
   test('el diagnóstico prueba el borrado de verdad (crea y quita una playlist vacía)', async ({ page }) => {
     await login(page);
-    await openPanel(page, 'settings');
+    await openPanel(page, 'diag');
     await page.locator('#run-diag').click();
     await expect(page.locator('#diag-results')).toContainText('✓ Quitar playlists — creada y quitada una playlist de prueba');
     expect(state.unfollowCalls.at(-1)[0]).toMatch(/^spotify:playlist:new\d+$/);
@@ -133,7 +135,7 @@ test.describe('con la hoja ya aceptada', () => {
     await page.locator('#shuffle-go').click();
     await expect(page.locator('#panel-shuffle .error')).toContainText('las playlists siguen en tu biblioteca');
     expect(state.writes.filter((w) => w.op === 'create')).toHaveLength(0);
-    await openPanel(page, 'settings');
+    await openPanel(page, 'diag');
     await page.locator('#run-diag').click();
     await expect(page.locator('#diag-results')).toContainText('✗ Quitar playlists');
     await expect(page.locator('#diag-results')).toContainText('Shuffl · prueba de borrado');
@@ -155,14 +157,14 @@ test.describe('con la hoja ya aceptada', () => {
     await pick(page, 'shuffle', 'Chill');
     await page.locator('#shuffle-go').click();
     await expect(page.locator('#panel-shuffle .error')).toContainText('No se pudo crear la playlist');
-    await page.locator('#panel-shuffle .error-box button').click();
+    await page.locator('#panel-shuffle .error-box').getByRole('button', { name: 'Reintentar' }).click();
     await expect(resultMeta(page)).toContainText('80 canciones');
     expect(state.writes.filter((w) => w.op === 'create')).toHaveLength(1);
     expect(byName('Chill · Shuffle')).toHaveLength(1);
     expect(byName('Chill · Shuffle')[0].tracks).toHaveLength(80);
   });
 
-  test('«Buscar más» no escribe en una playlist que ya no está (otra pestaña la quitó)', async ({ page }) => {
+  test('«Volver a barajar» no escribe en una playlist que ya no está (otra pestaña la quitó): lo explica', async ({ page }) => {
     await login(page);
     await openPanel(page, 'forgotten');
     await page.locator('#forgotten-go').click();
@@ -170,18 +172,18 @@ test.describe('con la hoja ya aceptada', () => {
     await idle(page);
     const [list] = byName('Olvidadas · Shuffle');
     state.lists.delete(list.id);
+    const writes = state.writes.length;
     await page.locator('#forgotten-again').click();
-    await expect(resultMeta(page)).toBeVisible();
-    await idle(page);
-    expect(byName('Olvidadas · Shuffle')).toHaveLength(1);
+    await expect(page.locator('#panel-forgotten .error')).toContainText('ya no está en tu biblioteca');
+    expect(state.writes.length).toBe(writes);
   });
 
   test('el diagnóstico muestra el error real si Spotify no deja borrar', async ({ page }) => {
     state.failUnfollow = true;
     await login(page);
-    await openPanel(page, 'settings');
+    await openPanel(page, 'diag');
     await page.locator('#run-diag').click();
-    await expect(page.locator('#diag-results')).toContainText('✗ Quitar playlists — Spotify no ha dejado quitar las playlists antiguas: Spotify ha denegado el acceso (403)');
+    await expect(page.locator('#diag-results')).toContainText('✗ Quitar playlists — Spotify no ha dejado quitar las playlists antiguas: Spotify no ha permitido hacerlo');
   });
 
   test('desactivado en Ajustes, no se borra nada', async ({ page }) => {
@@ -238,20 +240,31 @@ test.describe('con la hoja ya aceptada', () => {
     expect(byName('Liked Songs · Shuffle')).toHaveLength(0);
   });
 
-  test('«Por tiempo» está en «Más opciones» y crea «15 min · Shuffle»', async ({ page }) => {
+  test('«Por tiempo» a la vista: «Gym 45 min · Shuffle» con el acceso rápido y «Rock · 25 min · Shuffle» a medida', async ({ page }) => {
     await login(page);
-    await moreOptions(page);
-    await page.locator('#sh-time').check();
-    await page.locator('label[for="sh-minutes-15"]').click();
     await pick(page, 'shuffle', 'Rock');
+    await page.locator('label[for="sh-kind-time"]').click();
+    await expect(page.locator('#time-box')).toBeVisible();
+    await page.locator('#sh-preset-gym').click();
+    await expect(page.locator('#shuffle-go')).toHaveText('Barajar 45 min');
     await shot(page, 'docs/capturas/24-shuffle-tiempo.png');
     await page.locator('#shuffle-go').click();
     await expect(resultMeta(page)).toBeVisible();
     await idle(page);
-    const [list] = byName('15 min · Shuffle');
-    const ms = list.tracks.reduce((n, t) => n + t.duration_ms, 0);
-    expect(Math.abs(ms - 15 * 60000)).toBeLessThanOrEqual(2 * 60000);
-    await expect(page.locator('#sh-kind')).toHaveCount(0);
+    await expect(page.locator('#panel-shuffle .result-kicker')).toHaveText('Listo · 45 min ± 2');
+    const [gym] = byName('Gym 45 min · Shuffle');
+    const ms = gym.tracks.reduce((n, t) => n + t.duration_ms, 0);
+    expect(Math.abs(ms - 45 * 60000)).toBeLessThanOrEqual(2 * 60000);
+    await expect(resultMeta(page)).toContainText(`${Math.round(ms / 60000)} min`);
+    await page.locator('#panel-shuffle .result').getByRole('button', { name: 'Volver', exact: true }).click();
+    await page.locator('#sh-preset-custom').click();
+    await page.locator('#sh-slider').fill('25');
+    await expect(page.locator('#sh-slider-out')).toHaveText('25 min');
+    await page.locator('#shuffle-go').click();
+    await expect(resultMeta(page)).toBeVisible();
+    await idle(page);
+    expect(byName('Rock · 25 min · Shuffle')).toHaveLength(1);
+    expect(byName('Gym 45 min · Shuffle')).toHaveLength(0);
   });
 });
 

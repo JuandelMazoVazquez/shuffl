@@ -21,8 +21,9 @@ Solo con `accounts.spotify.com` (inicio de sesión y renovación del token), `ap
 | `baraja.theme`, `baraja.cover`, `baraja.shake` | Tema, si se sube portada y si agitar para barajar está activado |
 | `baraja.logoNotice.v12` | Si ya viste el aviso de icono nuevo |
 | `baraja.purge`, `baraja.purgeOk` | Si se quitan las playlists anteriores de Shuffl al crear una nueva y si ya aceptaste la lista la primera vez |
-| `baraja.libIndex` | Qué canciones tienes (ids de canciones de tus playlists y de Tus me gusta, con el `snapshot_id` de cada playlist), para que Descubrir no te proponga lo que ya tienes. Se renueva a las 24 h y se borra al cerrar sesión |
-| `baraja.metaCache` | Caché de 24 h de datos públicos de Spotify: ids y nombres de tus artistas top y seguidos, lanzamientos de esos artistas y canciones de álbumes |
+| `baraja.reqDay` | Cuántas peticiones a Spotify se han hecho hoy (para Diagnóstico) |
+| `baraja.errors` | Los últimos 50 errores: fecha, pantalla, tipo, código de Spotify y ruta de la API sin ids. Nunca nombres, mensajes con datos tuyos ni tokens. Se borra con «Borrar registro» |
+| `baraja.artistsPerSearch` | Artistas por búsqueda en Novedades y Descubre |
 | `baraja.recent` | Las últimas funciones de Descubrir usadas, para «Lo último» de Inicio |
 | `baraja.discoverDays` | Días de Novedades (7, 30 o 90) |
 
@@ -33,6 +34,17 @@ La tarjeta de «Tu resumen» se dibuja en tu navegador y solo sale de él si tú
 Las claves siguen empezando por `baraja.` (el nombre anterior de la app) para no cerrar la sesión de nadie con el cambio de nombre.
 
 Si el navegador bloquea localStorage, Shuffl guarda esos datos en memoria hasta que cierres la pestaña.
+
+## Qué se guarda en IndexedDB (caché para gastar menos cuota)
+
+En la base `shuffl-cache` de tu navegador, con el id de tu cuenta delante de cada clave:
+
+- las canciones de tus playlists y de Tus me gusta que Shuffl ya ha leído (título, artistas, álbum, duración, fecha en que la añadiste y miniatura), con el `snapshot_id` de cada playlist para saber si ha cambiado;
+- tus artistas top y seguidos, sus lanzamientos y las canciones de esos álbumes.
+
+Las canciones valen mientras la playlist no cambie (como mucho 30 días); artistas y lanzamientos, 24 horas. Todo se borra al cerrar sesión, y lo que tiene más de 30 días se borra al abrir la app.
+
+«Copiar informe» (Más → Diagnóstico) copia al portapapeles la versión, el navegador, el contador de peticiones, el resultado de la prueba completa y el registro de errores. No lleva nombres de playlists, de canciones ni de dispositivos, ni tokens, y solo sale de tu dispositivo si tú lo pegas en algún sitio.
 
 Las copias JSON y CSV se generan en tu dispositivo y las guardas tú donde quieras.
 

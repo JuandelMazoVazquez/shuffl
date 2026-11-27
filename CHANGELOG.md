@@ -2,6 +2,45 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). El proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 
+## [1.3.2] - 2026-11-27
+
+Que no falle nada con una cuenta real, mucha menos cuota de Spotify, el shuffle por tiempo a la vista y carátulas en todas las listas.
+
+### Cambiado
+
+- **Mucha menos cuota de Spotify**. Novedades pasa de unas 200 peticiones a 32, y ninguna acción normal pasa de 40 (tabla en `DECISIONES.md`).
+  - Lo leído se guarda en el dispositivo (IndexedDB). Una playlist que no ha cambiado no se vuelve a leer, y Tus me gusta se comprueba con una sola petición.
+  - Para no proponerte lo que ya tienes en Me gusta, solo se pregunta por las canciones candidatas.
+  - Cada búsqueda de Novedades o Descubre se para tras unas 30 lecturas; «Buscar más» sigue donde se quedó. En «Más opciones» eliges cuántos artistas mira cada vez.
+- **Si Spotify agota la cuota**, no se reintenta. Novedades y Descubre guardan lo conseguido si llega a 10 canciones, y el mensaje es claro: «Spotify limita cuántas búsquedas puede hacer la app. Vuelve a intentarlo en un rato.».
+- **Shuffle por tiempo, a la vista**: «Toda la playlist / Por tiempo» bajo las playlists.
+  - Accesos rápidos: 🚗 Trayecto 20 min, 🏋️ Gym 45, 🏃 Correr 30, ✈️ Viaje 90 y 😴 Dormir 30, o «A medida» de 5 a 180 min.
+  - Nombres: «Gym 45 min · Shuffle» o «Rock · 45 min · Shuffle».
+  - Las mezclas guardadas y los atajos de Siri lo recuerdan.
+- **Reproducir ahora**:
+  - Pone la playlist desde la primera canción, apaga el aleatorio y **comprueba** que suena así; si no, lo intenta otra vez y explica qué pasa.
+  - Si el móvil no está activo: «Abre Spotify un momento y vuelve a pulsar», con «Abrir en Spotify».
+  - Explica también: sin Premium, dispositivo que no se deja controlar, dormido, aleatorio que no se apaga u orden que Spotify no cumple.
+- **Errores en palabras normales**: ningún código ni texto técnico, siempre con una acción («Reintentar», «Volver a conectar», «Abrir en Spotify»). Un fallo inesperado sale en un aviso, nunca una pantalla en blanco.
+- **Olvidadas**: 100 al azar entre las olvidadas; «Volver a barajar» elige otras.
+- «Comprobar conexión» pasa a Más → Diagnóstico.
+
+### Añadido
+
+- **Más → Diagnóstico**:
+  - Peticiones de la sesión, del día y de cada acción.
+  - **Prueba completa** con tu cuenta, paso a paso: sesión, leer, crear, sobrescribir y quitar una playlist de prueba, dispositivos y reproducción.
+  - Registro de los últimos errores con «Copiar informe», sin nombres ni tokens.
+- **Carátulas en todas las listas**: resultados, Novedades, Descubre, Olvidadas, Instantáneas, Tu resumen, Duplicados, Ordenar, Me gusta sin playlist y Dividir.
+  - Enteras, a 48 px y en diferido, con un hueco del mismo tamaño mientras cargan.
+- **Quitar canciones** del resultado deslizando a la izquierda (o con ×), y **tirar hacia abajo para volver a barajar**.
+- Las carátulas del resultado se reparten como naipes, el fondo toma el color de la portada y los estados vacíos llevan una ilustración.
+
+### Corregido
+
+- En Descubre faltaban carátulas: los álbumes de lo que escuchas se pedían sin imagen.
+- La carátula de Inicio ya no se recorta.
+
 ## [1.3.1] - 2026-11-27
 
 Correcciones tras probar con Spotify real en el iPhone. **Hay que volver a conectar con Spotify una vez**: quitar playlists necesita dos permisos nuevos.

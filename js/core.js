@@ -87,10 +87,22 @@ export function normalizeEntry(entry) {
       trackNumber: it.track_number ?? 0,
       isLocal: false,
       image: images.length ? images[images.length - 1].url : '',
-      // Miniatura para listas (unos 48 px en pantallas de 2x o 3x): la mediana (300 px) si la hay.
-      thumb: images.length > 1 ? images[images.length - 2].url : images.length ? images[0].url : '',
+      thumb: pickThumb(images),
     },
   };
+}
+
+/**
+ * Miniatura para filas de 48 px (unos 144 px en pantallas de 3x): la imagen más pequeña que llegue a `min` px.
+ * Si ninguna llega, la más grande; si Spotify no da tamaños, la penúltima (va de mayor a menor: la de 300 px).
+ */
+export function pickThumb(images, min = 120) {
+  const list = (Array.isArray(images) ? images : []).filter((i) => typeof i?.url === 'string' && i.url.startsWith('https://'));
+  if (!list.length) return '';
+  const sized = list.filter((i) => Number.isFinite(i.width) && i.width > 0);
+  if (sized.length !== list.length) return (list.length > 1 ? list[list.length - 2] : list[0]).url;
+  const big = sized.filter((i) => i.width >= min).sort((a, b) => a.width - b.width);
+  return (big[0] ?? sized.sort((a, b) => b.width - a.width)[0]).url;
 }
 
 export function normalizeEntries(entries) {

@@ -1,6 +1,6 @@
 // Mezclas guardadas: fuentes + filtros + destino con un nombre. Todo vive en el dispositivo.
 import { sanitizeFilters } from './core.js';
-import { sanitizeMinutes } from './generators.js';
+import { sanitizeMinutes, presetByKey } from './generators.js';
 
 export const MAX_MIXES = 50;
 /** «reuse»: una playlist de Shuffl nueva (sustituye a la anterior); «self»: la propia playlist. */
@@ -26,6 +26,8 @@ export function sanitizeMix(raw) {
   const kind = raw.kind === 'time' && minutes ? 'time' : 'songs';
   const names = Array.isArray(raw.names) ? raw.names.map((x) => str(x, 100)).slice(0, MAX_IDS) : [];
   const mode = MIX_MODES.includes(raw.mode) ? raw.mode : 'reuse';
+  // Acceso rápido (Gym, Correr…): solo si existe y sus minutos coinciden; si no, es «personalizado».
+  const preset = kind === 'time' && presetByKey(raw.preset)?.minutes === minutes ? raw.preset : null;
   return {
     id, name, library, ids,
     names: names.length ? names : ids.map(() => ''),
@@ -34,6 +36,7 @@ export function sanitizeMix(raw) {
     mode: kind === 'time' && mode === 'self' ? 'reuse' : mode,
     kind,
     ...(kind === 'time' ? { minutes } : {}),
+    ...(preset ? { preset } : {}),
   };
 }
 
