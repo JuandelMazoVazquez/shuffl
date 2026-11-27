@@ -2,6 +2,43 @@
 
 Trabajo hecho sin supervisión el 2026-11-23. Todo lo reversible lo decidí yo; lo demás está en [docs/bandeja.md](docs/bandeja.md).
 
+## v1.4.0 (2026-11-27): repo listo para el lanzamiento open source
+
+### Modo demo
+
+- **Un Spotify inventado dentro de la app** (`js/demo.js`), inyectado en `SpotifyApi` como `fetchImpl`. Responde a las mismas rutas que la Web API (paginación, 403 en playlists ajenas, 404 en lo desconocido), así que la demo ejecuta el código real de barajar, Descubrir, Resumen o Reproducir ahora y no una maqueta. Descartado: datos estáticos por pantalla (habría que mantener dos apps).
+- **Ninguna petición a la red**: `demoFetch` nunca llama a `fetch`. Un test e2e corta y cuenta cualquier petición a `spotify.com`, `scdn.co` o `spotifycdn.com` durante la demo: tienen que ser cero.
+- **Datos inventados con semilla**: 36 artistas, 108 discos, 160 Me gusta y 8 playlists (una colaborativa y otra ajena, para que se vean los casos reales), siempre iguales para que las capturas sean estables. Los nombres los escribí yo (combinaciones como «Luces lentas»); los géneros son genéricos. En inglés salen los nombres de las playlists y las canciones en inglés.
+- **Carátulas generadas**: SVG de 100×100 con 8 patrones (anillos, franjas, puntos, sol, ecualizador, triángulos, luna, naipes) y solo colores de Shuffl, como dirección `data:image/svg+xml`. Para que la app las pinte, las comprobaciones de «solo https» pasan a `isImageUrl` (https o `data:image/svg+xml,`). Un SVG dentro de `<img>` no ejecuta scripts ni carga recursos, así que no abre ningún hueco aunque Spotify devolviera uno; `data:text/html` y `javascript:` siguen rechazados (test).
+- **Aislada de la app de verdad**: `setVolatile()` en `storage.js` hace que todo vaya a memoria y que no se lea nada guardado (sesión, mezclas, Deshacer), salvo idioma y tema; `idbVolatile()` deja la caché de IndexedDB solo en memoria. Probado en e2e con una sesión real guardada: la demo no la usa ni la cambia.
+- **`?demo=1` se queda en la dirección** para que recargar siga en la demo; «Conectar mi Spotify» va a la dirección sin parámetros. En Ajustes no salen Client ID ni Redirect URI y «Cerrar sesión» pasa a «Conectar mi Spotify».
+- **Sin logo de Spotify en la demo**: nada de lo que se ve viene de Spotify, así que la atribución se oculta. «Abrir en Spotify» y compartir explican que las playlists son inventadas, en vez de abrir una página rota.
+- **Inicio con contenido**: dos mezclas de ejemplo (una por tiempo, Gym 45) y una «última baraja», para que la primera pantalla enseñe la app y no un estado vacío.
+- **Arreglo de paso**: Inicio se pintaba antes de cargar las playlists y la «última baraja» salía con el icono genérico; ahora se vuelve a pintar al terminar la carga (en la app de verdad también).
+
+### Medios (`npm run media`)
+
+- **Un script** (`scripts/media.mjs`) con Playwright y el modo demo, servidor propio en un puerto libre. Así ningún medio lleva datos reales y se regeneran tras cada cambio de interfaz.
+- **Capturas** a 390×844 con escala x2 (780×1688), en oscuro y claro y en español e inglés: 32 PNG. Escogí x2 y no x3 por peso (unos 150 KB cada una frente a más del doble).
+- **GIFs** grabados a 390×844 y pasados a 360 px, 12 fps y paleta de 96 colores con `palettegen`/`paletteuse` (dither bayer): entre 1,5 y 2,2 MB, por debajo de los 5 MB pedidos. Si uno pasara de 5 MB, el script repite con menos fps y ancho.
+- **Vídeo vertical 1080×1920** de unos 16-17 s (H.264, `faststart`, sin audio): el móvil dentro de un marco, con el nombre y el eslogan arriba y la dirección abajo. Playwright graba en píxeles CSS, así que para que sea nítido se graba con el viewport al doble y `zoom: 2` en la página (la app sigue viendo 390 px). Los toques se ven como un círculo lima.
+- **ffmpeg** no es una dependencia del repo: el script lo busca en el PATH o en `FFMPEG` y, si no está, genera solo las imágenes. Lo instalé en el equipo con winget (`Gyan.FFmpeg`). Descartado `ffmpeg-static` como devDependency: haría bajar unos 70 MB en cada `npm ci` del CI.
+- **Social preview y cabecera** en los dos idiomas, renderizadas desde HTML con las capturas dentro de un móvil dibujado con CSS.
+- `docs/capturas/` se queda: la generan los tests e2e con el Spotify simulado y la usa `docs/FUNCIONES.md`.
+
+### README y comunidad
+
+- **README corto y visual**, y el detalle de cada función en `docs/FUNCIONES.md` / `docs/FEATURES.md` (el contenido del README anterior, sin perder nada).
+- **Botones grandes** con badges de shields.io (GitHub no permite estilos en el README). «Probar la demo» enlaza a `?demo=1` y «Usar con mi Spotify», a la guía de 5 minutos.
+- **«El problema»** sin afirmar lo que no está verificado: que el aleatorio de Spotify no es una baraja comprobable, que «Fewer Repeats» favorece a propósito lo menos escuchado y que Smart Shuffle añade recomendaciones (fuentes en INVESTIGACION.md).
+- **Premium**: el README dice lo verificado (Premium para la cuenta dueña del Client ID y para Reproducir ahora). No afirmo que las cuentas añadidas sin Premium puedan barajar porque no lo he probado.
+- **Comunidad**: CONTRIBUTING y SECURITY bilingües; CODE_OF_CONDUCT con el texto oficial en inglés del Contributor Covenant 2.1. Para denunciar una conducta, el aviso privado de GitHub (no hay email público del proyecto y no publico el tuyo). Las plantillas de issue son formularios YAML; los issues en blanco se desactivan y las preguntas van a Discussions.
+- **Issues para contribuidores**: 5 sacados del ROADMAP, con `good first issue` los que se hacen sin conocer todo el código y `help wanted` los más grandes.
+
+### Revisión de datos personales
+
+- Busqué en el árbol y en el historial tokens, Client IDs de 32 caracteres hexadecimales, emails y rutas locales. El único Client ID es el de mentira de los tests (`0123456789abcdef…`). Las capturas de `docs/capturas` usan el Spotify simulado y las de `docs/media`, la demo. El email de autor de los commits es el de tu cuenta de GitHub y ya era público en el historial.
+
 ## v1.3.2 (2026-11-27): cero errores, cuota bajo control, shuffle por tiempo y carátulas en todas partes
 
 ### Cuota: peticiones por acción
