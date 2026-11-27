@@ -1,0 +1,31 @@
+name: Idea / Feature request
+description: Algo que Shuffl podría hacer. / Something Shuffl could do.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Para ideas abiertas o a medio pensar, mejor en [Discussions → Ideas](https://github.com/JuandelMazoVazquez/new-spoti/discussions/categories/ideas). Aquí, propuestas concretas.
+        For open-ended ideas, Discussions → Ideas is better. Use this form for concrete proposals.
+
+        Shuffl solo puede usar lo que la Web API de Spotify permite en Development Mode (sin recomendaciones, sin audio-features y sin leer playlists ajenas), y su barajado es siempre uniforme.
+        Shuffl can only use what Spotify's Web API allows in Development Mode (no recommendations, no audio features, no reading other people's playlists), and its shuffle is always uniform.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Qué problema resuelve / What problem does it solve
+      description: Cuéntalo desde lo que te pasa al usar Spotify o Shuffl. / Describe it from what happens to you when using Spotify or Shuffl.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Cómo lo imaginas / How you picture it
+    validations:
+      required: true
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Ayuda / Help
+      options:
+        - label: Me gustaría implementarlo yo / I would like to implement it

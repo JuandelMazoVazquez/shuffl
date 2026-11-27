@@ -1,0 +1,46 @@
+name: Algo falla / Bug report
+description: Algo no funciona como esperabas. / Something does not work as expected.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Gracias por avisar. **No pegues tokens, tu Client ID ni datos personales.** Para fallos de seguridad usa [SECURITY.md](https://github.com/JuandelMazoVazquez/new-spoti/blob/main/SECURITY.md).
+        Thanks for reporting. **Do not paste tokens, your Client ID or personal data.** For security issues use SECURITY.md.
+  - type: textarea
+    id: what
+    attributes:
+      label: Qué ha pasado / What happened
+      description: Qué hiciste, qué esperabas y qué salió (el mensaje exacto si lo hay). / What you did, what you expected and what you got (the exact message if any).
+      placeholder: |
+        1. Shuffle → elegí «Rock» → Barajar
+        2. Salió «…»
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: Informe de Diagnóstico / Diagnostics report
+      description: |
+        En Shuffl: **Más → Diagnóstico → Copiar informe** y pégalo aquí. No lleva nombres de playlists, canciones ni tokens. Si el fallo es al conectar, haz antes la «Prueba completa».
+        In Shuffl: **More → Diagnostics → Copy report** and paste it here. It contains no playlist or song names and no tokens. If the problem is connecting, run the "Full test" first.
+      render: text
+  - type: dropdown
+    id: device
+    attributes:
+      label: Dispositivo / Device
+      options:
+        - iPhone o iPad (app instalada / installed app)
+        - iPhone o iPad (Safari)
+        - Android
+        - PC o Mac / PC or Mac
+        - Otro / Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: demo
+    attributes:
+      label: ¿Pasa también en la demo? / Does it also happen in the demo?
+      description: Prueba en https://juandelmazovazquez.github.io/new-spoti/?demo=1 / Try it at the demo link.
+      options:
+        - label: Sí, también pasa en la demo / Yes, it also happens in the demo
