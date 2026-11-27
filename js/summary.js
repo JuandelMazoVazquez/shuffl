@@ -2,9 +2,10 @@
 // Normas de marca de Spotify: las carátulas se dibujan enteras (sin recortar ni deformar) y sin nada encima,
 // junto al logo oficial de Spotify sin modificar. El texto va siempre al lado, nunca sobre una imagen.
 import { fitText } from './cover.js';
+import { DARK } from './brand.js';
 
 export const FORMATS = { story: { w: 1080, h: 1920 }, square: { w: 1080, h: 1080 } };
-export const SUMMARY_COLORS = { bg: '#0B0B0B', title: '#C6FF3D', text: '#F5F5F5', muted: '#A3A3A3', slot: '#1F1F1F' };
+export const SUMMARY_COLORS = { bg: DARK.bg, title: DARK.lime, text: DARK.text, muted: DARK.muted, slot: DARK.surface2 };
 const FONT = '"Arial Black", "Helvetica Neue", system-ui, -apple-system, "Segoe UI", sans-serif';
 const BODY = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 const MONO = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';

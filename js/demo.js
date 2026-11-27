@@ -1,6 +1,7 @@
 // Modo demo (v1.4.0): un Spotify inventado que vive en memoria. Se inyecta en SpotifyApi como `fetchImpl`, así que
 // la app entera funciona igual que con una cuenta real pero sin ninguna petición a la red. Playlists, canciones,
 // artistas y carátulas son ficticios y se generan aquí (formas y colores de la paleta de Shuffl).
+import { DARK, LIGHT } from './brand.js';
 
 export const DEMO_ME = { id: 'shuffldemo', display_name: 'Demo' };
 
@@ -34,11 +35,13 @@ function seeded(seed) {
 
 // ---------- Carátulas generadas (SVG) ----------
 
-/** Fondo y figura con buen contraste, solo con colores de Shuffl. */
+/** Fondo y figura con buen contraste, solo con colores de la paleta (js/brand.js). */
+const { bg: BLACK, lime: LIME, surface: DARK_SURFACE, danger: CORAL } = DARK;
+const { surface: PAPER, accent: GREEN, accent2: GREEN_2 } = LIGHT;
 const PAIRS = [
-  ['#0b0b0b', '#c6ff3d', '#f4f6f0'], ['#c6ff3d', '#0b0b0b', '#3d6b00'], ['#3d6b00', '#c6ff3d', '#0b0b0b'],
-  ['#f4f6f0', '#3d6b00', '#ff8a80'], ['#ff8a80', '#0b0b0b', '#f4f6f0'], ['#161616', '#ff8a80', '#c6ff3d'],
-  ['#0b0b0b', '#f4f6f0', '#ff8a80'], ['#5a8f0a', '#f4f6f0', '#0b0b0b'],
+  [BLACK, LIME, PAPER], [LIME, BLACK, GREEN], [GREEN, LIME, BLACK],
+  [PAPER, GREEN, CORAL], [CORAL, BLACK, PAPER], [DARK_SURFACE, CORAL, LIME],
+  [BLACK, PAPER, CORAL], [GREEN_2, PAPER, BLACK],
 ];
 
 const r1 = (n) => Math.round(n * 10) / 10;
@@ -113,7 +116,7 @@ const images = (seed) => {
 };
 
 /** Portada de las playlists que crea Shuffl en la demo: naipes lima sobre negro. */
-const SHUFFL_COVER = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#0b0b0b"/><rect x="34" y="22" width="32" height="48" rx="5" fill="#3d6b00" transform="rotate(-16 50 80)"/><rect x="34" y="22" width="32" height="48" rx="5" fill="#c6ff3d" transform="rotate(12 50 80)"/></svg>')}`;
+const SHUFFL_COVER = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="${BLACK}"/><rect x="34" y="22" width="32" height="48" rx="5" fill="${GREEN}" transform="rotate(-16 50 80)"/><rect x="34" y="22" width="32" height="48" rx="5" fill="${LIME}" transform="rotate(12 50 80)"/></svg>`)}`;
 
 // ---------- Nombres inventados ----------
 

@@ -4,10 +4,11 @@
 import { writeFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
+import { DARK } from '../js/brand.js';
 
 const out = fileURLToPath(new URL('../icons/', import.meta.url));
-const BLACK = '#0B0B0B';
-const LIME = '#C6FF3D';
+const BLACK = DARK.bg;
+const LIME = DARK.lime;
 const PIVOT = [256, 420];
 const card = (angle, paint) => `<rect x="166" y="126" width="180" height="250" rx="20" transform="rotate(${angle} ${PIVOT.join(' ')})" ${paint}/>`;
 const outline = `fill="${BLACK}" stroke="${LIME}" stroke-width="16"`;

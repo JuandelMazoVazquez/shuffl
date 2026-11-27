@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createAppServer } from './serve.mjs';
+import { DARK, GLOW, withAlpha } from '../js/brand.js';
 
 const OUT = resolve('docs/media');
 const TMP = resolve('test-results/media-tmp');
@@ -22,7 +23,7 @@ const TEXT = {
   es: {
     playlist: 'Domingo lento',
     slogan: 'El shuffle de Spotify, por fin aleatorio de verdad',
-    sub: 'Baraja tus playlists con un Fisher-Yates uniforme. Gratis, libre y sin servidor.',
+    sub: 'Ordena al azar tus playlists con un Fisher-Yates uniforme. Gratis, libre y sin servidor.',
     cta: 'Pruébala sin cuenta',
   },
   en: {
@@ -32,7 +33,7 @@ const TEXT = {
     cta: 'Try it without an account',
   },
 };
-const SITE = 'juandelmazovazquez.github.io/new-spoti';
+const SITE = 'juandelmazovazquez.github.io/shuffl';
 
 function hasFfmpeg() {
   try {
@@ -61,8 +62,8 @@ async function newPage(browser, { lang, theme = 'dark', video = 0, delay = 70 })
   });
   if (zoom > 1) await context.addInitScript((z) => document.addEventListener('DOMContentLoaded', () => { document.documentElement.style.zoom = String(z); }), zoom);
   await context.addInitScript(({ l, th, d, touches }) => {
-    localStorage.setItem('baraja.lang', JSON.stringify(l));
-    localStorage.setItem('baraja.theme', JSON.stringify(th));
+    localStorage.setItem('shuffl.lang', JSON.stringify(l));
+    localStorage.setItem('shuffl.theme', JSON.stringify(th));
     globalThis.__shufflDemoDelay = d;
     if (!touches) return;
     // En los vídeos, cada toque deja un círculo lima que se desvanece.
@@ -70,7 +71,7 @@ async function newPage(browser, { lang, theme = 'dark', video = 0, delay = 70 })
       const dot = document.createElement('div');
       const z = Number(document.documentElement.style.zoom) || 1;
       dot.style.cssText = `position:fixed;left:${e.clientX / z - 22}px;top:${e.clientY / z - 22}px;width:44px;height:44px;border-radius:50%;`
-        + 'background:rgba(198,255,61,.45);border:2px solid #c6ff3d;pointer-events:none;z-index:99999;transition:transform .5s ease,opacity .5s ease';
+        + 'background:rgba(198,255,61,.45);border:2px solid rgb(198,255,61);pointer-events:none;z-index:99999;transition:transform .5s ease,opacity .5s ease';
       document.documentElement.append(dot);
       requestAnimationFrame(() => requestAnimationFrame(() => { dot.style.transform = 'scale(1.7)'; dot.style.opacity = '0'; }));
       setTimeout(() => dot.remove(), 700);
@@ -265,19 +266,19 @@ function toGif(src, start, out) {
 // ---------- Imágenes compuestas (HTML renderizado) ----------
 
 const PHONE_CSS = `
-  .phone { position: relative; aspect-ratio: 390 / 844; border-radius: 46px; background: #000; padding: 11px;
-    box-shadow: 0 0 0 2px #2e2e2e, 0 30px 80px rgba(0,0,0,.55); }
+  .phone { position: relative; aspect-ratio: 390 / 844; border-radius: 46px; background: ${DARK.bg}; padding: 11px;
+    box-shadow: 0 0 0 2px ${DARK.border}, 0 30px 80px ${withAlpha(DARK.bg, 0.55)}; }
   .phone img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 36px; }`;
 const BASE_CSS = `
   * { box-sizing: border-box; margin: 0; }
-  body { background: #0b0b0b; color: #f5f5f5; font-family: system-ui, "Segoe UI", sans-serif; overflow: hidden; }
+  body { background: ${DARK.bg}; color: ${DARK.text}; font-family: system-ui, "Segoe UI", sans-serif; overflow: hidden; }
   .name { font: 900 96px/1 "Arial Black", "Helvetica Neue", sans-serif; letter-spacing: -.03em; display: flex; align-items: center; gap: 22px; }
   .name img { width: 92px; height: 92px; border-radius: 18%; }
   .slogan { font: 900 44px/1.08 "Arial Black", "Helvetica Neue", sans-serif; letter-spacing: -.02em; }
-  .slogan b { color: #c6ff3d; }
-  .sub { color: #a3a3a3; font-size: 24px; line-height: 1.35; }
-  .pill { display: inline-block; background: #c6ff3d; color: #0b0b0b; font: 800 22px/1 ui-monospace, Consolas, monospace; padding: 12px 18px; border-radius: 999px; }
-  .url { font: 700 22px/1 ui-monospace, Consolas, monospace; color: #a3a3a3; }
+  .slogan b { color: ${DARK.lime}; }
+  .sub { color: ${DARK.muted}; font-size: 24px; line-height: 1.35; }
+  .pill { display: inline-block; background: ${DARK.lime}; color: ${DARK.onLime}; font: 800 22px/1 ui-monospace, Consolas, monospace; padding: 12px 18px; border-radius: 999px; }
+  .url { font: 700 22px/1 ui-monospace, Consolas, monospace; color: ${DARK.muted}; }
   ${PHONE_CSS}`;
 
 /** «…por fin aleatorio de verdad»: el final del eslogan en lima. */
@@ -302,7 +303,7 @@ async function images(browser, base, lang) {
   // Social preview de GitHub: 1280x640.
   await render(browser, base, {
     width: 1280, height: 640, out: join(OUT, `social-preview-${lang}.png`),
-    html: `<div style="display:flex;height:640px;padding:0 70px;align-items:center;gap:50px;background:radial-gradient(circle at 80% 20%, #1d2a06 0, #0b0b0b 60%)">
+    html: `<div style="display:flex;height:640px;padding:0 70px;align-items:center;gap:50px;background:radial-gradient(circle at 80% 20%, ${GLOW} 0, ${DARK.bg} 60%)">
       <div style="flex:1;display:grid;gap:26px">
         <div class="name"><img src="icons/icon.svg" alt="">Shuffl</div>
         <div class="slogan">${sloganHtml(lang)}</div>
@@ -315,7 +316,7 @@ async function images(browser, base, lang) {
   // Cabecera del README: nombre y eslogan a la izquierda, tres móviles a la derecha.
   await render(browser, base, {
     width: 1280, height: 560, scale: 2, out: join(OUT, `header-${lang}.png`),
-    html: `<div style="position:relative;height:560px;padding:0 64px;display:flex;align-items:center;background:radial-gradient(circle at 75% 30%, #1d2a06 0, #0b0b0b 62%)">
+    html: `<div style="position:relative;height:560px;padding:0 64px;display:flex;align-items:center;background:radial-gradient(circle at 75% 30%, ${GLOW} 0, ${DARK.bg} 62%)">
       <div style="width:600px;position:relative;z-index:2">
         <div class="name" style="font-size:84px"><img src="icons/icon.svg" alt="" style="width:80px;height:80px">Shuffl</div>
         <div class="slogan" style="font-size:38px;width:600px;margin:26px 0 30px">${sloganHtml(lang)}</div>
@@ -336,15 +337,15 @@ async function videoFrames(browser, base, lang) {
   const frame = join(TMP, 'frame.png');
   await render(browser, base, {
     width: 1080, height: 1920, out: bg,
-    html: `<div style="height:1920px;background:radial-gradient(circle at 50% 35%, #1d2a06 0, #0b0b0b 65%);display:grid;justify-items:center;align-content:start;padding-top:60px;gap:22px;text-align:center">
+    html: `<div style="height:1920px;background:radial-gradient(circle at 50% 35%, ${GLOW} 0, ${DARK.bg} 65%);display:grid;justify-items:center;align-content:start;padding-top:60px;gap:22px;text-align:center">
       <div class="name" style="font-size:80px"><img src="icons/icon.svg" alt="" style="width:76px;height:76px">Shuffl</div>
       <div class="slogan" style="font-size:40px;max-width:900px">${sloganHtml(lang)}</div>
-      <div class="url" style="position:absolute;bottom:52px;left:0;right:0;font-size:30px;color:#c6ff3d">${SITE}</div>
+      <div class="url" style="position:absolute;bottom:52px;left:0;right:0;font-size:30px;color:${DARK.lime}">${SITE}</div>
     </div>`,
   });
   await render(browser, base, {
     width: 1080, height: 1920, out: frame, transparent: true,
-    html: `<style>body{background:transparent}</style><div style="position:absolute;left:${SCREEN.x}px;top:${SCREEN.y}px;width:${SCREEN.w}px;height:${SCREEN.h}px;border-radius:60px;box-shadow:0 0 0 22px #000, 0 0 0 25px #2e2e2e"></div>`,
+    html: `<style>body{background:transparent}</style><div style="position:absolute;left:${SCREEN.x}px;top:${SCREEN.y}px;width:${SCREEN.w}px;height:${SCREEN.h}px;border-radius:60px;box-shadow:0 0 0 22px ${DARK.bg}, 0 0 0 25px ${DARK.border}"></div>`,
   });
   return { bg, frame };
 }

@@ -1,6 +1,8 @@
-// Portada de las playlists «· Shuffle»: icono de Shuffl, nombre del origen y fecha sobre negro, en JPEG de 640x640.
+// Portada de las playlists «· Shuffl»: icono de Shuffl, nombre del origen y fecha sobre negro, en JPEG de 640x640.
+import { DARK } from './brand.js';
+
 const SIZE = 640;
-export const COVER_COLORS = { bg: '#0B0B0B', title: '#C6FF3D', label: '#A3A3A3' };
+export const COVER_COLORS = { bg: DARK.bg, title: DARK.lime, label: DARK.muted };
 const FONT = '"Arial Black", "Helvetica Neue", system-ui, -apple-system, "Segoe UI", sans-serif';
 /** Spotify admite un JPEG de hasta 256 KB (en base64). */
 export const MAX_IMAGE_B64 = 256 * 1024;
