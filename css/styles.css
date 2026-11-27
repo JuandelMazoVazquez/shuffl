@@ -433,3 +433,93 @@ progress { width: 100%; height: 8px; accent-color: var(--accent); margin-top: .4
 
 /* Sin mensaje, ni error, ni naipes, el estado no ocupa sitio (evita un hueco sobre el resultado). */
 .status:has(.live:empty):has(.error-box[hidden]):not(:has(.loader.on)):not(:has(progress:not([hidden]))) { margin: 0; min-height: 0; }
+
+/* v1.3.2 · Carátulas: hueco fijo de 48 px con ♪ de fondo (nada salta al cargar); la imagen, entera y encima del hueco. */
+.cover-slot {
+  position: relative; flex: none; width: 48px; height: 48px; border-radius: 4px; overflow: hidden;
+  background: var(--surface-2); display: grid; place-items: center; color: var(--muted);
+}
+.cover-slot .track-cover { position: absolute; inset: 0; width: 48px; height: 48px; object-fit: contain; background: var(--surface-2); }
+.cover-note { font-size: 1.1rem; line-height: 1; }
+.again-cover { object-fit: contain; }
+/* Al aparecer, las carátulas se reparten como naipes (solo transform y opacidad: fluido a 60 fps). */
+.tracks .track { animation: rise .35s ease both; animation-delay: calc(var(--i, 0) * 30ms); }
+.tracks .track .cover-slot { animation: deal .45s cubic-bezier(.2, .8, .2, 1) both; animation-delay: calc(var(--i, 0) * 45ms); }
+@keyframes deal {
+  from { opacity: 0; transform: translate(-28px, -36px) rotate(-14deg) scale(.85); }
+  70% { opacity: 1; transform: translate(2px, 2px) rotate(2deg) scale(1.02); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Quitar canciones: deslizar a la izquierda o tocar ×. */
+.track.removable { position: relative; touch-action: pan-y; transition: transform .2s ease, opacity .2s ease; }
+.track.gone { transform: translateX(-110%) !important; opacity: 0; }
+.track-text { flex: 1; }
+.track-remove {
+  flex: none; width: 40px; height: 40px; margin-left: auto; border: 0; border-radius: 999px; background: transparent;
+  color: var(--muted); font-size: 1.4rem; line-height: 1; cursor: pointer;
+}
+.track-remove:active { background: var(--surface-2); color: var(--danger); }
+.track-remove:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+#swipe-hint { margin: .8rem 0 0; }
+
+/* Resultado: 🔀 volver a barajar arriba */
+.result-head .reshuffle { width: 100%; margin-top: .5rem; }
+
+/* Shuffle: toda la playlist o por tiempo, a la vista */
+.kind-box { margin-top: 1.2rem; }
+.presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; margin: .8rem 0 .4rem; }
+.preset {
+  display: grid; justify-items: center; gap: .1rem; min-height: 76px; padding: .5rem .3rem; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; cursor: pointer;
+  transition: transform .1s, background .15s, border-color .15s;
+}
+.preset:active { transform: scale(.96); }
+.preset[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--surface)); box-shadow: 0 0 0 1px var(--accent) inset; }
+.preset:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.preset-emoji { font-size: 1.4rem; line-height: 1.2; }
+.preset-name { font-weight: 700; font-size: .9rem; }
+.preset-min { font-size: .78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.slider-box { display: grid; gap: .4rem; margin: .6rem 0; }
+.slider-head { display: flex; justify-content: space-between; align-items: baseline; font-weight: 650; }
+.slider-head output { font: 800 1.2rem/1 var(--font-display); color: var(--accent); font-variant-numeric: tabular-nums; }
+#sh-slider { width: 100%; min-height: 44px; accent-color: var(--accent); }
+
+/* Respuesta al toque en todos los botones */
+.btn:active:not(:disabled) { transform: scale(.97); }
+.card:active { transform: scale(.985); }
+
+/* Estados vacíos con ilustración */
+.empty { text-align: center; }
+.empty-art { display: block; width: 120px; height: 80px; margin: .2rem auto .6rem; }
+.empty-card { fill: var(--surface-2); stroke: var(--border); stroke-width: 1.5; }
+.empty-card.back { fill: var(--surface); }
+.empty-note { fill: none; stroke: var(--accent); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Reproducir ahora: resultado claro */
+.play-ok { margin: .6rem 0 0; color: var(--accent); font-weight: 650; }
+.play-warn { margin: .6rem 0 0; }
+.error-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.error-actions .btn[hidden] { display: none; }
+
+/* Aviso flotante (errores que no son de una pantalla) */
+.toast {
+  position: fixed; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom) + 84px); z-index: 30;
+  display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; padding: .8rem 1rem; border-radius: var(--radius);
+  background: var(--surface-2); border: 1px solid var(--border); box-shadow: var(--shadow);
+}
+.toast p { flex: 1 1 100%; margin: 0; }
+
+/* Diagnóstico */
+.diag-counts { font-variant-numeric: tabular-nums; font-weight: 650; }
+.diag-actions { padding-left: 1.2rem; color: var(--muted); font-size: .9rem; }
+.diag li.skip { color: var(--muted); }
+.diag.errors { font: .8rem/1.4 var(--font-mono); }
+.report { width: 100%; font-size: .75rem; }
+
+/* Dividir y duplicados con carátula */
+.split-row { display: flex; gap: .6rem; align-items: center; }
+.split-fields { display: grid; gap: .2rem; flex: 1; min-width: 0; }
+.dup-head { border-top: 0; padding: 0; min-height: 52px; }
+
+.reshuffle svg { width: 18px; height: 18px; margin-right: .4rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
