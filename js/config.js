@@ -3,5 +3,5 @@
 // Development Mode admite como máximo 5 usuarios.
 export const DEFAULT_CLIENT_ID = '';
 export const APP_NAME = 'Shuffl';
-export const APP_VERSION = '1.3.2';
+export const APP_VERSION = '1.4.0';
 export const REPO_URL = 'https://github.com/JuandelMazoVazquez/new-spoti';
