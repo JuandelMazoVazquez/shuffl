@@ -1,7 +1,7 @@
 **Español** · [English](README.en.md)
 
 <p align="center">
-  <a href="https://juandelmazovazquez.github.io/new-spoti/?demo=1"><img src="docs/media/header-es.png" alt="Shuffl: el shuffle de Spotify, por fin aleatorio de verdad" width="100%"></a>
+  <a href="https://juandelmazovazquez.github.io/shuffl/?demo=1"><img src="docs/media/header-es.png" alt="Shuffl: el shuffle de Spotify, por fin aleatorio de verdad" width="100%"></a>
 </p>
 
 <h1 align="center">Shuffl</h1>
@@ -10,14 +10,14 @@
 Una web app libre y gratuita que baraja tus playlists con un Fisher-Yates uniforme. Sin servidor, sin cuentas nuevas y sin analítica.</p>
 
 <p align="center">
-  <a href="https://github.com/JuandelMazoVazquez/new-spoti/actions/workflows/ci.yml"><img src="https://github.com/JuandelMazoVazquez/new-spoti/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/JuandelMazoVazquez/new-spoti?color=c6ff3d&labelColor=0b0b0b" alt="Licencia MIT"></a>
-  <a href="https://github.com/JuandelMazoVazquez/new-spoti/releases/latest"><img src="https://img.shields.io/github/v/release/JuandelMazoVazquez/new-spoti?color=c6ff3d&labelColor=0b0b0b" alt="Última versión"></a>
-  <a href="https://juandelmazovazquez.github.io/new-spoti/?demo=1"><img src="https://img.shields.io/badge/demo-probar_sin_cuenta-c6ff3d?labelColor=0b0b0b" alt="Probar la demo"></a>
+  <a href="https://github.com/JuandelMazoVazquez/shuffl/actions/workflows/ci.yml"><img src="https://github.com/JuandelMazoVazquez/shuffl/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/JuandelMazoVazquez/shuffl?color=c6ff3d&labelColor=0b0b0b" alt="Licencia MIT"></a>
+  <a href="https://github.com/JuandelMazoVazquez/shuffl/releases/latest"><img src="https://img.shields.io/github/v/release/JuandelMazoVazquez/shuffl?color=c6ff3d&labelColor=0b0b0b" alt="Última versión"></a>
+  <a href="https://juandelmazovazquez.github.io/shuffl/?demo=1"><img src="https://img.shields.io/badge/demo-probar_sin_cuenta-c6ff3d?labelColor=0b0b0b" alt="Probar la demo"></a>
 </p>
 
 <p align="center">
-  <a href="https://juandelmazovazquez.github.io/new-spoti/?demo=1"><img src="https://img.shields.io/badge/%E2%96%B6%20Probar%20la%20demo-c6ff3d?style=for-the-badge&labelColor=c6ff3d" alt="Probar la demo" height="44"></a>
+  <a href="https://juandelmazovazquez.github.io/shuffl/?demo=1"><img src="https://img.shields.io/badge/%E2%96%B6%20Probar%20la%20demo-c6ff3d?style=for-the-badge&labelColor=c6ff3d" alt="Probar la demo" height="44"></a>
   &nbsp;
   <a href="#empezar-en-5-minutos"><img src="https://img.shields.io/badge/Usar%20con%20mi%20Spotify-0b0b0b?style=for-the-badge&labelColor=0b0b0b" alt="Usar con mi Spotify" height="44"></a>
 </p>
@@ -61,18 +61,20 @@ Cada función en detalle: [docs/FUNCIONES.md](docs/FUNCIONES.md). Tema oscuro y 
 
 ## Empezar en 5 minutos
 
-**¿Solo quieres verla?** Abre la [demo](https://juandelmazovazquez.github.io/new-spoti/?demo=1): datos inventados, sin cuenta y sin tocar Spotify.
+**¿Solo quieres verla?** Abre la [demo](https://juandelmazovazquez.github.io/shuffl/?demo=1): datos inventados, sin cuenta y sin tocar Spotify.
 
 **Con tu Spotify.** Shuffl no tiene servidor, así que cada persona conecta su propia «app» de Spotify (un Client ID gratuito):
 
 1. Entra en el [dashboard de Spotify for Developers](https://developer.spotify.com/dashboard) con tu cuenta y pulsa **Create app**.
 2. Pon cualquier nombre y descripción, marca **Web API** y, en **Redirect URIs**, pega exactamente esta dirección (con la barra final):
    ```
-   https://juandelmazovazquez.github.io/new-spoti/
+   https://juandelmazovazquez.github.io/shuffl/
    ```
 3. Guarda, abre **Settings** y copia el **Client ID**.
 4. En **User Management**, añade el nombre y el email de la cuenta de Spotify de cada persona que vaya a usarla (como máximo 5).
-5. Abre [Shuffl](https://juandelmazovazquez.github.io/new-spoti/), pega el Client ID y pulsa **Conectar con Spotify**.
+5. Abre [Shuffl](https://juandelmazovazquez.github.io/shuffl/), pega el Client ID y pulsa **Conectar con Spotify**.
+
+> **¿La configuraste antes de la v1.4.1?** Shuffl se ha mudado a `https://juandelmazovazquez.github.io/shuffl/`. La dirección anterior redirige aquí, pero Spotify solo acepta el inicio de sesión en una Redirect URI que conozca: en el dashboard, abre tu app → **Settings** → **Edit** → **Redirect URIs**, añade la dirección nueva (con la barra final), pulsa **Add** y **Save**. Puedes dejar la antigua. Si falta, la app te lo dice y te da la URI para copiar.
 
 **Instalarla como app:**
 
@@ -136,7 +138,7 @@ Spotify limita cada app en Development Mode a 5 usuarios que el dueño añade a 
 
 <details><summary><b>¿Borra mis playlists?</b></summary>
 
-No. Shuffl crea una playlist nueva, por ejemplo «Rock · Shuffle», y tu playlist original queda igual. Para no llenar tu biblioteca, antes de crear otra quita la anterior que creó él, y solo esa: nunca una tuya, una renombrada ni una de otra persona. La primera vez te enseña la lista y te pregunta. Lo quitado se recupera durante 90 días en spotify.com → Cuenta → Recuperar playlists. Si eliges barajar la propia playlist, te lo confirma y puedes Deshacer.
+No. Shuffl crea una playlist nueva, por ejemplo «Rock · Shuffl», y tu playlist original queda igual. Para no llenar tu biblioteca, antes de crear otra quita la anterior que creó él, y solo esa: nunca una tuya, una renombrada ni una de otra persona. La primera vez te enseña la lista y te pregunta. Lo quitado se recupera durante 90 días en spotify.com → Cuenta → Recuperar playlists. Si eliges barajar la propia playlist, te lo confirma y puedes Deshacer.
 </details>
 
 <details><summary><b>¿Es seguro?</b></summary>
@@ -181,11 +183,11 @@ Sí. Haz un fork, activa GitHub Pages con «GitHub Actions» como origen y añad
 
 ## Hoja de ruta
 
-Las próximas ideas están en [ROADMAP.md](ROADMAP.md) y en los [issues](https://github.com/JuandelMazoVazquez/new-spoti/issues). Las propuestas nuevas van a [Discussions → Ideas](https://github.com/JuandelMazoVazquez/new-spoti/discussions/categories/ideas).
+Las próximas ideas están en [ROADMAP.md](ROADMAP.md) y en los [issues](https://github.com/JuandelMazoVazquez/shuffl/issues). Las propuestas nuevas van a [Discussions → Ideas](https://github.com/JuandelMazoVazquez/shuffl/discussions/categories/ideas).
 
 ## Contribuir
 
-¡Bienvenidas! Los issues marcados como [`good first issue`](https://github.com/JuandelMazoVazquez/new-spoti/labels/good%20first%20issue) son un buen punto de partida, y no hace falta cuenta de Spotify: con `npm run dev` y la demo puedes probarlo todo. Cómo arrancar, los tests y el estilo están en [CONTRIBUTING.md](CONTRIBUTING.md). Hay un [código de conducta](CODE_OF_CONDUCT.md).
+¡Bienvenidas! Los issues marcados como [`good first issue`](https://github.com/JuandelMazoVazquez/shuffl/labels/good%20first%20issue) son un buen punto de partida, y no hace falta cuenta de Spotify: con `npm run dev` y la demo puedes probarlo todo. Cómo arrancar, los tests y el estilo están en [CONTRIBUTING.md](CONTRIBUTING.md). Hay un [código de conducta](CODE_OF_CONDUCT.md).
 
 ## Créditos
 

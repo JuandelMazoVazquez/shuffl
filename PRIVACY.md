@@ -14,28 +14,28 @@ Con `?demo=1` («Probar la demo»), Shuffl funciona con un Spotify inventado que
 
 | Clave | Contenido |
 | --- | --- |
-| `baraja.clientId` | Tu Client ID de Spotify |
-| `baraja.tokens` | Token de acceso, token de renovación y caducidad |
-| `baraja.pkce` | Verificador y estado temporales del inicio de sesión; se borran al volver de Spotify |
-| `baraja.lang` | Idioma |
-| `baraja.undo` | Copia para Deshacer: id y nombre de la playlist, URIs de sus canciones y fecha |
-| `baraja.lastTarget` | Id de la última playlist de Shuffl creada, para «Tenerla siempre a mano» |
-| `baraja.mixes`, `baraja.lastMix` | Mezclas guardadas y la última mezcla: ids y nombres de playlists, filtros, destino y fecha de la última baraja |
-| `baraja.linkKey` | Clave aleatoria que llevan los atajos de Siri creados en este navegador |
-| `baraja.theme`, `baraja.cover`, `baraja.shake` | Tema, si se sube portada y si agitar para barajar está activado |
-| `baraja.logoNotice.v12` | Si ya viste el aviso de icono nuevo |
-| `baraja.purge`, `baraja.purgeOk` | Si se quitan las playlists anteriores de Shuffl al crear una nueva y si ya aceptaste la lista la primera vez |
-| `baraja.reqDay` | Cuántas peticiones a Spotify se han hecho hoy (para Diagnóstico) |
-| `baraja.errors` | Los últimos 50 errores: fecha, pantalla, tipo, código de Spotify y ruta de la API sin ids. Nunca nombres, mensajes con datos tuyos ni tokens. Se borra con «Borrar registro» |
-| `baraja.artistsPerSearch` | Artistas por búsqueda en Novedades y Descubre |
-| `baraja.recent` | Las últimas funciones de Descubrir usadas, para «Lo último» de Inicio |
-| `baraja.discoverDays` | Días de Novedades (7, 30 o 90) |
+| `shuffl.clientId` | Tu Client ID de Spotify |
+| `shuffl.tokens` | Token de acceso, token de renovación y caducidad |
+| `shuffl.pkce` | Verificador y estado temporales del inicio de sesión; se borran al volver de Spotify |
+| `shuffl.lang` | Idioma |
+| `shuffl.undo` | Copia para Deshacer: id y nombre de la playlist, URIs de sus canciones y fecha |
+| `shuffl.lastTarget` | Id de la última playlist de Shuffl creada, para «Tenerla siempre a mano» |
+| `shuffl.mixes`, `shuffl.lastMix` | Mezclas guardadas y la última mezcla: ids y nombres de playlists, filtros, destino y fecha de la última baraja |
+| `shuffl.linkKey` | Clave aleatoria que llevan los atajos de Siri creados en este navegador |
+| `shuffl.theme`, `shuffl.cover`, `shuffl.shake` | Tema, si se sube portada y si agitar para barajar está activado |
+| `shuffl.logoNotice.v12` | Si ya viste el aviso de icono nuevo |
+| `shuffl.purge`, `shuffl.purgeOk` | Si se quitan las playlists anteriores de Shuffl al crear una nueva y si ya aceptaste la lista la primera vez |
+| `shuffl.reqDay` | Cuántas peticiones a Spotify se han hecho hoy (para Diagnóstico) |
+| `shuffl.errors` | Los últimos 50 errores: fecha, pantalla, tipo, código de Spotify y ruta de la API sin ids. Nunca nombres, mensajes con datos tuyos ni tokens. Se borra con «Borrar registro» |
+| `shuffl.artistsPerSearch` | Artistas por búsqueda en Novedades y Descubre |
+| `shuffl.recent` | Las últimas funciones de Descubrir usadas, para «Lo último» de Inicio |
+| `shuffl.discoverDays` | Días de Novedades (7, 30 o 90) |
 
 En la descripción de la playlist de Shuffl de tu cuenta de Spotify se guarda una etiqueta (` · shuffl:src=` y 10 caracteres). Es un resumen (SHA-256 recortado) del origen: no contiene ids, nombres ni datos tuyos, y sirve para reconocer las playlists de Shuffl y quitarlas antes de crear la siguiente.
 
 La tarjeta de «Tu resumen» se dibuja en tu navegador y solo sale de él si tú la compartes o la descargas.
 
-Las claves siguen empezando por `baraja.` (el nombre anterior de la app) para no cerrar la sesión de nadie con el cambio de nombre.
+Desde la v1.4.1 las claves empiezan por `shuffl.`. Las de versiones anteriores se copian solas a las nuevas al abrir la app y después se borran, sin cerrar la sesión.
 
 Si el navegador bloquea localStorage, Shuffl guarda esos datos en memoria hasta que cierres la pestaña.
 

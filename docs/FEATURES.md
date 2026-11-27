@@ -24,14 +24,14 @@ The app interface is available in Spanish and English; the screenshots are in Sp
 
 ![Shuffle](capturas/02-barajar.png)
 
-- Below the playlists you pick **Whole playlist** or **By time**. By time has quick picks (🚗 Commute 20 min, 🏋️ Gym 45, 🏃 Run 30, ✈️ Trip 90, 😴 Sleep 30) and "Custom", with a 5-180 min slider. It shuffles uniformly and fills the time within ±2 min: "Gym 45 min · Shuffle" or, custom, "Rock · 45 min · Shuffle". Saved mixes and Siri shortcuts remember the time.
+- Below the playlists you pick **Whole playlist** or **By time**. By time has quick picks (🚗 Commute 20 min, 🏋️ Gym 45, 🏃 Run 30, ✈️ Trip 90, 😴 Sleep 30) and "Custom", with a 5-180 min slider. It shuffles uniformly and fills the time within ±2 min: "Gym 45 min · Shuffl" or, custom, "Rock · 45 min · Shuffl". Saved mixes and Siri shortcuts remember the time.
 - Remove repeats, filters, destination, paste a link and save as mix are also under "More options"; it works well without touching them.
 
 ![Shuffle by time](capturas/24-shuffle-tiempo.png)
 
 - Pick one or several playlists and Liked Songs: they are combined and shuffled together. By default it removes repeated songs (same URI) when combining. Optional filters (year, date added, length, explicit) are applied first; whatever is left is shuffled uniformly.
 - Destination:
-  - A new Shuffl playlist (default): "Reggaeton · Shuffle", "Liked Songs · Shuffle", "Mix · Shuffle" (several playlists; the description lists them), "Car · Shuffle" (saved mix) or "All my music · Shuffle". It replaces the previous Shuffl one (see below).
+  - A new Shuffl playlist (default): "Reggaeton · Shuffl", "Liked Songs · Shuffl", "Mix · Shuffl" (several playlists; the description lists them), "Car · Shuffl" (saved mix) or "All my music · Shuffl". It replaces the previous Shuffl one (see below).
   - The playlist itself, only for one of your own playlists and with confirmation.
 - The generated playlist's cover shows the Shuffl icon, the source name and the date (can be turned off in Settings).
 - The result shows the name, songs and length, with "▶ Play now" (Premium) and "Open in Spotify", and the song list with each album cover. Swipe a song left (or tap its ×) to remove it from the playlist; pull down or tap "Shuffle again" to reshuffle it right away. You can also share it or press Undo.
@@ -44,7 +44,7 @@ The app interface is available in Spanish and English; the screenshots are in Sp
 ![Removing old ones](capturas/23-borrar-antiguas.png)
 
 - Every time Shuffl is about to create a playlist (shuffle, Discover, Forgotten, Snapshots, My top), it first reads the songs, then removes from your library every playlist it created before, and then creates the new one. So only one exists: the latest.
-- Shuffl playlists are your own ones with its tag in the description (` · shuffl:src=<hash>`, no ids or names) or, from older versions, with a "… · Shuffle", "📸 …" or "🔀 Baraja" name and a description the app used to write. Renamed playlists, other people's, collaborative ones and those without that description are never touched, and they are not offered as a source.
+- Shuffl playlists are your own ones with its tag in the description (` · shuffl:src=<hash>`, no ids or names) or, from older versions, with a "… · Shuffle", "📸 …" or first-version name and a description the app used to write. Renamed playlists, other people's, collaborative ones and those without that description are never touched, and they are not offered as a source.
 - The first time it shows the list with "Remove and don't ask again"; after that it is automatic, with a notice. It can be turned off in Settings. Removed playlists can be recovered for 90 days on spotify.com → Account → Recover playlists.
 - If removing or creating fails, it explains what happened with "Retry" (the songs stay in memory). "Check connection", in More → Diagnostics, tests that Shuffl can remove playlists.
 - Since every shuffle creates a new playlist, the pin in Your Library is not kept: sort Your Library by "Recents" to keep it at the top.
@@ -57,7 +57,7 @@ Spotify no longer offers recommendations to apps like this one, so Shuffl finds 
 - **Explore**: songs from the albums you play and from your artists.
 - In both: about 30 songs and "Find more" to add 30 more to the same playlist; under "More options", a number (15-100) or a length (30-90 min). They can be based on your artists, on one of your playlists ("Like my playlist…") or on a genre (if Spotify gives genres for your artists). They never include songs you already have in your playlists or Liked Songs.
 - **Forgotten**: 100 at random from your Liked Songs from over 1, 2, 3 or 5 years ago.
-- **Your summary**: your top 5 artists and songs (4 weeks, 6 months or all time) on a vertical story card (1080×1920) and a square one, to share or download. Covers are shown whole with nothing on top, next to the Spotify logo. You can create "My top · Shuffle".
+- **Your summary**: your top 5 artists and songs (4 weeks, 6 months or all time) on a vertical story card (1080×1920) and a square one, to share or download. Covers are shown whole with nothing on top, next to the Spotify logo. You can create "My top · Shuffl".
 
 Spotify limits how many requests each app makes, so Shuffl saves them: each search stops after about 30 reads (under "More options" you choose how many artists it looks at each time), "Find more" continues where it left off and what is read is kept on the device (IndexedDB): your playlists' songs while they do not change, albums for 30 days, artists and releases for 24 h. To avoid suggesting what is already in your Liked Songs, it only asks about the candidate songs. If Spotify cuts off halfway, what was found is kept.
 

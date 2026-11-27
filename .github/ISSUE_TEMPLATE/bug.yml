@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Gracias por avisar. **No pegues tokens, tu Client ID ni datos personales.** Para fallos de seguridad usa [SECURITY.md](https://github.com/JuandelMazoVazquez/new-spoti/blob/main/SECURITY.md).
+        Gracias por avisar. **No pegues tokens, tu Client ID ni datos personales.** Para fallos de seguridad usa [SECURITY.md](https://github.com/JuandelMazoVazquez/shuffl/blob/main/SECURITY.md).
         Thanks for reporting. **Do not paste tokens, your Client ID or personal data.** For security issues use SECURITY.md.
   - type: textarea
     id: what
@@ -41,6 +41,6 @@ body:
     id: demo
     attributes:
       label: ¿Pasa también en la demo? / Does it also happen in the demo?
-      description: Prueba en https://juandelmazovazquez.github.io/new-spoti/?demo=1 / Try it at the demo link.
+      description: Prueba en https://juandelmazovazquez.github.io/shuffl/?demo=1 / Try it at the demo link.
       options:
         - label: Sí, también pasa en la demo / Yes, it also happens in the demo

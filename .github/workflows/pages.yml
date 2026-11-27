@@ -43,6 +43,7 @@ jobs:
         run: |
           mkdir _site
           cp -r index.html manifest.webmanifest sw.js css js icons _site/
+          cp docs/media/social-preview-es.png _site/og.png
           build="$(git rev-parse --short=8 HEAD)"
           sed -i "s/__BUILD__/${build}/" _site/sw.js
           grep -q "const VERSION = '${build}'" _site/sw.js

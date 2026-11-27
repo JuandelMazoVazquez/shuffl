@@ -1,4 +1,4 @@
-# Investigación: quejas y sugerencias de usuarios de Spotify (2025-2026) para Baraja
+# Investigación: quejas y sugerencias de usuarios de Spotify (2025-2026) para Shuffl
 
 Fecha de la investigación: 2026-11-23.
 
@@ -42,7 +42,7 @@ Fuente: [Guía de migración febrero 2026](https://developer.spotify.com/documen
 ### 2. Smart Shuffle: quejas de que mete canciones y no se puede quitar
 - Hilo "Introducing Smart Shuffle" con más de mil respuestas, la mayoría pidiendo un interruptor para desactivarlo [resumen de WebSearch]. [Enlace](https://community.spotify.com/t5/Your-Library/Introducing-Smart-Shuffle/td-p/5516566/page/47).
 - Idea implementada: interruptor de Smart Shuffle en ajustes, [Implemented Ideas](https://community.spotify.com/t5/Implemented-Ideas/Mobile-Other-Smart-Shuffle-toggle-setting-in-settings-menu/idc-p/6688170/highlight/true).
-- Clase: (C), es comportamiento del reproductor, fuera del control de Baraja. El valor indirecto es que una playlist reordenada de verdad evita depender del shuffle del cliente (cubierto por el punto 1).
+- Clase: (C), es comportamiento del reproductor, fuera del control de Shuffl. El valor indirecto es que una playlist reordenada de verdad evita depender del shuffle del cliente (cubierto por el punto 1).
 
 ### 3. Ordenar playlists por fecha de lanzamiento y más criterios
 - "[Playlists] Sort by Release Date": unos 1.550 votos (capturas con 1561 y 1554), [resumen]. Sin respuesta oficial encontrada. [Enlace](https://community.spotify.com/t5/Live-Ideas/Playlists-Sort-by-Release-Date/idi-p/757687).
@@ -73,7 +73,7 @@ Fuente: [Guía de migración febrero 2026](https://developer.spotify.com/documen
 
 ### 7. Deshacer cambios en playlists / volver a una versión anterior
 - Live Idea para revertir playlists a una versión anterior, citada por un moderador en el hilo [How do I undo AI updates to playlist](https://community.spotify.com/t5/Content-Questions/How-do-I-undo-ai-updates-to-playlist/m-p/7430429) [resumen]. Sugerencia aparte de un botón de deshacer siempre disponible; no hay constancia de que se haya lanzado.
-- Clase: (A) para lo que Baraja modifique (copia previa + deshacer). Cubierta. Deshacer cambios hechos por otras apps o por Spotify: (C).
+- Clase: (A) para lo que Shuffl modifique (copia previa + deshacer). Cubierta. Deshacer cambios hechos por otras apps o por Spotify: (C).
 
 ### 8. "Add a Shuffle Playlist Order button" (reordenar el orden guardado)
 - Idea viva que pide "shuffle playlist order, save new order, undo shuffle, and shuffle again" para playlists grandes [resumen de WebFetch; votos y fecha no visibles]. [Enlace](https://community.spotify.com/t5/Live-Ideas/Add-a-Shuffle-Playlist-Order-button/idi-p/7465416).
@@ -116,12 +116,12 @@ Fuente: [Guía de migración febrero 2026](https://developer.spotify.com/documen
 
 ## Qué ofrecen y qué echan de menos en proyectos open source parecidos
 
-- Ninguna herramienta encontrada hace ordenar, barajar, duplicados y backup a la vez [resumen de WebSearch]. Esa es la propuesta de Baraja.
-- Casi todas son CLI/Docker/Python y exigen registrar una app de desarrollador y credenciales [resumen]. Baraja como PWA sin servidor reduce esa fricción, aunque el modo Development Mode (Premium, 5 usuarios) sigue imponiendo límites.
+- Ninguna herramienta encontrada hace ordenar, barajar, duplicados y backup a la vez [resumen de WebSearch]. Esa es la propuesta de Shuffl.
+- Casi todas son CLI/Docker/Python y exigen registrar una app de desarrollador y credenciales [resumen]. Shuffl como PWA sin servidor reduce esa fricción, aunque el modo Development Mode (Premium, 5 usuarios) sigue imponiendo límites.
 - [spotimy](https://github.com/court-jus/spotimy) [resumen de WebFetch]: "Sort library" (pistas de Tus me gusta que no están en ninguna playlist), "Save Discover", barajar, quitar duplicados. Limitación declarada: "probably full of bugs and missing features", sin GUI.
 - [itzTerra/SpotifyTools](https://www.github.com/itzTerra/SpotifyTools): encontrar pistas comunes entre dos playlists y backup JSON [resumen de búsqueda].
 - [Festune](https://github.com/Martiusweb/festune): ordenar, duplicados en un subconjunto de playlists y "rotating playlist" con pistas recientes [resumen de búsqueda].
-- [Spoofy](https://github.com/noahc3/Spoofy): barajado permanente con espaciado por artista (propuesta prohibida para Baraja).
+- [Spoofy](https://github.com/noahc3/Spoofy): barajado permanente con espaciado por artista (propuesta prohibida para Shuffl).
 - No encontré issues de usuarios (feature requests) en los repos revisados: Shufflify y Spoofy mostraron 0 issues; spotimy muestra 3 sin contenido leído; music-backup no se revisó en issues. Por tanto, "lo que echa de menos la gente" en GitHub: no verificado. Lo que sí documentan los README son sus propias limitaciones (restauración de orden de Tus me gusta, carpetas y colaborativas ausentes en backups).
 
 ## (A) NO cubiertas por las funciones base, con más valor (máximo 5, sencillas)

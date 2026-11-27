@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Para ideas abiertas o a medio pensar, mejor en [Discussions → Ideas](https://github.com/JuandelMazoVazquez/new-spoti/discussions/categories/ideas). Aquí, propuestas concretas.
+        Para ideas abiertas o a medio pensar, mejor en [Discussions → Ideas](https://github.com/JuandelMazoVazquez/shuffl/discussions/categories/ideas). Aquí, propuestas concretas.
         For open-ended ideas, Discussions → Ideas is better. Use this form for concrete proposals.
 
         Shuffl solo puede usar lo que la Web API de Spotify permite en Development Mode (sin recomendaciones, sin audio-features y sin leer playlists ajenas), y su barajado es siempre uniforme.

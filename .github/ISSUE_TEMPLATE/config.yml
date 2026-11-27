@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Ideas y preguntas / Ideas and questions
-    url: https://github.com/JuandelMazoVazquez/new-spoti/discussions
+    url: https://github.com/JuandelMazoVazquez/shuffl/discussions
     about: Para hablar de ideas o pedir ayuda con la configuración. / To discuss ideas or get help with setup.
   - name: Vulnerabilidad de seguridad / Security vulnerability
-    url: https://github.com/JuandelMazoVazquez/new-spoti/security/advisories/new
+    url: https://github.com/JuandelMazoVazquez/shuffl/security/advisories/new
     about: En privado, nunca en un issue público. / Privately, never in a public issue.
