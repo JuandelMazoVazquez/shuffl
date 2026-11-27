@@ -163,6 +163,10 @@ button.row { width: 100%; border: 0; background: transparent; color: inherit; fo
 .choice input, .check input { width: 22px; height: 22px; margin-top: 2px; accent-color: var(--accent); flex: none; }
 .choice span { display: flex; flex-direction: column; flex: 1; gap: .2rem; }
 .choice small { color: var(--muted); }
+.choice:has(input:disabled) { cursor: not-allowed; }
+.choice:has(input:disabled) strong { color: var(--muted); }
+.choice small.choice-why { color: var(--text); border-left: 2px solid var(--border); padding-left: .5rem; margin-top: .2rem; }
+.dest-wrap .choices { margin-bottom: 1rem; }
 .check { align-items: center; }
 .more { margin-top: .8rem; }
 .more summary { min-height: 44px; display: flex; align-items: center; gap: .5rem; cursor: pointer; color: var(--accent); font-weight: 700; list-style: none; }
@@ -179,6 +183,14 @@ button.row { width: 100%; border: 0; background: transparent; color: inherit; fo
 .steps .step.done .step-head span { text-decoration: line-through; }
 .steps .step > .btn, .steps .step > .copybox, .steps .step > .text { margin-top: .5rem; }
 .steps .step > .btn { width: 100%; }
+.setup-list { margin: .5rem 0 0; padding-left: 1.2rem; }
+.setup-list > li { margin: .45rem 0; }
+.setup-list > li > .btn { display: flex; justify-content: center; width: 100%; margin-top: .4rem; }
+.fields { list-style: none; padding: 0; margin: .4rem 0 0; display: grid; gap: .45rem; }
+.fields li { background: var(--surface-2); border-radius: 8px; padding: .5rem .6rem; overflow-wrap: anywhere; }
+.fields .field-name { font-family: var(--font-mono); font-size: .85rem; color: var(--accent); }
+.fields .copybox { margin-top: .4rem; }
+.setup-warn { margin-top: .6rem; padding: .55rem .7rem; border-left: 3px solid var(--accent); background: var(--surface-2); border-radius: 0 8px 8px 0; font-weight: 600; }
 .diag { padding-left: 1.2rem; }
 .diag li { margin: .4rem 0; }
 .diag li.bad { color: var(--danger); }

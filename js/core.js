@@ -328,6 +328,23 @@ export function sanitizeFilters(raw) {
   return f;
 }
 
+// ---------- Barajar en la playlist original (v1.5.0) ----------
+
+/**
+ * Por qué no se puede barajar en la playlist original (clave de texto), o null si se puede. Solo una playlist tuya o
+ * colaborativa, entera y sin tiempo: Spotify no deja reordenar Tus me gusta, y con varias, por tiempo o con filtros se
+ * perderían canciones del original.
+ */
+export function selfBlocker({ sel, library = false, timed = false, filtered = false }) {
+  if (!sel.length) return 'selfWhyPick';
+  if (library || sel.length > 1) return 'selfWhyMulti';
+  if (sel[0].isLiked) return 'selfWhyLiked';
+  if (!sel[0].owned && !sel[0].collaborative) return 'selfWhyNotYours';
+  if (timed) return 'selfWhyTime';
+  if (filtered) return 'selfWhyFilters';
+  return null;
+}
+
 // ---------- Dividir una playlist ----------
 
 export const SPLIT_MODES = ['parts', 'decade', 'artist', 'addedYear'];

@@ -3,11 +3,11 @@ import {
   filterByAdded, findDuplicates, removeIndexes, buildBackup, toCsv, validateBackup, MAX_BACKUP_BYTES, MAX_BACKUP_PLAYLISTS,
   EXPLICIT_MODES, emptyFilters, hasFilters, filterTracks, sanitizeFilters, organizePlaylists, parsePlaylistRef,
   SPLIT_MODES, MAX_SPLIT_PARTS, splitTracks, MULTI_KEYS, sortTracksBy, normalizeAlbum, normalizeFollowedArtist, toLibraryCsv,
-  pickThumb, isImageUrl, allowDemoImages,
+  pickThumb, isImageUrl, allowDemoImages, selfBlocker,
 } from './core.js';
 import { sanitizeMix, sanitizeMixes, upsertMix, removeMix, newMixId, mixSources } from './mixes.js';
 import {
-  sourceKey, generatedName, snapshotName, generatedDescription, tagFor, withTag, isAppPlaylist, timeName,
+  sourceKey, generatedName, snapshotName, generatedDescription, tagFor, withTag, isAppPlaylist, timeName, appCategory, replacedBy, CATEGORIES,
 } from './targets.js';
 import { SpotifyApi, ApiError } from './api.js';
 import * as auth from './auth.js';
@@ -32,6 +32,7 @@ import {
   pickArtists, recentAlbums, RELEASE_DAYS, albumsFromListening, withoutUris, CACHE_TTL_MS,
   DISCOVER_COUNTS, DISCOVER_MINUTES, DEFAULT_DISCOVER_COUNT, MAX_DISCOVER_ARTISTS, takeAmount, topGenres,
   artistsFromTracks, notInLibrary, ARTISTS_PER_SEARCH, READ_BUDGET, MIN_TRACKS_ON_QUOTA, sanitizeArtistsPerSearch,
+  PER_ARTIST, sanitizePerArtist, spreadByArtist, countArtists, mainArtist,
 } from './generators.js';
 import { renderSummary } from './summary.js';
 
@@ -127,7 +128,7 @@ const spotifyUrl = (id) => `https://open.spotify.com/playlist/${encodeURICompone
  * Blanco en tema oscuro y negro en claro (el verde solo vale sobre negro o blanco puros); el CSS elige cuál se ve.
  */
 const spotifyAttribution = (href = 'https://open.spotify.com/') =>
-  h('a', { class: 'spotify-attrib', href, target: '_blank', rel: 'noopener', 'aria-label': t('contentFromSpotify') },
+  h('a', { class: 'spotify-attrib', href, target: '_blank', rel: 'noopener noreferrer', 'aria-label': t('contentFromSpotify') },
     h('img', { class: 'on-dark', src: 'icons/spotify/full-logo-white.svg', alt: '', width: '88', height: '24' }),
     h('img', { class: 'on-light', src: 'icons/spotify/full-logo-black.svg', alt: '', width: '88', height: '24' }));
 const nowLabel = () => new Date().toLocaleString(getLang(), { dateStyle: 'short', timeStyle: 'short' });
@@ -208,7 +209,7 @@ function createStatus({ loader = false } = {}) {
   const live = h('p', { class: 'live', role: 'status', 'aria-live': 'polite' });
   const retryBtn = h('button', { class: 'btn primary', type: 'button', hidden: true }, t('retry'));
   const reconnectBtn = h('button', { class: 'btn', type: 'button', hidden: true, onclick: () => reconnect() }, t('reconnectBtn'));
-  const openLink = h('a', { class: 'btn', href: 'https://open.spotify.com/', target: '_blank', rel: 'noopener', hidden: true }, t('openInSpotify'));
+  const openLink = h('a', { class: 'btn', href: 'https://open.spotify.com/', target: '_blank', rel: 'noopener noreferrer', hidden: true }, t('openInSpotify'));
   const err = h('div', { class: 'error-box', role: 'alert', hidden: true }, h('p', { class: 'error' }), h('div', { class: 'error-actions' }, retryBtn, reconnectBtn, openLink));
   const cards = loader
     ? h('div', { class: 'loader', 'aria-hidden': 'true' }, h('div', { class: 'deck' }, h('div', { class: 'lcard' }), h('div', { class: 'lcard' }), h('div', { class: 'lcard' })), h('div', { class: 'loader-bar' }))
@@ -471,6 +472,19 @@ async function assertUnchanged(playlistId, expectedTotal, expected) {
   if (head.some((x, i) => x.uri !== expected[i]?.uri)) throw new UserError(t('errChanged'), 'errChanged');
 }
 
+/**
+ * Barajar en la playlist original: desde el formulario se pregunta la primera vez en esta cuenta (luego queda Deshacer);
+ * siempre si viene de un acceso rápido (`always`: «Barajar otra vez», una mezcla guardada) o se fueran a perder
+ * elementos que Spotify no deja volver a escribir (archivos locales o no disponibles). El «no volver a preguntar» lo
+ * guarda `rememberSelf`, solo cuando la escritura ha ido bien.
+ */
+function confirmSelf(name, skipped, always = false) {
+  if (!always && !skipped && getItem(KEYS.selfOk)?.me === S.me?.id) return true;
+  const lost = skipped ? ` ${t('confirmLost', { n: fmt(skipped) })}` : '';
+  return confirm(t('confirmSelf', { name }) + lost);
+}
+const rememberSelf = () => setItem(KEYS.selfOk, { me: S.me.id });
+
 function confirmOverwrite(name, skipped) {
   const lost = skipped ? ` ${t('confirmLost', { n: fmt(skipped) })}` : '';
   return confirm(t('confirmOverwrite', { name }) + lost);
@@ -492,7 +506,7 @@ async function applyUndo(status, expectedId) {
   return true;
 }
 
-// ---------- Playlists de Shuffl: solo una en tu cuenta, la última (v1.3.1) ----------
+// ---------- Playlists de Shuffl: la última de cada categoría (v1.3.1; por categorías desde la v1.5.0) ----------
 
 /** Borrar las antiguas antes de crear (por defecto sí; se desactiva en Ajustes). */
 const purgeEnabled = () => getItem(KEYS.purge) !== false;
@@ -527,9 +541,14 @@ class RetryableError extends Error {
   }
 }
 
-/** Las playlists de Shuffl de tu biblioteca ahora mismo (lectura fresca), salvo las de `exclude` (los orígenes). */
-async function appPlaylistsNow(exclude) {
-  return (await S.api.getMyPlaylists()).filter((p) => isAppPlaylist(p, S.me.id) && !exclude.includes(p.id));
+/**
+ * Las playlists de Shuffl de tu biblioteca ahora mismo (lectura fresca) que sustituye una nueva de `category`: las de
+ * su misma categoría (y una prueba del diagnóstico que se quedara), salvo las de `exclude` (los orígenes).
+ */
+async function appPlaylistsNow(exclude, category) {
+  const mine = (await S.api.getMyPlaylists()).filter((p) => isAppPlaylist(p, S.me.id) && !exclude.includes(p.id));
+  const cats = await Promise.all(mine.map(appCategory));
+  return mine.filter((_, i) => replacedBy(category, cats[i]));
 }
 
 /**
@@ -556,17 +575,18 @@ async function removePlaylists(ids) {
 }
 
 /**
- * Crea una playlist de Shuffl con `uris` (ya leídas y barajadas, en memoria). Antes quita de tu biblioteca TODAS las
- * playlists de Shuffl (`isAppPlaylist`), salvo `protect` (los orígenes de esta baraja).
+ * Crea una playlist de Shuffl con `uris` (ya leídas y barajadas, en memoria). Antes quita de tu biblioteca las playlists
+ * de Shuffl de su misma `category` (`appCategory`), salvo `protect` (los orígenes de esta baraja).
  * - La hoja de la primera vez va fuera del candado; dentro se vuelve a leer la biblioteca y solo se quita lo que sigue
  *   siendo de Shuffl y estaba en la lista que viste (si renombras una mientras la hoja está abierta, se salva).
  * - Si borrar o crear falla, lanza un error con «Reintentar», que repite solo lo que falta sin volver a leer: si la
  *   playlist llegó a crearse, se rellena esa en vez de crear otra.
  * Devuelve { id, notes }.
  */
-async function createAppPlaylist({ key, name, description, uris, protect = [] }, status) {
+async function createAppPlaylist({ key, category, name, description, uris, protect = [] }, status) {
+  if (!CATEGORIES.includes(category)) throw new Error(`Categoría desconocida: ${category}`);
   const tag = await tagFor(key ?? 'none');
-  const full = withTag(description, tag, name);
+  const full = withTag(description, tag, name, category);
   let createdId = null;
   const step = async () => {
     const notes = [];
@@ -574,7 +594,7 @@ async function createAppPlaylist({ key, name, description, uris, protect = [] },
     if (purgeEnabled() && !purgeConfirmed()) {
       status.phase('cleaning');
       // La playlist de un intento anterior se rellena, no se quita: no se enseña en la hoja.
-      const old = await appPlaylistsNow([...protect, createdId].filter(Boolean));
+      const old = await appPlaylistsNow([...protect, createdId].filter(Boolean), category);
       if (old.length) {
         if (!await confirmPurge(old)) throw new CancelledError(t('purgeCancelled'));
         confirmed = new Set(old.map((p) => p.id));
@@ -583,7 +603,7 @@ async function createAppPlaylist({ key, name, description, uris, protect = [] },
     const id = await withWriteLock(async () => {
       // Una sola lectura fresca: sirve para saber si la playlist de un intento anterior sigue ahí y para borrar.
       // Con el borrado desactivado y sin intento anterior no hace falta leer la biblioteca.
-      const fresh = purgeEnabled() || createdId ? await appPlaylistsNow(protect) : [];
+      const fresh = purgeEnabled() || createdId ? await appPlaylistsNow(protect, category) : [];
       if (createdId && !fresh.some((p) => p.id === createdId)) createdId = null;
       if (purgeEnabled()) {
         status.phase('cleaning');
@@ -768,7 +788,7 @@ function showFollowedHelp(pl) {
       h('p', {}, h('strong', {}, `${t('onComputer')}: `), t('copyComputer')),
       h('p', { class: 'muted' }, t('copyThenRefresh')),
       h('div', { class: 'actions' },
-        h('a', { class: 'btn primary', href: spotifyUrl(pl.id), target: '_blank', rel: 'noopener', id: 'followed-open' }, t('openInSpotify')),
+        h('a', { class: 'btn primary', href: spotifyUrl(pl.id), target: '_blank', rel: 'noopener noreferrer', id: 'followed-open' }, t('openInSpotify')),
         h('button', { class: 'btn', type: 'button', id: 'followed-close', onclick: close }, t('close')))));
   document.addEventListener('keydown', onKey);
   document.body.append(sheet);
@@ -842,7 +862,7 @@ async function startAndVerify(playlistId, device) {
 
 /** Mensaje claro de lo que ha pasado al reproducir, con la acción que lo arregla («Abrir en Spotify», «Volver a intentar»). */
 function showPlayOutcome(info, outcome, { device, playlistId, again }) {
-  const open = h('a', { class: 'btn', href: spotifyUrl(playlistId), target: '_blank', rel: 'noopener', id: 'play-open' }, t('openInSpotify'));
+  const open = h('a', { class: 'btn', href: spotifyUrl(playlistId), target: '_blank', rel: 'noopener noreferrer', id: 'play-open' }, t('openInSpotify'));
   const retry = h('button', { class: 'btn primary', type: 'button', id: 'play-again', onclick: again }, t('playAgain'));
   const name = device?.name ?? '';
   const msg = {
@@ -1020,7 +1040,7 @@ function renderResult(container, status, o) {
       meta,
       h('div', { class: 'result-main' },
         h('button', { class: 'btn primary', type: 'button', id: 'play-now', onclick: () => playNow(o.playlistId, info, status) }, t('playNow')),
-        h('a', { class: 'btn', href: spotifyUrl(o.playlistId), target: '_blank', rel: 'noopener', id: 'open-spotify' }, t('openInSpotify'))),
+        h('a', { class: 'btn', href: spotifyUrl(o.playlistId), target: '_blank', rel: 'noopener noreferrer', id: 'open-spotify' }, t('openInSpotify'))),
       o.headExtra ?? null,
       info),
     ...o.notes.map((n) => h('p', { class: 'note' }, n)),
@@ -1159,14 +1179,21 @@ function shufflePanel() {
   const status = createStatus({ loader: true });
   const result = h('div', { class: 'result', hidden: true });
   const dedupe = h('input', { type: 'checkbox', id: 'sh-dedupe', checked: true });
+  // Dónde barajar (v1.5.0: a la vista, recuerda la última elección). Si la original no se puede, se dice por qué.
   const radios = {};
-  const mkRadio = (value, label, hint) => {
-    const input = h('input', { type: 'radio', name: 'sh-dest', value });
+  let preferred = getItem(KEYS.dest) === 'self' ? 'self' : 'reuse';
+  const selfWhy = h('small', { class: 'choice-why', id: 'dest-self-why', hidden: true });
+  const mkRadio = (value, label, hint, extra = null) => {
+    const input = h('input', { type: 'radio', name: 'sh-dest', value, id: `sh-dest-${value}`, onchange: () => {
+      preferred = value;
+      setItem(KEYS.dest, value);
+    } });
     radios[value] = input;
-    return h('label', { class: 'choice' }, input, h('span', {}, h('strong', {}, label), h('small', {}, hint)));
+    return h('label', { class: 'choice', for: `sh-dest-${value}` }, input, h('span', {}, h('strong', {}, label), h('small', {}, hint), extra));
   };
-  const destBox = h('div', { class: 'choices' },
-    mkRadio('reuse', t('destReuse'), t('destReuseHint')), mkRadio('self', t('destSelf'), t('destSelfHint')));
+  const destBox = h('div', { class: 'choices', role: 'radiogroup', 'aria-label': t('shuffleWhere'), id: 'dest-box' },
+    mkRadio('reuse', t('destReuse'), t('destReuseHint')), mkRadio('self', t('destSelf'), t('destSelfHint'), selfWhy));
+  radios.self.setAttribute('aria-describedby', 'dest-self-why');
   radios.reuse.checked = true;
   const go = h('button', { class: 'btn primary big', type: 'button', id: 'shuffle-go', disabled: true, onclick: () => run() }, t('shuffleBtn'));
 
@@ -1266,10 +1293,12 @@ function shufflePanel() {
     }
   }
   function syncDestination() {
-    const sel = picker.getSelected();
-    const selfOk = !isTime() && !libraryMode && sel.length === 1 && sel[0].owned && !sel[0].isLiked && !hasFilters(readFilters());
-    radios.self.disabled = !selfOk;
-    if (!selfOk && radios.self.checked) radios.reuse.checked = true;
+    const why = selfBlocker({ sel: picker.getSelected(), library: libraryMode, timed: isTime(), filtered: hasFilters(readFilters()) });
+    radios.self.disabled = !!why;
+    selfWhy.textContent = why ? t(why) : '';
+    selfWhy.hidden = !why;
+    // La preferencia se recuerda aunque ahora no se pueda: vuelve en cuanto se pueda otra vez.
+    (why ? radios.reuse : radios[preferred]).checked = true;
   }
   function syncSelection(sel) {
     go.disabled = sel.length === 0;
@@ -1360,13 +1389,12 @@ function shufflePanel() {
     h('summary', {}, t('moreOptions')),
     h('label', { class: 'check' }, dedupe, h('span', {}, t('dedupeOpt'))),
     filtersBox,
-    h('h2', {}, t('destination')), destBox,
     linkBox,
     h('div', { class: 'actions' }, saveMixBtn, cancelEditBtn));
   const form = h('div', {},
     h('h2', { class: 'tool-title' }, t('tabShuffle')),
     h('p', { class: 'lead' }, t('shuffleLead')),
-    sourceBox, kindBox, go, moreBox);
+    sourceBox, kindBox, h('div', { class: 'dest-wrap' }, h('h2', {}, t('shuffleWhere')), destBox), go, moreBox);
   const rouletteCard = h('button', { class: 'card compact', type: 'button', id: 'card-roulette', onclick: () => S.show('roulette') },
     h('span', { class: 'card-icon' }, icon(...ICONS.roulette)),
     h('span', {}, h('span', { class: 'card-title' }, t('rouletteTitle')), h('span', { class: 'card-sub' }, t('cardRouletteSub'))));
@@ -1378,7 +1406,7 @@ function shufflePanel() {
   let last = null;
 
   /** Carga una mezcla en el formulario. Devuelve si todas sus playlists siguen disponibles. */
-  function applyMix(mix) {
+  function applyMix(mix, modeOverride = null) {
     S.show('shuffle');
     showForm();
     const timed = mix.kind === 'time' && !!mix.minutes;
@@ -1397,13 +1425,15 @@ function shufflePanel() {
     if (hasFilters(mix.filters)) moreBox.open = true;
     if (hasFilters(mix.filters)) filtersBox.open = true;
     dedupe.checked = mix.dedupe !== false;
+    // La mezcla trae su destino (sin cambiar la elección guardada); si ahora no se puede barajar en la original, se crea
+    // una nueva y el motivo sale a la vista.
+    if (radios[mix.mode] && !modeOverride) preferred = mix.mode;
     syncSelection(picker.getSelected());
-    if (radios[mix.mode] && !radios[mix.mode].disabled) radios[mix.mode].checked = true;
     return mix.library ? n > 0 : n === ids.length;
   }
   /** `origin.mixId`/`origin.mixName`: la mezcla guardada de la que viene, para nombrar su playlist. */
   S.runMix = (mix, origin = null, opts = {}) => {
-    if (applyMix(mix)) return run(origin, opts);
+    if (applyMix(mix, opts.modeOverride)) return run(origin, { ...opts, shortcut: true });
     status.fail(new UserError(t('mixMissing'), 'mixMissing'));
     return Promise.resolve(null);
   };
@@ -1488,7 +1518,7 @@ function shufflePanel() {
   }
 
   /** Devuelve una promesa con el id de la playlist escrita (o null si no se barajó). */
-  function run(fromMix = null, { modeOverride } = {}) {
+  function run(fromMix = null, { modeOverride, shortcut = false } = {}) {
     let written = null;
     if (S.busy) return Promise.resolve(null);
     // Respuesta inmediata: la pantalla de trabajo sale antes de la primera petición.
@@ -1505,16 +1535,19 @@ function shufflePanel() {
       const sel = picker.getSelected();
       const minutes = readMinutes();
       const origin = { mixId: fromMix?.mixId, mixName: fromMix?.mixName, library: libraryMode };
-      const mode = minutes && (modeOverride ?? dest()) === 'self' ? 'reuse' : modeOverride ?? dest();
       const filters = readFilters();
-      const doDedupe = dedupe.checked;
+      // Por si el formulario cambió entre pulsar y leer: si la original no se puede, se crea una nueva, nunca se escribe en ella.
+      const wanted = modeOverride ?? dest();
+      const mode = wanted === 'self' && selfBlocker({ sel, library: libraryMode, timed: isTime(), filtered: hasFilters(filters) }) ? 'reuse' : wanted;
+      // En la original solo cambia el orden: no se quitan las repetidas (para eso está Duplicados).
+      const doDedupe = dedupe.checked && mode !== 'self';
       const presetKey = readPreset();
       const config = { ...currentConfig(), mode, mixId: origin.mixId, at: new Date().toISOString() };
       if (isTime() && !minutes) throw new UserError(t('errMinutes', { min: MIN_MINUTES, max: SLIDER_MAX }), 'errMinutes');
       status.phase('reading');
       // Si una playlist no ha cambiado desde la última vez, no se vuelve a leer (cuota). Para escribir en ella misma, sí.
       const { tracks, skipped } = await readSources(sel, status, { useCache: mode !== 'self' });
-      if (mode === 'self' && !confirmOverwrite(sel[0].name, skippedCount(skipped))) { status.clear(); showForm(); return; }
+      if (mode === 'self' && !confirmSelf(sel[0].name, skippedCount(skipped), shortcut)) { status.clear(); showForm(); return; }
       status.phase('shuffling');
       const unique = doDedupe ? uniqueByUri(tracks) : tracks;
       const base = filterTracks(unique, filters);
@@ -1542,16 +1575,19 @@ function shufflePanel() {
       };
       if (mode === 'self') {
         await withWriteLock(async () => {
+          // Lo leído es de antes de la confirmación: si alguien (otro colaborador, otro dispositivo) la ha cambiado, no se escribe.
+          await assertUnchanged(sel[0].id, tracks.length + skippedCount(skipped), tracks);
           saveUndo(sel[0].id, sel[0].name, tracks.map((x) => x.uri));
           status.phase('saving');
           await overwritePlaylist(sel[0].id, uris, status);
         });
+        rememberSelf();
         await finish({ id: sel[0].id }, []);
         return;
       }
       const description = generatedDescription(t('shuffleDescFrom'), origin.library ? [t('allMyMusic')] : sel.map((p) => (p.isLiked ? t('liked') : p.name)));
       const key = sourceKey({ mixId: origin.mixId, library: origin.library, ids: sel.map((p) => p.id) });
-      await commitApp({ key, name, description, uris, protect: sel.map((p) => p.id) }, status, (w) => finish(w, w.notes));
+      await commitApp({ key, category: 'shuffle', name, description, uris, protect: sel.map((p) => p.id) }, status, (w) => finish(w, w.notes));
     }).then(() => {
       // Si no hubo resultado (error o cancelación), «Volver» lleva al formulario; el error y «Reintentar» siguen arriba.
       if (result.hidden && !working.hidden) {
@@ -1853,7 +1889,7 @@ function snapPanel() {
       if (!tracks.length) throw new UserError(t('errEmpty'), 'errEmpty');
       const order = shuffleBox.checked ? shuffle(tracks) : tracks;
       const name = snapshotName(t(labelKey));
-      await commitApp({ key: `snap:${kind}`, name, description: t('snapDesc'), uris: order.map((x) => x.uri) }, status, async (w) => {
+      await commitApp({ key: `snap:${kind}`, category: 'snap', name, description: t('snapDesc'), uris: order.map((x) => x.uri) }, status, async (w) => {
         status.clear();
         form.hidden = true;
         renderResult(result, status, {
@@ -2210,7 +2246,7 @@ function settingsPanel() {
     h('h2', {}, t('aboutTitle')),
     h('p', { id: 'about-story' }, t('aboutStory')),
     h('p', { class: 'muted', id: 'about-notice' }, t('notAffiliated')),
-    h('p', {}, h('a', { href: REPO_URL, target: '_blank', rel: 'noopener' }, t('repoLink'))),
+    h('p', {}, h('a', { href: REPO_URL, target: '_blank', rel: 'noopener noreferrer' }, t('repoLink'))),
     status.el);
   panel.refresh = () => { syncUndo(); purgeToggle.checked = purgeEnabled(); };
   return panel;
@@ -2255,7 +2291,7 @@ function diagPanel() {
     // y que la playlist ya no está en la biblioteca. Lleva la etiqueta: si no se pudo quitar, la quitará el próximo shuffle.
     await check(t('diagDelete'), async () => {
       const name = t('diagProbeName');
-      const probe = await S.api.createPlaylist(name, withTag(t('diagProbeDesc'), await tagFor('diag'), name));
+      const probe = await S.api.createPlaylist(name, withTag(t('diagProbeDesc'), await tagFor('diag'), name, 'diag'));
       try {
         const seen = await S.api.getPlaylistInfo(probe.id);
         if (!isAppPlaylist(seen, S.me.id)) throw new UserError(t('diagNoTag'), 'diagNoTag');
@@ -2312,7 +2348,7 @@ function diagPanel() {
     const name = t('diagProbeName');
     let probeId = null;
     const created = await step('create', async () => {
-      probeId = (await S.api.createPlaylist(name, withTag(t('diagProbeDesc'), await tagFor('diag'), name))).id;
+      probeId = (await S.api.createPlaylist(name, withTag(t('diagProbeDesc'), await tagFor('diag'), name, 'diag'))).id;
       if (uri) await S.api.addItems(probeId, [uri]);
     });
     if (created && probeId) {
@@ -2362,7 +2398,7 @@ function diagPanel() {
   // Registro de errores e informe para copiar
   const errList = h('ul', { class: 'diag errors', id: 'error-log' });
   const report = () => buildReport({
-    version: APP_VERSION, lang: getLang(), standalone: matchMedia('(display-mode: standalone)').matches || navigator.standalone === true,
+    version: APP_VERSION, lang: getLang(), standalone: isStandalone(),
     steps: lastSteps?.map((s) => ({ ok: s.ok !== false, key: s.key, detail: s.detail })) ?? null,
   });
   const copyMsg = h('p', { class: 'muted small', id: 'copy-msg', role: 'status' });
@@ -2422,7 +2458,7 @@ function pinPanel() {
     h('button', { class: 'btn', type: 'button', id: 'pin-back', onclick: () => S.back() }, t('back')));
   panel.refresh = () => {
     const id = getItem(KEYS.lastTarget);
-    setKids(slot, id ? h('a', { class: 'btn primary', href: spotifyUrl(id), target: '_blank', rel: 'noopener', id: 'pin-open' }, t('openInSpotify')) : null);
+    setKids(slot, id ? h('a', { class: 'btn primary', href: spotifyUrl(id), target: '_blank', rel: 'noopener noreferrer', id: 'pin-open' }, t('openInSpotify')) : null);
   };
   return panel;
 }
@@ -2521,7 +2557,7 @@ function proofPanel() {
 
   const panel = h('section', { class: 'panel', id: 'panel-proof', hidden: true },
     backBar(), h('h2', { class: 'tool-title' }, t('proofTitle')),
-    h('p', { id: 'proof-why' }, t('proofWhy'), ' ', h('a', { href: SPOTIFY_SHUFFLE_NEWS, target: '_blank', rel: 'noopener', id: 'proof-source' }, t('proofSource'))),
+    h('p', { id: 'proof-why' }, t('proofWhy'), ' ', h('a', { href: SPOTIFY_SHUFFLE_NEWS, target: '_blank', rel: 'noopener noreferrer', id: 'proof-source' }, t('proofSource'))),
     h('p', { class: 'lead' }, t('proofLead', { n: fmt(PROOF_RUNS), songs: PROOF_SONGS })),
     charts, summary,
     h('button', { class: 'btn', type: 'button', id: 'proof-again', onclick: () => simulate() }, t('proofAgain')),
@@ -2589,6 +2625,18 @@ function rememberRecent(panel) {
   setItem(KEYS.recent, [panel, ...list].slice(0, RECENT_MAX));
 }
 const recentPanels = () => (Array.isArray(getItem(KEYS.recent)) ? getItem(KEYS.recent) : []).filter((x) => PANEL_LABEL[x]).slice(0, RECENT_MAX);
+
+/** Canciones de Tus me gusta que bastan para sacar sus artistas en Descubre y Novedades (v1.5.0). */
+const LIKED_SEED_MAX = 200;
+/**
+ * Tus me gusta como base de «Como mi playlist…»: si ya está entera en la caché del dispositivo, esa; si no, solo las
+ * LIKED_SEED_MAX más recientes (4 peticiones), para no gastar la cuota leyendo miles de canciones.
+ */
+async function likedSeed() {
+  const hit = await cacheRead('liked', LONG_TTL_MS);
+  if (hit?.tracks?.length) return hit.tracks;
+  return normalizeEntries(await S.api.getLikedRecent(LIKED_SEED_MAX)).tracks;
+}
 
 /** Tus me gusta para Olvidadas: si no han cambiado desde la última lectura, de la copia del dispositivo (una petición). */
 async function likedTracks(status) {
@@ -2663,6 +2711,9 @@ function discoverGenPanel(kind) {
   const perSearch = segmented(`${kind}-artists`, t('artistsPerSearch'), ARTISTS_PER_SEARCH.map((n) => [String(n), String(n)]),
     (v) => setItem(KEYS.artistsPerSearch, Number(v)));
   perSearch.set(String(sanitizeArtistsPerSearch(getItem(KEYS.artistsPerSearch))));
+  const perArtist = segmented(`${kind}-per-artist`, t('perArtistLabel'), PER_ARTIST.map((n) => [String(n), String(n)]),
+    (v) => setItem(KEYS.perArtist, Number(v)));
+  perArtist.set(String(sanitizePerArtist(getItem(KEYS.perArtist))));
 
   const styleSel = segmented(`${kind}-style`, t('styleLabel'), [['mine', t('style_mine')], ['playlist', t('style_playlist')], ['genre', t('style_genre')]], () => sync());
   const genreOption = styleSel.el.querySelector(`label[for="${kind}-style-genre"]`);
@@ -2685,7 +2736,7 @@ function discoverGenPanel(kind) {
     timeBox.hidden = !byTime.checked;
     seedBox.hidden = style() !== 'playlist';
     genreBox.hidden = style() !== 'genre';
-    const why = style() === 'playlist' ? t('srcPlaylist', { name: seed()?.name ?? '…' })
+    const why = style() === 'playlist' ? (seed()?.isLiked ? t('srcLiked', { n: LIKED_SEED_MAX }) : t('srcPlaylist', { name: seed()?.name ?? '…' }))
       : style() === 'genre' ? t('srcGenre', { genre: genreSel.value || '…' })
         : t(isNew ? 'srcMineNew' : 'srcMineExplore');
     srcLine.textContent = `${why} ${t('srcNotOwned')}`;
@@ -2699,6 +2750,8 @@ function discoverGenPanel(kind) {
     h('details', { class: 'more', id: `${kind}-more` }, h('summary', {}, t('moreOptions')),
       h('label', { class: 'check' }, byTime, h('span', {}, t('byTimeToggle'))), amountBox, timeBox,
       isNew ? h('p', { class: 'field-label' }, t('newDaysLabel')) : null, days?.el,
+      h('p', { class: 'field-label' }, t('perArtistLabel')), perArtist.el,
+      h('p', { class: 'muted small' }, t('perArtistHint')),
       h('p', { class: 'field-label' }, t('artistsPerSearch')), perSearch.el,
       h('p', { class: 'muted small' }, t('quotaNote'))));
 
@@ -2706,7 +2759,7 @@ function discoverGenPanel(kind) {
   async function refresh() {
     const current = seedSel.value;
     setKids(seedSel, h('option', { value: '' }, t('seedPick')),
-      S.playlists.filter((p) => !p.isLiked && p.readable && p.total).map((p) => h('option', { value: p.id }, p.name)));
+      S.playlists.filter((p) => (p.isLiked ? !p.error : p.readable && p.total)).map((p) => h('option', { value: p.id }, p.name)));
     seedSel.value = current && seed() ? current : '';
     if (!genres.length) {
       try {
@@ -2728,7 +2781,7 @@ function discoverGenPanel(kind) {
 
   async function artistsFor(s) {
     if (s === 'playlist') {
-      const { tracks } = await readSources([seed()], status, { useCache: true });
+      const tracks = seed().isLiked ? await likedSeed() : (await readSources([seed()], status, { useCache: true })).tracks;
       return artistsFromTracks(tracks).slice(0, MAX_DISCOVER_ARTISTS);
     }
     const tops = await topArtistLists();
@@ -2761,10 +2814,21 @@ function discoverGenPanel(kind) {
     return out;
   }
 
-  /** Añade al pool (barajado) canciones nuevas hasta tener `need`, recorrer los artistas de esta búsqueda o gastar el tope. */
+  /** Las del pool que caben con el máximo por artista, en orden por turnos; las demás se apartan (y se cuentan). */
+  const spread = () => {
+    const { ordered, overflow } = spreadByArtist(st.pool, st.perArtist, st.used);
+    st.pool = ordered;
+    // Lo que sobra se aparta, no se tira: si su artista no llega al máximo en esta tanda, sirve para la siguiente.
+    st.held = overflow;
+  };
+
+  /**
+   * Añade al pool (barajado) canciones nuevas hasta tener `need` que quepan con el máximo por artista, recorrer los
+   * artistas de esta búsqueda o gastar el tope.
+   */
   async function fill(need) {
     const stop = Math.min(st.artists.length, st.next + st.perSearch);
-    while (st.pool.length < need && st.next < stop && !overBudget()) {
+    while (spreadByArtist(st.pool, st.perArtist, st.used).ordered.length < need && st.next < stop && !overBudget()) {
       status.progress('discoverReading', st.next, st.artists.length);
       const a = st.artists[st.next++];
       const fresh = notInLibrary(await artistTracks(a), st.libIds).filter((x) => !st.seen.has(x.uri));
@@ -2788,20 +2852,29 @@ function discoverGenPanel(kind) {
    * Busca hasta tener lo pedido. Si la cuota se agota a mitad, no reintenta: devuelve lo conseguido y lo marca.
    * Devuelve { taken, quota }.
    */
-  async function gather() {
+  async function gather({ fetch = true } = {}) {
     const want = need(st.amount);
     let quota = false;
     try {
-      await fill(want + 10);
-      await dropSaved(want + 10);
+      if (fetch) await fill(want + 10);
+      spread();
+      if (fetch) await dropSaved(want + 10);
     } catch (e) {
       if (!isQuota(e)) throw e;
       quota = true;
+      spread();
     }
     const { taken, rest } = takeAmount(st.pool, st.amount);
-    st.pool = rest;
-    return { taken, quota };
+    countArtists(taken, st.used);
+    st.pool = [...rest, ...st.held];
+    // Solo cuenta como «por el máximo» lo que se queda fuera porque su artista ya lo ha llenado.
+    st.capped = st.pool.some((x) => (st.used.get(mainArtist(x)) ?? 0) >= st.perArtist);
+    // El orden por turnos solo sirve para elegir: la playlist sale barajada de forma uniforme.
+    return { taken: shuffle(taken), quota };
   }
+
+  /** Si salen menos de las pedidas y el máximo por artista ha dejado canciones fuera, se dice en vez de rellenar. */
+  const shortNote = (n) => (st.capped ? t('perArtistShort', { n: fmt(n), max: st.perArtist }) : t('fewerFound', { n: fmt(n) }));
 
   const need = (a) => (a.minutes ? Math.ceil(a.minutes / 3) + 5 : a.count);
   const name = () => generatedName({ mixName: t(isNew ? 'newName' : 'exploreName') }, nameLabels());
@@ -2831,6 +2904,7 @@ function discoverGenPanel(kind) {
       st = {
         pool: [], next: 0, seen: new Set(), checked: new Set(), artists: [], tracks: [], days: days ? Number(days.value) : 0,
         name: name(), amount: amount(), perSearch: sanitizeArtistsPerSearch(Number(perSearch.value)),
+        perArtist: sanitizePerArtist(Number(perArtist.value)), used: new Map(), held: [], capped: false,
       };
       let quota = false;
       try {
@@ -2863,7 +2937,8 @@ function discoverGenPanel(kind) {
         showEmpty(t('noArtistsTitle'), t(key));
         return;
       }
-      const got = quota ? { taken: takeAmount(st.pool, st.amount).taken, quota } : await gather();
+      const got = await gather({ fetch: !quota });
+      got.quota ||= quota;
       const { taken } = got;
       if (got.quota && taken.length < MIN_TRACKS_ON_QUOTA) throw new ApiError(429, 'QUOTA_EXCEEDED', { error: { reason: 'QUOTA_EXCEEDED' } });
       if (!taken.length) {
@@ -2872,12 +2947,12 @@ function discoverGenPanel(kind) {
       }
       status.phase('shuffling');
       const description = genDescription(isNew ? 'newDesc' : 'exploreDesc', { n: st.days });
-      await commitApp({ key: kind, name: st.name, description, uris: taken.map((x) => x.uri) }, status, async (w) => {
+      await commitApp({ key: kind, category: kind, name: st.name, description, uris: taken.map((x) => x.uri) }, status, async (w) => {
         st.playlistId = w.id;
         st.tracks = taken;
         const notes = [...w.notes, ...await uploadCover(w.id, t(isNew ? 'newName' : 'exploreName'))];
         if (got.quota) notes.push(t('quotaPartial', { n: fmt(taken.length) }));
-        else if (!st.amount.minutes && taken.length < st.amount.count) notes.push(t('fewerFound', { n: fmt(taken.length) }));
+        else if (!st.amount.minutes && taken.length < st.amount.count) notes.push(shortNote(taken.length));
         rememberRecent(kind);
         status.clear();
         show(notes);
@@ -2939,7 +3014,7 @@ function forgottenPanel() {
       }
       const tracks = shuffle(list).slice(0, FORGOTTEN_MAX);
       const name = generatedName({ mixName: t('forgottenName') }, nameLabels());
-      await commitApp({ key: 'forgotten', name, description: genDescription('forgottenDesc', { n }), uris: tracks.map((x) => x.uri) }, status, async (w) => {
+      await commitApp({ key: 'forgotten', category: 'forgotten', name, description: genDescription('forgottenDesc', { n }), uris: tracks.map((x) => x.uri) }, status, async (w) => {
         const notes = [...w.notes, ...await uploadCover(w.id, t('forgottenName'))];
         if (list.length > tracks.length) notes.push(t('forgottenSample', { n: fmt(tracks.length), m: fmt(list.length) }));
         rememberRecent('forgotten');
@@ -3042,7 +3117,7 @@ function summaryPanel() {
       const order = shuffle(uniqueByUri(topTracks));
       const name = generatedName({ mixName: t('topName') }, nameLabels());
       const description = genDescription('topDesc', { range: t(SUMMARY_RANGES.find(([k]) => k === range.value)[1]) });
-      await commitApp({ key: 'top', name, description, uris: order.map((x) => x.uri) }, status, async (w) => {
+      await commitApp({ key: 'top', category: 'snap', name, description, uris: order.map((x) => x.uri) }, status, async (w) => {
         const notes = [...w.notes, ...await uploadCover(w.id, t('topName'))];
         status.clear();
         renderResult(result, status, {
@@ -3297,8 +3372,11 @@ function redirectHelp(problem) {
     h('p', {}, t('redirectHelpLead')),
     copyBox(auth.redirectUri(), t('redirectUri'), 'redirect-help-uri'),
     h('ol', { class: 'redirect-steps' }, ['redirectHelp1', 'redirectHelp2', 'redirectHelp3', 'redirectHelp4'].map((k) => h('li', {}, t(k)))),
-    h('a', { class: 'btn', href: 'https://developer.spotify.com/dashboard', target: '_blank', rel: 'noopener' }, t('openDashboard')));
+    h('a', { class: 'btn', href: 'https://developer.spotify.com/dashboard', target: '_blank', rel: 'noopener noreferrer' }, t('openDashboard')));
 }
+
+/** Abierta desde la pantalla de inicio (app instalada) y no en una pestaña del navegador. */
+const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
 function renderSetup(problem) {
   S.playlists = [];
@@ -3314,20 +3392,40 @@ function renderSetup(problem) {
   } }, t('connect'));
   const langSel = h('select', { 'aria-label': t('language'), onchange: () => { setLang(langSel.value); renderSetup(problem); } },
     LANGS.map(([code, label]) => { const o = h('option', { value: code }, label); if (code === getLang()) o.selected = true; return o; }));
-  const steps = ['step1', 'step2', 'step3', 'step4', 'step5'];
+  // v1.5.0: el mismo orden y los mismos textos que la guía (guia/, guide/) y el README. Primero instalar: en iPhone,
+  // Safari y la app instalada guardan los datos por separado, y conectarse en Safari obligaría a hacerlo dos veces.
+  const installed = isStandalone();
+  const field = (name, text, extra = null) => h('li', {}, name ? h('strong', { class: 'field-name' }, name) : null, name ? ' ' : null, text, extra);
   const actions = {
-    step1: h('a', { class: 'btn', href: 'https://developer.spotify.com/dashboard', target: '_blank', rel: 'noopener', id: 'open-dashboard' }, t('openDashboard')),
-    step3: copyBox(auth.redirectUri()),
-    step4: idIn,
+    setupInstall: [
+      installed ? h('p', { class: 'note', id: 'setup-installed' }, t('setupInstallDone')) : null,
+      h('ul', { class: 'setup-list' }, h('li', {}, t('setupInstallIos')), h('li', {}, t('setupInstallAndroid')), h('li', {}, t('setupInstallDesktop'))),
+      installed ? null : h('p', { class: 'setup-warn', id: 'setup-warn' }, t('setupInstallWarn')),
+    ],
+    setupCreate: [
+      h('ol', { class: 'setup-list' },
+        h('li', {}, t('setupCreate1'), h('a', { class: 'btn', href: 'https://developer.spotify.com/dashboard', target: '_blank', rel: 'noopener noreferrer', id: 'open-dashboard' }, t('openDashboard'))),
+        h('li', {}, t('setupCreate2'),
+          h('ul', { class: 'fields', id: 'setup-fields' },
+            field('App name', t('fieldName')),
+            field('App description', t('fieldDesc')),
+            field('Website', t('fieldWebsite')),
+            field('Redirect URIs', t('fieldRedirect'), copyBox(auth.redirectUri())),
+            field('Which API/SDKs are you planning to use?', t('fieldApi')),
+            field('', t('fieldTerms')))),
+        h('li', {}, t('setupCreate3'))),
+    ],
+    setupConnect: [idIn],
   };
+  const steps = Object.keys(actions);
   const stepItem = (s, i) => {
-    const li = h('li', { class: 'step' });
+    const li = h('li', { class: 'step', id: `setup-${s}` });
     const box = h('input', { type: 'checkbox', 'aria-label': t('stepDone', { n: i + 1 }), onchange: () => li.classList.toggle('done', box.checked) });
-    li.append(h('label', { class: 'check step-head' }, box, h('span', {}, t(s))));
-    if (actions[s]) li.append(actions[s]);
+    if (s === 'setupInstall' && installed) { box.checked = true; li.classList.add('done'); }
+    li.append(h('label', { class: 'check step-head' }, box, h('span', {}, t(s))), ...actions[s].filter(Boolean));
     return li;
   };
-  setKids(root,h('main', { class: 'setup' },
+  setKids(root, h('main', { class: 'setup' },
     h('div', { class: 'brand' }, h('img', { src: 'icons/icon.svg', alt: '', width: '72', height: '72' }), h('h1', {}, APP_NAME)),
     redirectHelp(problem),
     h('p', { class: 'lead' }, t('welcome')),
@@ -3335,7 +3433,9 @@ function renderSetup(problem) {
     h('p', { class: 'muted small center' }, t('tryDemoNote')),
     h('h2', {}, t('guideTitle')),
     h('ol', { class: 'steps' }, steps.map(stepItem)),
+    h('p', { class: 'muted small', id: 'setup-others' }, t('setupOthers')),
     h('p', { class: 'muted' }, t('premiumNote')),
+    h('p', { class: 'small' }, h('a', { href: t('guideUrl'), target: '_blank', rel: 'noopener noreferrer', id: 'setup-guide' }, t('guideLink'))),
     err, connect,
     h('details', { class: 'more', id: 'setup-diagnosis' }, h('summary', {}, t('diagTitle')),
       h('ul', { class: 'diag' }, ['diagRedirect', 'diagUserMgmt', 'diagPremium', 'diagQuota', 'diagClientId'].map((k) => h('li', {}, t(k))))),

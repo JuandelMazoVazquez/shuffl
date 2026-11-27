@@ -1,5 +1,6 @@
 // Playlists que crea Shuffl: nombre, descripción con etiqueta y cómo reconocerlas para borrarlas (v1.3.1).
-// En tu cuenta solo existe una playlist de Shuffl a la vez: antes de crear la nueva se quitan todas las anteriores.
+// En tu cuenta hay como mucho una playlist de Shuffl de cada categoría (v1.5.0): antes de crear la nueva se quitan las
+// anteriores de su misma categoría.
 
 /** v1.4.1: las playlists nuevas terminan en «· Shuffl»; hasta la v1.4.0 terminaban en «· Shuffle». */
 export const SHUFFLE_SUFFIX = ' · Shuffl';
@@ -86,11 +87,61 @@ export async function tagFor(key) {
   return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, TAG_LEN);
 }
 
-/** Descripción con la etiqueta al final (origen y, si se pasa, nombre); el texto se recorta para que quepa siempre. */
-export function withTag(description, tag, name = null) {
-  const suffix = `${TAG_SEP}${TAG_PREFIX}${tag}${name == null ? '' : `.${nameHash(decodeEntities(name))}`}`;
+/**
+ * Descripción con la etiqueta al final (categoría, origen y, si se pasa, nombre); el texto se recorta para que quepa
+ * siempre. La categoría (v1.5.0) va antes del origen para que las versiones anteriores sigan leyendo la etiqueta.
+ */
+export function withTag(description, tag, name = null, category = null) {
+  const cat = CATEGORIES.includes(category) ? `${TAG_SEP}${CAT_PREFIX}${category}` : '';
+  const suffix = `${cat}${TAG_SEP}${TAG_PREFIX}${tag}${name == null ? '' : `.${nameHash(decodeEntities(name))}`}`;
   return cut(String(description ?? ''), MAX_DESCRIPTION - suffix.length) + suffix;
 }
+
+// ---------- Categorías (v1.5.0) ----------
+// Al crear una playlist de Shuffl solo se quitan las anteriores de la MISMA categoría: un shuffle y un Descubre
+// conviven. `diag` es la playlist de prueba del diagnóstico: si se quedó por un fallo, la quita cualquier categoría.
+
+export const CATEGORIES = Object.freeze(['shuffle', 'explore', 'new', 'forgotten', 'snap', 'diag']);
+const CAT_PREFIX = 'shuffl:cat=';
+const CAT_RE = /(?:^| · )shuffl:cat=([a-z]{1,16}) · shuffl:src=[a-f0-9]{10}(?:\.[a-f0-9]{6})?\s*$/;
+
+/** La categoría escrita en la etiqueta, o null si no la lleva (anteriores a la v1.5.0) o no es una conocida. */
+export function readCategory(description) {
+  const cat = CAT_RE.exec(decodeEntities(description))?.[1] ?? null;
+  return CATEGORIES.includes(cat) ? cat : (cat ? 'unknown' : null);
+}
+
+/**
+ * Claves de origen fijas de las versiones anteriores (v1.3.0 a v1.4.2) y su categoría: así se clasifican por su
+ * etiqueta las playlists sin categoría, sin fiarse del nombre (una playlist tuya llamada «Descubre» barajada se llama
+ * «Descubre · Shuffl» y es un shuffle). Las demás claves (pl:, mix:, library, time:, albums:) son shuffles.
+ */
+const LEGACY_KEYS = [
+  ['new', 'new'], ['explore', 'explore'], ['forgotten', 'forgotten'], ['top', 'snap'], ['diag', 'diag'],
+  ...['top_short', 'top_medium', 'top_long', 'recent'].map((k) => [`snap:${k}`, 'snap']),
+  // v1.3.0: «Un día como hoy» (hace N años) era un recuerdo, como Olvidadas.
+  ...Array.from({ length: 30 }, (_, i) => [`ago:${i + 1}`, 'forgotten']),
+];
+let legacyTags = null;
+const knownTags = () => (legacyTags ??= Promise.all(LEGACY_KEYS.map(async ([key, cat]) => [await tagFor(key), cat])).then((e) => new Map(e)));
+
+/**
+ * Categoría de una playlist que ya se sabe de Shuffl (`isAppPlaylist`). Con etiqueta de categoría, esa (o 'unknown'
+ * si la escribió una versión futura: no se borra con ninguna); con etiqueta de origen sin categoría, la de su clave;
+ * sin etiqueta (v1.2 y anteriores), «📸 …» son instantáneas y el resto («🔀 Baraja», «… · Shuffle») shuffles.
+ */
+export async function appCategory(p) {
+  const cat = readCategory(p?.description);
+  if (cat) return cat;
+  // Una etiqueta de categoría con otro formato (de una versión futura) tampoco se borra.
+  if (decodeEntities(p?.description).includes(CAT_PREFIX)) return 'unknown';
+  const tag = readTag(p?.description);
+  if (tag) return (await knownTags()).get(tag) ?? 'shuffle';
+  return String(p?.name ?? '').startsWith(SNAPSHOT_PREFIX) ? 'snap' : 'shuffle';
+}
+
+/** Si al crear una playlist de `category` se quita una anterior de `other`: la misma categoría, o la prueba del diagnóstico. */
+export const replacedBy = (category, other) => CATEGORIES.includes(category) && (other === category || other === 'diag');
 
 /** La etiqueta de origen de una descripción de Spotify (viene con entidades HTML), o null. */
 export function readTag(description) {

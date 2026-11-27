@@ -21,7 +21,9 @@ const OLD_REPO = new RegExp(`${'new'}-spoti|\\b${'new'} spoti\\b`, 'i');
 /** Historial y documentación de la marca: cuentan cómo se llamaba antes. */
 const HISTORY = ['CHANGELOG.md', 'DECISIONES.md', 'docs/registro/', 'docs/bandeja.md', 'docs/BRAND.md', 'SIGUIENTES_PASOS.md'];
 /** Migraciones necesarias: reconocer y quitar las playlists del nombre anterior, y pasar las claves a shuffl.*. */
-const LEGACY_PLAYLISTS = ['js/targets.js', 'tests/unit/targets.test.js', 'tests/e2e/purge.spec.mjs', 'tests/e2e/tools.spec.mjs'];
+const LEGACY_PLAYLISTS = ['js/targets.js', 'tests/unit/targets.test.js', 'tests/e2e/purge.spec.mjs', 'tests/e2e/tools.spec.mjs',
+  // v1.5.0: clasificación por categorías de las playlists con el nombre antiguo.
+  'tests/unit/v150.test.js', 'tests/e2e/v150.spec.mjs'];
 const LEGACY_KEYS = ['js/storage.js', 'tests/e2e/rebrand.spec.mjs'];
 /** La página que redirige desde la dirección antigua y su test. */
 const OLD_ADDRESS = ['redirect/', 'tests/e2e/redirect.spec.mjs'];

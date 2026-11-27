@@ -54,9 +54,9 @@ test('barajar dos playlists combinadas en «Mix · Shuffl», volver a barajar y 
   const created = [...state.lists.values()].find((l) => l.name === 'Mix · Shuffl');
   expect(created).toBeTruthy();
   expect(new Set(created.tracks.map((t) => t.uri)).size).toBe(180);
-  expect(created.description).toMatch(/ · shuffl:src=[a-f0-9]{10}.[a-f0-9]{6}$/);
+  expect(created.description).toMatch(/ · shuffl:cat=shuffle · shuffl:src=[a-f0-9]{10}.[a-f0-9]{6}$/);
 
-  expect(created.description.replace(/ · shuffl:src=[a-f0-9]{10}.[a-f0-9]{6}$/, '')).toBe('Barajada con Shuffl (aleatorio uniforme; reprodúcela con el aleatorio de Spotify apagado). Origen: Rock, Chill');
+  expect(created.description.replace(/ · shuffl:cat=shuffle · shuffl:src=[a-f0-9]{10}.[a-f0-9]{6}$/, '')).toBe('Barajada con Shuffl (aleatorio uniforme; reprodúcela con el aleatorio de Spotify apagado). Origen: Rock, Chill');
   const natural = [...state.lists.get('pl_rock').tracks, ...state.lists.get('pl_chill').tracks].map((t) => t.name);
   expect(names(created)).not.toEqual(natural.slice(0, 180));
   // Playlist nueva: se crea y se llena en bloques de 100 (nada que sobrescribir).
@@ -103,7 +103,7 @@ test('barajar la propia playlist pide confirmación y se puede deshacer', async 
   await pick(page, 'shuffle', 'Rock');
   const before = names(state.lists.get('pl_rock')).join();
   await moreOptions(page);
-  await page.locator('#panel-shuffle label.choice', { hasText: 'La propia playlist' }).click();
+  await page.locator('#panel-shuffle label.choice', { hasText: 'Barajar mi playlist original' }).click();
   state.dismissNext = true;
   await page.locator('#panel-shuffle .btn.primary.big').click();
   await expect.poll(() => state.dismissNext).toBe(false);
@@ -247,7 +247,7 @@ test('escritura a medias: reintentar no pisa el Deshacer y Deshacer recupera el 
   await pick(page, 'shuffle', 'Rock');
   const original = state.lists.get('pl_rock').tracks.map((t) => t.uri);
   await moreOptions(page);
-  await page.locator('#panel-shuffle label.choice', { hasText: 'La propia playlist' }).click();
+  await page.locator('#panel-shuffle label.choice', { hasText: 'Barajar mi playlist original' }).click();
   state.failNextPost = true;
   await page.locator('#panel-shuffle .btn.primary.big').click();
   await expect(page.getByRole('alert')).toBeVisible();
@@ -283,7 +283,7 @@ test('Deshacer no se aplica si la playlist cambió después de la operación', a
   await login(page);
   await pick(page, 'shuffle', 'Rock');
   await moreOptions(page);
-  await page.locator('#panel-shuffle label.choice', { hasText: 'La propia playlist' }).click();
+  await page.locator('#panel-shuffle label.choice', { hasText: 'Barajar mi playlist original' }).click();
   await page.locator('#panel-shuffle .btn.primary.big').click();
   await expect(page.locator('#result-meta:visible', { hasText: /^120 (canciones|songs) ·/ })).toBeVisible();
   const list = state.lists.get('pl_rock');
@@ -299,7 +299,7 @@ test('volver a barajar a medias: Deshacer sigue recuperando el original y otra p
   await pick(page, 'shuffle', 'Rock');
   const original = state.lists.get('pl_rock').tracks.map((t) => t.uri);
   await moreOptions(page);
-  await page.locator('#panel-shuffle label.choice', { hasText: 'La propia playlist' }).click();
+  await page.locator('#panel-shuffle label.choice', { hasText: 'Barajar mi playlist original' }).click();
   await page.locator('#panel-shuffle .btn.primary.big').click();
   await expect(page.locator('#result-meta:visible', { hasText: /^120 (canciones|songs) ·/ })).toBeVisible();
   state.failNextPost = true;

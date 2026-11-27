@@ -18,7 +18,7 @@ function seedReleases(n, { offset = 3, prefix = 'art' } = {}) {
     const album = `rel_${id}`;
     state.releases[id] = [{ id: album, name: `Disco ${id}`, album_type: 'album', release_date: day(offset), release_date_precision: 'day', images: [] }];
     state.albumTracks[album] = Array.from({ length: 4 }, (_, k) => {
-      const tr = { ...makeTrack(7000 + i * 10 + k), album: { id: album, name: `Disco ${id}`, images: [] }, track_number: k + 1, duration_ms: 150000 + k * 20000 };
+      const tr = { ...makeTrack(7000 + i * 10 + k, { artistId: id, artist: `Artista ${id}` }), album: { id: album, name: `Disco ${id}`, images: [] }, track_number: k + 1, duration_ms: 150000 + k * 20000 };
       state.catalog.set(tr.uri, tr);
       return tr;
     });
@@ -121,6 +121,9 @@ test('Novedades sin artistas: estado vacío que dice qué hacer', async ({ page 
 test('Descubre: canciones de los álbumes que escuchas, sin las que ya tienes ni las escuchadas', async ({ page }) => {
   await login(page);
   await openPanel(page, 'explore');
+  // Los álbumes del mock son de solo 7 artistas: con 5 por artista caben las 30.
+  await page.locator('#explore-more > summary').click();
+  await page.locator('label[for="explore-per-artist-5"]').click();
   await page.locator('#explore-go').click();
   await expect(resultMeta(page)).toContainText('30 canciones');
   await idle(page);

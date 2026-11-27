@@ -41,9 +41,9 @@ test('barajar sube una portada JPEG de 640x640 y menos de 256 KB, y pone la desc
   expect([...bytes.subarray(0, 3)]).toEqual([0xff, 0xd8, 0xff]);
   expect(jpegSize(bytes)).toEqual({ width: 640, height: 640 });
   const create = state.writes.find((w) => w.op === 'create' && w.name === 'Chill · Shuffl');
-  expect(create.description).toMatch(/ · shuffl:src=[a-f0-9]{10}.[a-f0-9]{6}$/);
+  expect(create.description).toMatch(/ · shuffl:cat=shuffle · shuffl:src=[a-f0-9]{10}.[a-f0-9]{6}$/);
 
-  expect(create.description.replace(/ · shuffl:src=[a-f0-9]{10}.[a-f0-9]{6}$/, '')).toBe('Barajada con Shuffl (aleatorio uniforme; reprodúcela con el aleatorio de Spotify apagado). Origen: Chill');
+  expect(create.description.replace(/ · shuffl:cat=shuffle · shuffl:src=[a-f0-9]{10}.[a-f0-9]{6}$/, '')).toBe('Barajada con Shuffl (aleatorio uniforme; reprodúcela con el aleatorio de Spotify apagado). Origen: Chill');
 
   // Volver a barajar reordena la misma playlist: su portada no cambia, así que no se vuelve a subir (una petición menos).
   await page.getByRole('button', { name: 'Volver a barajar' }).click();
@@ -75,7 +75,7 @@ test('la portada se puede desactivar en Ajustes y no se sube al barajar la propi
   await page.locator('#tab-shuffle').click();
   await page.getByRole('button', { name: 'Volver', exact: true }).click();
   await moreOptions(page);
-  await page.locator('#panel-shuffle label.choice', { hasText: 'La propia playlist' }).click();
+  await page.locator('#panel-shuffle label.choice', { hasText: 'Barajar mi playlist original' }).click();
   await page.locator('#panel-shuffle .btn.primary.big').click();
   await expect(page.locator('#result-meta:visible', { hasText: /^80 (canciones|songs) ·/ })).toBeVisible();
   await idle(page);

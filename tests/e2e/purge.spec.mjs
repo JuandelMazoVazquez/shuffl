@@ -1,4 +1,4 @@
-// v1.3.1: en tu cuenta solo hay una playlist de Shuffl a la vez. Antes de crear la nueva se quitan TODAS las anteriores
+// v1.3.1: antes de crear la nueva se quitan las anteriores de Shuffl (desde la v1.5.0, solo las de su misma categoría: v150.spec)
 // (con etiqueta, o antiguas con una descripción de una versión anterior), nunca una renombrada, ajena ni sin esa descripción.
 import { test, expect } from '@playwright/test';
 import { installMock, login, idle, pick, openPanel, moreOptions, shot } from './helpers.mjs';
@@ -33,7 +33,7 @@ test.describe('con la hoja ya aceptada', () => {
     await login(page);
     await shuffle(page, 'Rock');
     const [rock] = byName('Rock · Shuffl');
-    expect(rock.description).toMatch(new RegExp(`^${esc(V12_ES)}Rock · shuffl:src=[a-f0-9]{10}.[a-f0-9]{6}$`));
+    expect(rock.description).toMatch(new RegExp(`^${esc(V12_ES)}Rock · shuffl:cat=shuffle · shuffl:src=[a-f0-9]{10}.[a-f0-9]{6}$`));
     await shuffle(page, 'Chill');
     expect(byName('Rock · Shuffl')).toHaveLength(0);
     expect(byName('Chill · Shuffl')).toHaveLength(1);
@@ -60,10 +60,11 @@ test.describe('con la hoja ya aceptada', () => {
     await page.locator('#shuffle-go').click();
     await expect(resultMeta(page)).toBeVisible();
     await idle(page);
-    expect(state.unfollowCalls.flat().sort()).toEqual(['baraja', 'snap', 'snap2', 'v12a', 'v12b', 'v13'].map((id) => `spotify:playlist:${id}`).sort());
-    for (const id of ['renamed', 'mine', 'empty', 'foreign', 'collab']) expect(state.lists.has(id), id).toBe(true);
+    expect(state.unfollowCalls.flat().sort()).toEqual(['baraja', 'v12a', 'v12b', 'v13'].map((id) => `spotify:playlist:${id}`).sort());
+    // v1.5.0: un shuffle solo quita shuffles; las instantáneas antiguas se quedan.
+    for (const id of ['snap', 'snap2', 'renamed', 'mine', 'empty', 'foreign', 'collab']) expect(state.lists.has(id), id).toBe(true);
     expect(byName('Rock · Shuffl')).toHaveLength(1);
-    await expect(page.locator('#panel-shuffle .note', { hasText: 'Se han quitado 6 playlists antiguas de Shuffl.' })).toBeVisible();
+    await expect(page.locator('#panel-shuffle .note', { hasText: 'Se han quitado 4 playlists antiguas de Shuffl.' })).toBeVisible();
   });
 
   test('las playlists de Shuffl no se ofrecen como origen (ni en «toda mi biblioteca»)', async ({ page }) => {
@@ -230,7 +231,7 @@ test.describe('con la hoja ya aceptada', () => {
     await login(page);
     await shuffle(page, 'Liked Songs');
     const [liked] = byName('Liked Songs · Shuffl');
-    expect(liked.description).toMatch(new RegExp(`^${esc(V12_EN)}Liked Songs · shuffl:src=[a-f0-9]{10}.[a-f0-9]{6}$`));
+    expect(liked.description).toMatch(new RegExp(`^${esc(V12_EN)}Liked Songs · shuffl:cat=shuffle · shuffl:src=[a-f0-9]{10}.[a-f0-9]{6}$`));
     await pick(page, 'shuffle', 'Liked Songs');
     await page.locator('#select-library').click();
     await page.locator('#shuffle-go').click();

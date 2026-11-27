@@ -150,6 +150,18 @@ export class SpotifyApi {
     return this.paginate('/me/tracks', onProgress);
   }
 
+  /** Las `max` canciones guardadas más recientes, sin leer toda la lista (v1.5.0: Tus me gusta como base de Descubre). */
+  async getLikedRecent(max) {
+    const out = [];
+    for (let offset = 0; offset < max; offset += PAGE) {
+      const page = await this.request('GET', `/me/tracks?limit=${PAGE}&offset=${offset}`);
+      if (!Array.isArray(page?.items)) throw new ApiError(0, 'incomplete', null, 'GET /me/tracks');
+      out.push(...page.items);
+      if (page.items.length < PAGE || !Number.isInteger(page.total) || offset + PAGE >= page.total) break;
+    }
+    return out.slice(0, max);
+  }
+
   async getDevices() {
     const data = await this.request('GET', '/me/player/devices');
     return Array.isArray(data?.devices) ? data.devices : [];
