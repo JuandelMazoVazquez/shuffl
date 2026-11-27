@@ -327,6 +327,17 @@ test.describe('revisión de seguridad, ronda 1', () => {
     expect(list.tracks).toHaveLength(79);
   });
 
+  test('ronda 3: si la playlist ya no está, quitar una canción lo explica y «Volver» sigue saliendo', async ({ page }) => {
+    await login(page);
+    await shuffleOnce(page, 'Chill');
+    const [list] = byName('Chill · Shuffle');
+    state.lists.delete(list.id);
+    await page.locator('#panel-shuffle .tracks .track').first().locator('.track-remove').click();
+    await expect(errorBox(page)).toContainText('ya no está en tu biblioteca');
+    await backToForm(page);
+    await expect(page.locator('#shuffle-go')).toBeVisible();
+  });
+
   test('ronda 2: quitar otra mientras se guarda no deja la lista y Spotify distintas', async ({ page }) => {
     await login(page);
     await shuffleOnce(page, 'Chill');

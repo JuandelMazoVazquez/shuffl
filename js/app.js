@@ -964,12 +964,18 @@ function renderResult(container, status, o) {
     if (!pending) return;
     const v = ++rev;
     const uris = tracks.map((x) => x.uri);
-    if (!uris.length) throw new UserError(t('errEmpty'), 'errEmpty');
+    // Errores que reintentar no arregla (la quitaste toda, o ya no es de Shuffl): no queda nada que guardar ahí.
+    if (!uris.length) { pending = false; throw new UserError(t('errEmpty'), 'errEmpty'); }
     status.phase('saving');
-    await withWriteLock(async () => {
-      await assertStillAppPlaylist(o.playlistId);
-      await overwritePlaylist(o.playlistId, uris, status);
-    });
+    try {
+      await withWriteLock(async () => {
+        await assertStillAppPlaylist(o.playlistId);
+        await overwritePlaylist(o.playlistId, uris, status);
+      });
+    } catch (e) {
+      if (e instanceof UserError && e.code === 'playlistGone') pending = false;
+      throw e;
+    }
     if (rev === v) pending = false;
   };
   const saveRemovals = () => {
@@ -978,6 +984,7 @@ function renderResult(container, status, o) {
   };
   const back = () => {
     if (!pending) { o.onBack?.(); return; }
+    if (S.busy) return;
     clearTimeout(saveTimer);
     task(status, writeRemovals, 'remove').then(() => { if (!pending) o.onBack?.(); });
   };
