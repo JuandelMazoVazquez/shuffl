@@ -94,6 +94,15 @@ test('almacenamiento lleno con la migración a medias: escribir borra la antigua
   }
 });
 
+test('almacenamiento lleno: una escritura estricta que no cabe no pierde el Deshacer antiguo', () => {
+  const undo = { playlistId: 'p', uris: ['spotify:track:x'] };
+  store.set(old(KEYS.undo), JSON.stringify(undo));
+  failSet = (k) => k === KEYS.undo;
+  assert.equal(setItem(KEYS.undo, { playlistId: 'q', uris: [] }, { strict: true }), false);
+  assert.equal(store.get(old(KEYS.undo)), JSON.stringify(undo));
+  assert.deepEqual(getItem(KEYS.undo), undo);
+});
+
 test('cerrar sesión con una migración a medias borra también los tokens antiguos', () => {
   store.set(old(KEYS.tokens), JSON.stringify(session));
   removeItem(KEYS.tokens);

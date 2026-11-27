@@ -35,12 +35,17 @@ export function setItem(key, value, { strict = false } = {}) {
   } catch {
     // Lleno con la migración a medias: borrar la clave antigua libera sitio y evita que se vuelva a leer al recargar.
     if (LEGACY[key]) {
+      let prev = null;
       try {
+        prev = localStorage.getItem(LEGACY[key]);
         localStorage.removeItem(LEGACY[key]);
         localStorage.setItem(key, JSON.stringify(value));
         memory.delete(key);
         return true;
-      } catch { /* sigue sin sitio */ }
+      } catch {
+        // Estricto (Deshacer): si no se pudo escribir lo nuevo, no se pierde lo que había.
+        if (strict && prev !== null) try { localStorage.setItem(LEGACY[key], prev); } catch { /* sin sitio */ }
+      }
     }
     if (!strict) memory.set(key, value);
     return false;
