@@ -1,196 +1,196 @@
-# Shuffl
+[Español](README.md) · **English**
 
-[Español](README.md)
+<p align="center">
+  <a href="https://juandelmazovazquez.github.io/new-spoti/?demo=1"><img src="docs/media/header-en.png" alt="Shuffl: Spotify shuffle, finally truly random" width="100%"></a>
+</p>
 
-Shuffl is a static PWA (vanilla HTML, CSS and JavaScript, no build step and no runtime dependencies) that truly shuffles your Spotify playlists.
+<h1 align="center">Shuffl</h1>
 
-Independent project, not affiliated with or endorsed by Spotify. Spotify is a trademark of Spotify AB; its logo (`icons/spotify/`) is included unmodified under its developer branding guidelines.
+<p align="center"><b>Spotify shuffle, finally truly random.</b><br>
+A free, open-source web app that shuffles your playlists with a uniform Fisher-Yates. No server, no new accounts and no analytics.</p>
 
-## Why it exists
+<p align="center">
+  <a href="https://github.com/JuandelMazoVazquez/new-spoti/actions/workflows/ci.yml"><img src="https://github.com/JuandelMazoVazquez/new-spoti/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/JuandelMazoVazquez/new-spoti?color=c6ff3d&labelColor=0b0b0b" alt="MIT license"></a>
+  <a href="https://github.com/JuandelMazoVazquez/new-spoti/releases/latest"><img src="https://img.shields.io/github/v/release/JuandelMazoVazquez/new-spoti?color=c6ff3d&labelColor=0b0b0b" alt="Latest release"></a>
+  <a href="https://juandelmazovazquez.github.io/new-spoti/?demo=1"><img src="https://img.shields.io/badge/demo-try_without_an_account-c6ff3d?labelColor=0b0b0b" alt="Try the demo"></a>
+</p>
 
-Spotify's shuffle is not uniform: users with 1,500 songs report hearing the same 30 over and over, and Spotify added "Fewer Repeats" to make it repeat less. Shuffl does not touch the player. It rewrites the saved order of the playlist:
+<p align="center">
+  <a href="https://juandelmazovazquez.github.io/new-spoti/?demo=1"><img src="https://img.shields.io/badge/%E2%96%B6%20Try%20the%20demo-c6ff3d?style=for-the-badge&labelColor=c6ff3d" alt="Try the demo" height="44"></a>
+  &nbsp;
+  <a href="#get-started-in-5-minutes"><img src="https://img.shields.io/badge/Use%20with%20my%20Spotify-0b0b0b?style=for-the-badge&labelColor=0b0b0b" alt="Use with my Spotify" height="44"></a>
+</p>
 
-- Fisher-Yates with `crypto.getRandomValues` and rejection sampling (no modulo bias), in `js/core.js`.
-- Every song has the same probability of landing in any position. No weights, no artist rules, no excluding recent listens.
-- The result is a playlist you play **in order**, with Spotify's shuffle turned off.
+<p align="center">
+  <img src="docs/media/shuffle-en.gif" alt="Shuffling a playlist, the result with covers, and playing it" width="320">
+</p>
 
-The features come from real user complaints (Spotify Community threads, press, reviews). The sources, including what could and could not be verified, are in [INVESTIGACION.md](INVESTIGACION.md) (in Spanish).
+## The problem
+
+Got a 1,500-song playlist where you keep hearing the same 30? You are not alone. Spotify's shuffle is not a deck you can check. "Fewer Repeats" deliberately favours what you have heard less, and Smart Shuffle slips recommendations in between your songs.
+
+Shuffl does not touch the player: it **rewrites the playlist's order** with Fisher-Yates and `crypto.getRandomValues` (no modulo bias), and Spotify plays it **in order**. Every song has the same chance of landing in any position, and the app lets you check it:
+
+<p align="center">
+  <img src="docs/media/proof-en.gif" alt="Is it really random?: 10,000 simulated shuffles, Shuffl flat against a biased shuffle" width="300">
+</p>
 
 ## Features
 
-The app interface is available in Spanish and English; the screenshots are in Spanish.
+<table>
+  <tr>
+    <td align="center" width="25%"><img src="docs/media/screens/en-dark/04-result.png" alt="Shuffle result" width="180"><br><b>Real shuffle</b><br>One or more playlists and Liked Songs, with filters and no duplicates.</td>
+    <td align="center" width="25%"><img src="docs/media/screens/en-light/05-time.png" alt="Shuffle by time" width="180"><br><b>By time</b><br>Gym 45 min, Commute 20 or custom from 5 to 180 min.</td>
+    <td align="center" width="25%"><img src="docs/media/screens/en-dark/06-new.png" alt="New releases" width="180"><br><b>New releases and Explore</b><br>Releases from your artists and songs you do not have yet.</td>
+    <td align="center" width="25%"><img src="docs/media/screens/en-light/07-summary.png" alt="Your summary" width="180"><br><b>Your summary</b><br>Your top on a card to share.</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/media/screens/en-dark/01-home.png" alt="Home" width="180"><br><b>One tap</b><br>Shuffle again, saved mixes, Siri shortcuts and shake to shuffle.</td>
+    <td align="center"><img src="docs/media/screens/en-light/02-pick.png" alt="Pick a playlist" width="180"><br><b>Play now</b><br>Starts it on your Spotify with shuffle off and checks it is playing.</td>
+    <td align="center"><img src="docs/media/screens/en-dark/08-proof.png" alt="Is it really random?" width="180"><br><b>Is it random?</b><br>10,000 shuffles simulated on your phone, with a chart and a table.</td>
+    <td align="center"><img src="docs/media/screens/en-dark/09-more.png" alt="More tools" width="180"><br><b>And more tools</b><br>Sort, duplicates, backup, split, snapshots and Undo.</td>
+  </tr>
+</table>
 
-### Home and look
+Every feature in detail: [docs/FEATURES.md](docs/FEATURES.md). Dark and light themes, in English and Spanish.
 
-![Home](docs/capturas/08-inicio.png)
+<p align="center">
+  <img src="docs/media/time-en.gif" alt="Shuffle by time: pick Gym and create a 45-minute playlist" width="300">
+</p>
 
-- Four tabs: **Home · Shuffle · Discover · More**. More holds Sort, Duplicates, Backup, Snapshots, Liked without playlist, Split, "Keep it at hand", "Is it really random?", Diagnostics and Settings.
-- Home shows a card with your last shuffle (cover, name and date) and "Shuffle again"; the first time, "Get started". Below, "Recent" and your saved mixes.
-- Black and lime green. Dark theme by default, light (white with dark green) or like the system, in Settings. The background takes a subtle gradient from the selected cover's colour.
-- Instant screen changes with a short fade and no jumps (each tab remembers where you left it), a "Shuffling…" screen with cards shuffling and the real step, results with the covers dealt like cards and a discreet celebration, loading skeletons, swipe sideways to change tab and pull down to refresh. With "reduce motion" there are no animations.
-- **Shake to shuffle**: on Home, shaking the phone reshuffles the last mix, always after confirming. On iPhone it has to be turned on with a tap (motion sensor permission); it can be switched off in Settings.
+## Get started in 5 minutes
 
-![Light theme](docs/capturas/09-tema-claro.png)
+**Just want to look?** Open the [demo](https://juandelmazovazquez.github.io/new-spoti/?demo=1): made-up data, no account, and Spotify is never touched.
 
-![More](docs/capturas/22-mas.png)
+**With your Spotify.** Shuffl has no server, so each person connects their own Spotify "app" (a free Client ID):
 
-### Shuffle
+1. Go to the [Spotify for Developers dashboard](https://developer.spotify.com/dashboard), sign in and click **Create app**.
+2. Use any name and description, tick **Web API** and, under **Redirect URIs**, paste exactly this address (with the trailing slash):
+   ```
+   https://juandelmazovazquez.github.io/new-spoti/
+   ```
+3. Save, open **Settings** and copy the **Client ID**.
+4. Under **User Management**, add the name and Spotify email of everyone who will use it (5 at most).
+5. Open [Shuffl](https://juandelmazovazquez.github.io/new-spoti/), paste the Client ID and tap **Connect to Spotify**.
 
-![Shuffle](docs/capturas/02-barajar.png)
+**Install it as an app:**
 
-- Below the playlists you pick **Whole playlist** or **By time**. By time has quick picks (🚗 Commute 20 min, 🏋️ Gym 45, 🏃 Run 30, ✈️ Trip 90, 😴 Sleep 30) and "Custom", with a 5-180 min slider. It shuffles uniformly and fills the time within ±2 min: "Gym 45 min · Shuffle" or, custom, "Rock · 45 min · Shuffle". Saved mixes and Siri shortcuts remember the time.
-- Remove repeats, filters, destination, paste a link and save as mix are also under "More options"; it works well without touching them.
+| Device | How |
+|---|---|
+| iPhone and iPad | Open the address in **Safari** → Share button → **Add to Home Screen**. |
+| Android | Open the address in **Chrome** → ⋮ menu → **Install app** (or "Add to Home screen"). |
+| PC and Mac | Works in any modern browser. In Chrome or Edge, the install icon in the address bar opens it in its own window. |
 
-![Shuffle by time](docs/capturas/24-shuffle-tiempo.png)
+If connecting fails, the start screen has an "If something fails" section and, once inside, **More → Diagnostics** runs a full test with your account.
 
-- Pick one or several playlists and Liked Songs: they are combined and shuffled together. By default it removes repeated songs (same URI) when combining. Optional filters (year, date added, length, explicit) are applied first; whatever is left is shuffled uniformly.
-- Destination:
-  - A new Shuffl playlist (default): "Reggaeton · Shuffle", "Liked Songs · Shuffle", "Mix · Shuffle" (several playlists; the description lists them), "Car · Shuffle" (saved mix) or "All my music · Shuffle". It replaces the previous Shuffl one (see below).
-  - The playlist itself, only for one of your own playlists and with confirmation.
-- The generated playlist's cover shows the Shuffl icon, the source name and the date (can be turned off in Settings).
-- The result shows the name, songs and length, with "▶ Play now" (Premium) and "Open in Spotify", and the song list with each album cover. Swipe a song left (or tap its ×) to remove it from the playlist; pull down or tap "Shuffle again" to reshuffle it right away. You can also share it or press Undo.
-- "Play now" finds your Spotify, starts the playlist from the first song, turns shuffle off and checks that it really plays that way. If the phone is not active, it asks you to open Spotify for a moment; without Premium, on a device that cannot be controlled or if Spotify ignores the command, it explains and offers to open it in Spotify.
+## Requirements and limitations
 
-![Shuffle result](docs/capturas/03-resultado-barajar.png)
+Spotify sets rules for apps like this one, and it is better to know them up front:
 
-### Only one Shuffl playlist in your account
-
-![Removing old ones](docs/capturas/23-borrar-antiguas.png)
-
-- Every time Shuffl is about to create a playlist (shuffle, Discover, Forgotten, Snapshots, My top), it first reads the songs, then removes from your library every playlist it created before, and then creates the new one. So only one exists: the latest.
-- Shuffl playlists are your own ones with its tag in the description (` · shuffl:src=<hash>`, no ids or names) or, from older versions, with a "… · Shuffle", "📸 …" or "🔀 Baraja" name and a description the app used to write. Renamed playlists, other people's, collaborative ones and those without that description are never touched, and they are not offered as a source.
-- The first time it shows the list with "Remove and don't ask again"; after that it is automatic, with a notice. It can be turned off in Settings. Removed playlists can be recovered for 90 days on spotify.com → Account → Recover playlists.
-- If removing or creating fails, it explains what happened with "Retry" (the songs stay in memory). "Check connection", in More → Diagnostics, tests that Shuffl can remove playlists.
-- Since every shuffle creates a new playlist, the pin in Your Library is not kept: sort Your Library by "Recents" to keep it at the top.
-
-### Discover
-
-Spotify no longer offers recommendations to apps like this one, so Shuffl finds them from what you play and follow. Each option creates a Shuffl playlist with a cover and "Play now".
-
-- **New releases**: releases from the last 7, 30 or 90 days.
-- **Explore**: songs from the albums you play and from your artists.
-- In both: about 30 songs and "Find more" to add 30 more to the same playlist; under "More options", a number (15-100) or a length (30-90 min). They can be based on your artists, on one of your playlists ("Like my playlist…") or on a genre (if Spotify gives genres for your artists). They never include songs you already have in your playlists or Liked Songs.
-- **Forgotten**: 100 at random from your Liked Songs from over 1, 2, 3 or 5 years ago.
-- **Your summary**: your top 5 artists and songs (4 weeks, 6 months or all time) on a vertical story card (1080×1920) and a square one, to share or download. Covers are shown whole with nothing on top, next to the Spotify logo. You can create "My top · Shuffle".
-
-Spotify limits how many requests each app makes, so Shuffl saves them: each search stops after about 30 reads (under "More options" you choose how many artists it looks at each time), "Find more" continues where it left off and what is read is kept on the device (IndexedDB): your playlists' songs while they do not change, albums for 30 days, artists and releases for 24 h. To avoid suggesting what is already in your Liked Songs, it only asks about the candidate songs. If Spotify cuts off halfway, what was found is kept.
-
-### Diagnostics
-
-In More → Diagnostics: how many requests the session and the day have used (and each action), "Check connection", a **Full test** that, with your account, checks step by step signing in, reading, creating, overwriting and removing a test playlist, your devices and playback, and the log of the latest errors with "Copy report" (no names or tokens). No error is shown as a code: always a clear message with "Retry", "Connect again" or "Open in Spotify".
-
-![Discover](docs/capturas/21-descubrir.png)
-
-![New releases](docs/capturas/25-novedades.png)
-
-![Your summary](docs/capturas/26-tu-resumen.png)
-
-### Pick for me and "Is it really random?"
-
-- **Pick for me**: a roulette picks one of your playlists, all with the same probability (the pick happens before the animation), and shuffles it into a new Shuffl playlist.
-- **Is it really random?**: simulates 10,000 shuffles of 10 songs on your device and shows, with an animated bar chart and a table, how often each song plays first with the Shuffl shuffle (all close to 10%) and with a biased shuffle (the classic mistake of swapping each song with any position).
-
-![Randomness check](docs/capturas/19-prueba-aleatorio.png)
-
-### Siri, shortcuts and the car
-
-- Deep links: `?mezcla=<id>&play=1` reshuffles a saved mix and plays it with Spotify shuffle off; `?origen=<playlist id>&play=1` does the same for a playlist. They only run when signed in and if the mix or playlist exists in that browser, they always create a new Shuffl playlist (never write to the source) and they are removed from the address bar once read. Shortcuts carry a key for that browser (`k`); a link without it, for example from another website, asks for confirmation.
-- Every saved mix has a "Create Siri shortcut" button with the link to copy and the steps in the Shortcuts app ("Open URLs" action and a name such as "Shuffl car"). On iPhone, Shortcuts opens the link in Safari, which does not share data with the Home Screen app: you need to sign in, have the mix and create the shortcut in Safari too.
-- CarPlay does not support web apps. Your Shuffl playlist does show up in Spotify inside CarPlay; the "Keep it handy" help explains it.
-
-![Siri shortcut](docs/capturas/18-atajo-siri.png)
-
-### Sort
-
-![Sort](docs/capturas/04-ordenar.png)
-
-- Criteria: release date (ascending and descending), artist, album, title, duration (ascending and descending), date added (ascending and descending), reverse.
-- Shortcut to copy Liked Songs into a regular playlist, which can be reordered.
-- Filter by date added (from and to, both optional).
-- Destination: a new playlist, or overwrite your own (not available with Liked Songs or with the date filter).
-
-### Duplicates
-
-![Duplicates](docs/capturas/05-duplicados.png)
-
-- Exact: same URI.
-- Smart: same ISRC, or same title and artist even on another release (remaster, radio edit). Live and Acoustic count as different versions.
-- The first occurrence is kept. You choose which repeats to remove, and whether to do it in the original playlist (with Undo) or in a clean copy.
-
-### Backup and restore
-
-![Backup](docs/capturas/06-copia.png)
-
-- Exports the chosen playlists (and Liked Songs) to JSON or CSV. On devices that support it, it uses the share sheet; otherwise it downloads the file.
-- Restore reads a Shuffl JSON and creates one new playlist per entry, with the suffix "(restored)".
-
-### Undo
-
-Before overwriting a playlist, Shuffl stores the previous songs and order in the browser. Settings has an Undo button, and each result offers it for its playlist. Only one copy is kept: the latest operation that overwrites.
-
-![Settings](docs/capturas/07-ajustes.png)
-
-## First use: create your Client ID
-
-There is no server, so each person uses their own Spotify Client ID.
-
-![Welcome](docs/capturas/01-bienvenida.png)
-
-1. Go to [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) and sign in.
-2. Click Create app and tick "Web API".
-3. In Redirect URIs add the address Shuffl shows (see below) and save.
-4. Open Settings, copy the Client ID and paste it into Shuffl.
-5. In User Management add the email of everyone who will use the app (5 at most).
-
-Spotify requirements for Development Mode apps: the app owner needs Premium and the app admits up to 5 users.
-
-### Redirect URI
-
-Shuffl uses `new URL('./', location.href)`, so the URI is the app address with a trailing slash:
-
-- Local: `http://127.0.0.1:5173/` (`localhost` is not accepted).
-- GitHub Pages: `https://USER.github.io/new-spoti/`.
-
-Settings and the start screen show the exact URI with a copy button.
-
-## Install on iPhone
-
-Open the app's HTTPS address in Safari, tap Share and choose Add to Home Screen. It needs HTTPS, so it does not work with the local version.
-
-## Fork and deploy to GitHub Pages
-
-1. Fork the repository.
-2. In Settings, Pages, set the source to "GitHub Actions".
-3. The `.github/workflows/pages.yml` workflow publishes the app on every push to `main` (only if the repo is public) or manually with "Run workflow".
-4. Optional: put your Client ID in `DEFAULT_CLIENT_ID` in `js/config.js`. The Client ID is not secret (PKCE uses no client secret), but each app admits at most 5 users.
-5. Add the Redirect URI `https://USER.github.io/new-spoti/` to your Spotify app.
-
-## Limitations
-
-- With the API used, Spotify only lets you read your own or collaborative playlists: the others appear disabled.
-- Local files are skipped (Shuffl reports how many). Overwriting a playlist that contains local files loses them, which is why it asks for confirmation.
-- At most 10,000 songs per playlist: the rest is cut after shuffling.
-- Liked Songs may be unavailable (it is probed when the app opens and marked unavailable if it fails).
-- Undo keeps a single operation.
-- Development Mode: Premium for the owner and 5 users.
-
-## Development
-
-Requires Node.js.
-
-```
-npm run dev        # static server at http://127.0.0.1:5173
-npm test           # unit tests (node --test)
-npm run test:e2e   # end-to-end tests with Playwright
-npm run icons      # regenerates the icons in icons/
-```
-
-`npm install` only installs Playwright (a devDependency). See [CONTRIBUTING.md](CONTRIBUTING.md).
+- **Spotify Premium** on the account that owns the Client ID (Spotify's rule for apps in Development Mode). "Play now" also needs Premium.
+- **5 users per Client ID** at most, added by hand in User Management. That is why there is no shared Client ID: each person or family creates their own.
+- **Spotify quota**: it limits how many requests each app makes. Shuffl keeps what it reads on the device and no normal action goes over about 40 requests; if the quota runs out, it says so and keeps what it got.
+- **Only your playlists or collaborative ones**: Spotify does not let apps read playlists owned by other people or by Spotify itself (editorial ones).
+- **No CarPlay and no integration inside the Spotify app**: CarPlay does not support web apps. The playlist Shuffl creates does show up in Spotify, in the car too.
+- Local files are skipped, and a playlist holds up to 10,000 songs.
 
 ## Privacy
 
-Everything happens in your browser. Shuffl only talks to `accounts.spotify.com` and `api.spotify.com`, with no server of its own, analytics or cookies. Details in [PRIVACY.md](PRIVACY.md).
+Everything happens on your device. Shuffl is a static page: no server, database, analytics or cookies, and it only talks to Spotify: `accounts.spotify.com`, `api.spotify.com` and its cover image server (`i.scdn.co`). Your session, mixes and cache stay in your browser. Sign-in uses PKCE, so there is no password or secret in the code. Details in [PRIVACY.md](PRIVACY.md).
 
-## License
+## How it works
 
-MIT, see [LICENSE](LICENSE).
+```mermaid
+flowchart LR
+  U([You]) --> A[Shuffl<br/>PWA in your browser]
+  A -- "PKCE: sign in" --> S[(accounts.spotify.com)]
+  A -- "Web API: read and write playlists" --> W[(api.spotify.com)]
+  A <--> L[(localStorage and IndexedDB<br/>session, mixes, cache)]
+  G[GitHub Pages] -. serves the files .-> A
+```
+
+```mermaid
+sequenceDiagram
+  participant App as Shuffl
+  participant Acc as accounts.spotify.com
+  participant API as api.spotify.com
+  App->>App: creates code_verifier and its code_challenge (SHA-256)
+  App->>Acc: /authorize with client_id and code_challenge
+  Acc-->>App: back to the Redirect URI with ?code
+  App->>Acc: /api/token with code and code_verifier
+  Acc-->>App: access_token and refresh_token
+  App->>API: GET /me/playlists, /playlists/{id}/items…
+  App->>App: uniform Fisher-Yates
+  App->>API: POST /me/playlists and PUT /playlists/{id}/items
+```
+
+**Stack:** vanilla HTML, CSS and JavaScript with native ES modules. No build step, no frameworks and no runtime dependencies. A service worker makes it installable and lets it open offline, and GitHub Pages deploys each version once CI passes. It has 150+ unit tests (`node --test`) and about 170 end-to-end tests with Playwright against a simulated Spotify.
+
+## FAQ
+
+<details><summary><b>Why do I need my own Client ID?</b></summary>
+
+Spotify limits each app in Development Mode to 5 users that the owner adds by hand. A shared app would be full with 5 people. With your own Client ID you decide who uses it, and Shuffl needs no server.
+</details>
+
+<details><summary><b>Does it delete my playlists?</b></summary>
+
+No. Shuffl creates a new playlist, such as "Rock · Shuffle", and your original playlist stays as it was. To keep your library tidy, before creating another one it removes the previous one it created, and only that one: never one of yours, a renamed one or someone else's. The first time it shows you the list and asks. Removed playlists can be recovered for 90 days at spotify.com → Account → Recover playlists. If you choose to shuffle the playlist itself, it asks first and you can Undo.
+</details>
+
+<details><summary><b>Is it safe?</b></summary>
+
+The code is open and can be reviewed in full. There is no server storing anything; sign-in uses PKCE (the standard for apps without a secret) and tokens stay in your browser. The app asks only for the permissions it uses and never inserts Spotify data into the page as HTML. Every release goes through a security review; if you find a problem, see [SECURITY.md](SECURITY.md).
+</details>
+
+<details><summary><b>Does it work without Premium?</b></summary>
+
+The account that creates the Client ID needs Premium: that is Spotify's rule for apps in Development Mode. "Play now" needs it too. If you just want to see what it is like, the demo needs nothing.
+</details>
+
+<details><summary><b>Why is Spotify's shuffle not enough?</b></summary>
+
+Because it is not a uniform deck you can check: the "Fewer Repeats" and Smart Shuffle modes change what plays on purpose. Shuffl fixes a uniform order in the playlist and Spotify plays it as is, with its own shuffle off.
+</details>
+
+<details><summary><b>What does Shuffl see in my account?</b></summary>
+
+Just what each feature needs: your playlists, Liked Songs, followed artists, your top and your recent plays (for Discover and Your summary), and the player for "Play now". Nothing leaves your device except the requests to Spotify.
+</details>
+
+<details><summary><b>Does it work on iPhone?</b></summary>
+
+Yes. It is a PWA: add it to the Home Screen from Safari and it opens like an app. Siri shortcuts work with one link per mix; CarPlay does not support web apps.
+</details>
+
+<details><summary><b>Can my family use it?</b></summary>
+
+Yes, up to 5 people per Client ID: add their emails in User Management. Each person signs in with their own Spotify account.
+</details>
+
+<details><summary><b>It says "Spotify limits how many searches…". What now?</b></summary>
+
+That is Spotify's quota for your Client ID. Wait a while; meanwhile you can keep shuffling playlists already read, which are kept on the device. More → Diagnostics shows how many requests each action used.
+</details>
+
+<details><summary><b>Can I run my own copy?</b></summary>
+
+Yes. Fork it, turn on GitHub Pages with "GitHub Actions" as the source and add your address as a Redirect URI. Optionally, put your Client ID in `js/config.js`. The steps are in [CONTRIBUTING.md](CONTRIBUTING.md).
+</details>
+
+## Roadmap
+
+The next ideas are in [ROADMAP.md](ROADMAP.md) and the [issues](https://github.com/JuandelMazoVazquez/new-spoti/issues). New proposals go to [Discussions → Ideas](https://github.com/JuandelMazoVazquez/new-spoti/discussions/categories/ideas).
+
+## Contributing
+
+Welcome! Issues labelled [`good first issue`](https://github.com/JuandelMazoVazquez/new-spoti/labels/good%20first%20issue) are a good place to start, and you do not need a Spotify account: with `npm run dev` and the demo you can try everything. How to get started, the tests and the style are in [CONTRIBUTING.md](CONTRIBUTING.md). There is a [code of conduct](CODE_OF_CONDUCT.md).
+
+## Credits
+
+Built with Claude agents (Anthropic), with decisions and reviews documented in [DECISIONES.md](DECISIONES.md) and [docs/registro](docs/registro) (in Spanish). The covers, songs and artists in the demo and the screenshots are made up and generated by the app itself.
+
+## License and notice
+
+[MIT](LICENSE). Shuffl is an independent project, **not affiliated with or endorsed by Spotify**. Spotify is a trademark of Spotify AB; its logo (`icons/spotify/`) is used unmodified under its developer branding guidelines.

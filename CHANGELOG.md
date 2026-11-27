@@ -2,6 +2,23 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). El proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 
+## [1.4.0] - 2026-11-27
+
+Lanzamiento como proyecto open source: se puede probar sin cuenta y el repositorio explica qué es, cómo empezar y cómo contribuir.
+
+### Añadido
+
+- **Modo demo**: «Probar la demo» en la bienvenida, o directamente `?demo=1`. Toda la app funciona con playlists, canciones y artistas inventados y carátulas generadas con formas y colores de Shuffl.
+  - Una franja fija avisa «Modo demo · los cambios no se guardan en Spotify», con el botón «Conectar mi Spotify».
+  - No hace ninguna petición a Spotify y no toca tu sesión, tus mezclas, tu Deshacer ni la caché de la app de verdad.
+- **`npm run media`**: genera con el modo demo las capturas (oscuro y claro, español e inglés), 3 GIFs, el vídeo vertical para redes, la imagen de social preview y la cabecera del README, en `docs/media/`.
+- **Archivos de comunidad**: CONTRIBUTING, CODE_OF_CONDUCT (Contributor Covenant 2.1), SECURITY (avisos privados en GitHub) y plantillas de issues (fallo con el informe de Diagnóstico, idea) y de pull request.
+
+### Cambiado
+
+- **README nuevo** en español e inglés: qué problema resuelve, funciones con capturas, empezar en 5 minutos, requisitos y limitaciones, privacidad, cómo funciona por dentro (diagramas), preguntas frecuentes y cómo contribuir. El detalle de cada función pasa a `docs/FUNCIONES.md` y `docs/FEATURES.md`.
+- Inicio pone la carátula de tu última baraja nada más cargar las playlists (antes salía el icono genérico hasta cambiar de pantalla).
+
 ## [1.3.2] - 2026-11-27
 
 Que no falle nada con una cuenta real, mucha menos cuota de Spotify, el shuffle por tiempo a la vista y carátulas en todas las listas.

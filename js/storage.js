@@ -1,8 +1,18 @@
 // localStorage con try/catch: en modo privado o con el almacenamiento bloqueado se usa memoria.
 const memory = new Map();
+/**
+ * Modo demo (v1.4.0): todo va a memoria y no se lee nada guardado (ni tu sesión, ni tus mezclas, ni tu Deshacer).
+ * Solo el idioma y el tema se comparten con la app de verdad.
+ */
+let volatile = false;
+export function setVolatile() {
+  volatile = true;
+}
+const shared = (key) => !volatile || key === KEYS.lang || key === KEYS.theme;
 
 export function getItem(key, fallback = null) {
   if (memory.has(key)) return memory.get(key);
+  if (!shared(key)) return fallback;
   try {
     const raw = localStorage.getItem(key);
     return raw === null ? fallback : JSON.parse(raw);
@@ -13,6 +23,10 @@ export function getItem(key, fallback = null) {
 
 /** Devuelve si quedó guardado en localStorage. Con `strict` no se usa la memoria de respaldo. */
 export function setItem(key, value, { strict = false } = {}) {
+  if (!shared(key)) {
+    memory.set(key, value);
+    return true;
+  }
   try {
     localStorage.setItem(key, JSON.stringify(value));
     memory.delete(key);
@@ -25,6 +39,7 @@ export function setItem(key, value, { strict = false } = {}) {
 
 export function removeItem(key) {
   memory.delete(key);
+  if (!shared(key)) return;
   try {
     localStorage.removeItem(key);
   } catch { /* sin almacenamiento */ }

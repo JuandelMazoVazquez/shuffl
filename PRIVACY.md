@@ -6,6 +6,10 @@ Shuffl no tiene servidor. Todo ocurre en tu navegador.
 
 Solo con `accounts.spotify.com` (inicio de sesión y renovación del token), `api.spotify.com` (leer y escribir tus playlists) y el servidor de imágenes de Spotify (`i.scdn.co`, carátulas). Agitar para barajar usa el acelerómetro del móvil solo mientras estás en Inicio y no envía nada. No hay analítica, publicidad, cookies ni servicios de terceros. El service worker solo guarda en caché los archivos de la propia app.
 
+## Modo demo
+
+Con `?demo=1` («Probar la demo»), Shuffl funciona con un Spotify inventado que vive en la memoria de la pestaña (`js/demo.js`): no hace ninguna petición a Spotify ni a ningún otro sitio, no lee tu sesión ni tus mezclas y no escribe nada en localStorage ni en IndexedDB, salvo el idioma y el tema si los cambias. Al cerrar o recargar sin `?demo=1`, no queda nada.
+
 ## Qué se guarda en localStorage
 
 | Clave | Contenido |
@@ -69,7 +73,7 @@ Shuffl no modifica Tus me gusta ni deja de seguir artistas: los dos permisos de 
 
 ## Borrar tus datos
 
-- Cerrar sesión en Ajustes borra los tokens. Mantiene Client ID, idioma, Deshacer, mezclas y la correspondencia de playlists «· Shuffle».
+- Cerrar sesión en Ajustes borra los tokens y la caché de IndexedDB. Mantiene Client ID, idioma, Deshacer y mezclas.
 - Para borrar todo, elimina los datos del sitio en tu navegador.
 - Para revocar el acceso, entra en [spotify.com/account/apps](https://www.spotify.com/account/apps/) y quita Shuffl.
 

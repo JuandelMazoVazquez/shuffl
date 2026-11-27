@@ -3,7 +3,7 @@ import {
   filterByAdded, findDuplicates, removeIndexes, buildBackup, toCsv, validateBackup, MAX_BACKUP_BYTES, MAX_BACKUP_PLAYLISTS,
   EXPLICIT_MODES, emptyFilters, hasFilters, filterTracks, sanitizeFilters, organizePlaylists, parsePlaylistRef,
   SPLIT_MODES, MAX_SPLIT_PARTS, splitTracks, MULTI_KEYS, sortTracksBy, normalizeAlbum, normalizeFollowedArtist, toLibraryCsv,
-  pickThumb,
+  pickThumb, isImageUrl, allowDemoImages,
 } from './core.js';
 import { sanitizeMix, sanitizeMixes, upsertMix, removeMix, newMixId, mixSources } from './mixes.js';
 import {
@@ -11,10 +11,11 @@ import {
 } from './targets.js';
 import { SpotifyApi, ApiError } from './api.js';
 import * as auth from './auth.js';
-import { KEYS, OBSOLETE_KEYS, getItem, setItem, removeItem } from './storage.js';
+import { KEYS, OBSOLETE_KEYS, getItem, setItem, removeItem, setVolatile } from './storage.js';
+import { DEMO_ME, demoAuth, wantsDemo, createDemoState, createDemoFetch, demoMixes } from './demo.js';
 import { t, setLang, getLang, LANGS } from './i18n.js';
 import { REPO_URL, APP_NAME, APP_VERSION } from './config.js';
-import { idbGet, idbSet, idbClear, idbPrune } from './idb.js';
+import { idbGet, idbSet, idbClear, idbPrune, idbVolatile } from './idb.js';
 import {
   countRequest, requestStats, beginAction, endAction, actionSpent, logError, getErrors, clearErrors, buildReport,
 } from './diag.js';
@@ -36,7 +37,7 @@ import { renderSummary } from './summary.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 const root = document.getElementById('app');
-const S = { api: null, me: null, playlists: [], raw: [], sourceCache: new Map(), loaded: false, busy: false, tab: 'home', pickers: [], scroll: {} };
+const S = { demo: false, api: null, me: null, playlists: [], raw: [], sourceCache: new Map(), loaded: false, busy: false, tab: 'home', pickers: [], scroll: {} };
 let pickerSeq = 0;
 
 // ---------- DOM ----------
@@ -326,7 +327,7 @@ function setTint(pl) {
 async function tintFrom(url) {
   const token = ++tintToken;
   const root = document.documentElement;
-  const color = typeof url === 'string' && url.startsWith('https://') ? await imageDominantColor(url) : null;
+  const color = isImageUrl(url) ? await imageDominantColor(url) : null;
   if (token !== tintToken) return;
   if (color) root.style.setProperty('--tint', rgbCss(color)); else root.style.removeProperty('--tint');
 }
@@ -358,12 +359,20 @@ async function cacheRead(k, maxAge) {
 }
 
 /** Lee de la caché o pide a Spotify y guarda (artistas y lanzamientos 24 h; canciones de álbumes 30 días). */
-async function cached(rawKey, fetcher, maxAge = DAY_MS) {
-  const hit = await cacheRead(rawKey, maxAge);
-  if (hit !== undefined) return hit;
-  const data = await fetcher();
-  idbSet(cacheKey(rawKey), data);
-  return data;
+const inflight = new Map();
+/** Dos pantallas que piden lo mismo a la vez (p. ej. al terminar de cargar) comparten la petición en curso. */
+function cached(rawKey, fetcher, maxAge = DAY_MS) {
+  const key = cacheKey(rawKey);
+  if (inflight.has(key)) return inflight.get(key);
+  const run = (async () => {
+    const hit = await cacheRead(rawKey, maxAge);
+    if (hit !== undefined) return hit;
+    const data = await fetcher();
+    idbSet(key, data);
+    return data;
+  })().finally(() => inflight.delete(key));
+  inflight.set(key, run);
+  return run;
 }
 
 /**
@@ -676,7 +685,7 @@ function createPicker({ multi, disabledReason, onChange }) {
   });
 
   function followedRow(pl) {
-    const cover = pl.image.startsWith('https://') ? h('img', { class: 'cover', src: pl.image, alt: '', loading: 'lazy' }) : h('span', { class: 'cover', 'aria-hidden': 'true' }, '♪');
+    const cover = isImageUrl(pl.image) ? h('img', { class: 'cover', src: pl.image, alt: '', loading: 'lazy' }) : h('span', { class: 'cover', 'aria-hidden': 'true' }, '♪');
     return h('li', { 'data-name': pl.name.toLowerCase(), class: 'followed' },
       h('button', { class: 'row', type: 'button', onclick: () => showFollowedHelp(pl) }, cover,
         h('span', { class: 'row-text' }, h('span', { class: 'row-name' }, pl.name),
@@ -694,7 +703,7 @@ function createPicker({ multi, disabledReason, onChange }) {
     input.checked = selected.has(pl.id);
     const cover = pl.isLiked
       ? h('span', { class: 'cover liked', 'aria-hidden': 'true' }, '♥')
-      : pl.image.startsWith('https://') ? h('img', { class: 'cover', src: pl.image, alt: '', loading: 'lazy' }) : h('span', { class: 'cover', 'aria-hidden': 'true' }, '♪');
+      : isImageUrl(pl.image) ? h('img', { class: 'cover', src: pl.image, alt: '', loading: 'lazy' }) : h('span', { class: 'cover', 'aria-hidden': 'true' }, '♪');
     const songs = pl.total != null ? t('songs', { n: fmt(pl.total) }) : '';
     const meta = reason || (pl.copyOf !== undefined ? [t('yourCopyOf', { name: pl.copyOf }), songs].filter(Boolean).join(' · ') : songs);
     return h('li', { 'data-name': pl.name.toLowerCase(), class: reason ? 'disabled' : '' },
@@ -747,7 +756,7 @@ function baseReason(pl) {
 function showFollowedHelp(pl) {
   const onKey = (e) => { if (e.key === 'Escape') close(); };
   const close = () => { document.removeEventListener('keydown', onKey); sheet.remove(); };
-  const cover = pl.image?.startsWith('https://') ? h('img', { class: 'cover', src: pl.image, alt: '', loading: 'lazy' }) : null;
+  const cover = isImageUrl(pl.image) ? h('img', { class: 'cover', src: pl.image, alt: '', loading: 'lazy' }) : null;
   const sheet = h('div', { class: 'sheet-backdrop', onclick: (e) => { if (e.target === sheet) close(); } },
     h('div', { class: 'sheet', id: 'followed-help', role: 'dialog', 'aria-modal': 'true', 'aria-label': pl.name },
       h('div', { class: 'row' }, cover, h('span', { class: 'row-text' }, h('strong', {}, pl.name), pl.owner ? h('span', { class: 'row-meta' }, pl.owner) : null)),
@@ -768,6 +777,7 @@ function showFollowedHelp(pl) {
 
 /** Comparte el enlace de la playlist: hoja de compartir del sistema, o copiar el enlace, o mostrarlo para copiarlo a mano. */
 async function shareLink(playlistId, info) {
+  if (S.demo) { setKids(info, h('p', { id: 'share-done' }, t('demoNoSpotify'))); return; }
   const url = spotifyUrl(playlistId);
   try {
     if (navigator.share) {
@@ -879,7 +889,7 @@ function formatDuration(ms) {
  */
 function coverSlot(url) {
   const slot = h('span', { class: 'cover-slot', 'aria-hidden': 'true' }, h('span', { class: 'cover-note' }, '♪'));
-  if (typeof url === 'string' && url.startsWith('https://')) {
+  if (isImageUrl(url)) {
     const img = h('img', { class: 'track-cover', src: url, alt: '', loading: 'lazy', decoding: 'async', width: '48', height: '48' });
     img.addEventListener('error', () => img.remove(), { once: true });
     slot.append(img);
@@ -2178,9 +2188,9 @@ function settingsPanel() {
   syncUndo();
   const panel = h('section', { class: 'panel', id: 'panel-settings', hidden: true },
     backBar(), h('h2', { class: 'tool-title' }, t('settings')),
-    h('h2', {}, t('clientId')), idIn,
-    h('button', { class: 'btn', type: 'button', onclick: () => { auth.setClientId(idIn.value); status.say(t('saved')); } }, t('save')),
-    h('h2', {}, t('redirectUri')), copyBox(auth.redirectUri()),
+    S.demo ? null : [h('h2', {}, t('clientId')), idIn,
+      h('button', { class: 'btn', type: 'button', onclick: () => { auth.setClientId(idIn.value); status.say(t('saved')); } }, t('save')),
+      h('h2', {}, t('redirectUri')), copyBox(auth.redirectUri())],
     h('h2', {}, t('language')), langSel,
     h('h2', {}, t('themeTitle')), themeSel,
     h('h2', {}, t('coverTitle')),
@@ -2193,7 +2203,9 @@ function settingsPanel() {
 
     h('h2', {}, t('undoTitle')), undoInfo, undoBtn,
     h('h2', {}, t('account')), h('p', { class: 'muted' }, S.me?.display_name || S.me?.id || ''),
-    h('button', { class: 'btn danger', type: 'button', id: 'logout', onclick: () => { auth.logout(); idbClear(); renderSetup(); } }, t('logout')),
+    S.demo
+      ? h('button', { class: 'btn primary', type: 'button', id: 'logout', onclick: exitDemo }, t('demoConnect'))
+      : h('button', { class: 'btn danger', type: 'button', id: 'logout', onclick: () => { auth.logout(); idbClear(); renderSetup(); } }, t('logout')),
     h('h2', {}, t('privacyTitle')), h('p', { class: 'muted' }, t('privacy')),
     h('h2', {}, t('aboutTitle')),
     h('p', { class: 'muted', id: 'about-notice' }, t('notAffiliated')),
@@ -2235,7 +2247,7 @@ function diagPanel() {
     };
     await check(t('diagAccount'), async () => { const me = await S.api.getMe(); return me.display_name || me.id; });
     await check(t('diagPlaylists'), async () => { await S.api.request('GET', '/me/playlists?limit=1'); return ''; });
-    const missing = auth.missingScopes(getItem(KEYS.tokens));
+    const missing = grantedMissing();
     rows.push({ label: t('diagScopes'), ok: missing.length === 0, detail: missing.join(', ') });
     // Prueba real de borrado: crea una playlist vacía y la quita con DELETE /me/library. Si falla, se ve el error de Spotify.
     // También comprueba que Spotify devuelve la etiqueta en la descripción (sin ella no se reconocerían las de Shuffl)
@@ -2288,7 +2300,7 @@ function diagPanel() {
       return { text: t('fullPlaylistsN', { n: fmt(page?.total ?? 0) }), detail: `total ${page?.total ?? 0}` };
     });
     await step('scopes', async () => {
-      const missing = auth.missingScopes(getItem(KEYS.tokens));
+      const missing = grantedMissing();
       if (missing.length) throw new UserError(t('fullScopesMissing', { list: missing.join(', ') }), 'scopes');
     });
     let uri = null;
@@ -2533,6 +2545,9 @@ function linkKey() {
 }
 
 /** Pasos para crear en la app Atajos de iOS un atajo que abre el enlace profundo de una mezcla. */
+/** Permisos de Spotify que faltan en la sesión. En la demo no hay sesión ni permisos que pedir. */
+const grantedMissing = () => (S.demo ? [] : auth.missingScopes(getItem(KEYS.tokens)));
+
 function showShortcutSheet(mix) {
   const onKey = (e) => { if (e.key === 'Escape') close(); };
   const close = () => { document.removeEventListener('keydown', onKey); sheet.remove(); };
@@ -3042,7 +3057,7 @@ function summaryPanel() {
 }
 
 const pickImage = (images) => {
-  const list = Array.isArray(images) ? images.filter((i) => typeof i?.url === 'string' && i.url.startsWith('https://')) : [];
+  const list = Array.isArray(images) ? images.filter((i) => isImageUrl(i?.url)) : [];
   return (list.find((i) => (i.width ?? 0) >= 160 && (i.width ?? 0) <= 640) ?? list[0])?.url ?? '';
 };
 
@@ -3123,7 +3138,7 @@ function whenLabel(iso) {
 function lastCover(mix) {
   const first = mix.library ? null : S.playlists.find((p) => p.id === mix.ids[0]);
   if (first?.isLiked) return h('span', { class: 'again-cover liked', 'aria-hidden': 'true' }, '♥');
-  if (first?.image?.startsWith('https://')) return h('img', { class: 'again-cover', src: first.image, alt: '', width: '72', height: '72' });
+  if (isImageUrl(first?.image)) return h('img', { class: 'again-cover', src: first.image, alt: '', width: '72', height: '72' });
   return h('span', { class: 'again-cover', 'aria-hidden': 'true' }, icon(...ICONS.shuffle));
 }
 
@@ -3134,7 +3149,8 @@ function homePanel() {
     h('button', { class: 'card', type: 'button', 'data-mix': mix.id, onclick: () => S.runMix(mix, mixOrigin(mix)) },
       h('span', { class: 'card-icon' }, icon(...ICONS[mix.kind === 'time' ? 'clock' : 'shuffle'])),
       h('span', {}, h('span', { class: 'card-title' }, mix.name), h('span', { class: 'card-sub' }, mixSummary(mix)))),
-    h('button', { class: 'icon-btn', type: 'button', 'data-shortcut': mix.id, 'aria-label': t('shortcutBtn', { name: mix.name }), onclick: () => showShortcutSheet(mix) }, icon(...ICONS.mic)),
+    // En la demo el atajo apuntaría a una mezcla que solo existe en esta pestaña.
+    S.demo ? null : h('button', { class: 'icon-btn', type: 'button', 'data-shortcut': mix.id, 'aria-label': t('shortcutBtn', { name: mix.name }), onclick: () => showShortcutSheet(mix) }, icon(...ICONS.mic)),
     h('button', { class: 'icon-btn', type: 'button', 'aria-label': t('editMix', { name: mix.name }), onclick: () => S.editMix(mix) }, icon(...ICONS.edit)),
     h('button', { class: 'icon-btn', type: 'button', 'aria-label': t('deleteMix', { name: mix.name }), onclick: () => {
       if (!confirm(t('confirmDeleteMix', { name: mix.name }))) return;
@@ -3242,7 +3258,11 @@ function mountApp() {
     return b;
   }));
   setKids(root,
-    h('header', { class: 'top' }, h('h1', {}, h('img', { src: 'icons/icon.svg', alt: '', width: '28', height: '28' }), APP_NAME)),
+    h('header', { class: S.demo ? 'top has-demo' : 'top' }, h('h1', {}, h('img', { src: 'icons/icon.svg', alt: '', width: '28', height: '28' }), APP_NAME),
+      S.demo ? [
+        h('button', { class: 'btn small primary', type: 'button', id: 'demo-connect', onclick: exitDemo }, t('demoConnect')),
+        h('p', { class: 'demo-strip', id: 'demo-bar', role: 'status' }, t('demoBar')),
+      ] : null),
     h('main', {}, Object.values(panels)),
     nav);
   S.tab = S.tab in panels ? S.tab : 'home';
@@ -3293,6 +3313,8 @@ function renderSetup(problem) {
   setKids(root,h('main', { class: 'setup' },
     h('div', { class: 'brand' }, h('img', { src: 'icons/icon.svg', alt: '', width: '72', height: '72' }), h('h1', {}, APP_NAME)),
     h('p', { class: 'lead' }, t('welcome')),
+    h('a', { class: 'btn big demo-cta', href: '?demo=1', id: 'try-demo' }, t('tryDemo')),
+    h('p', { class: 'muted small center' }, t('tryDemoNote')),
     h('h2', {}, t('guideTitle')),
     h('ol', { class: 'steps' }, steps.map(stepItem)),
     h('p', { class: 'muted' }, t('premiumNote')),
@@ -3340,6 +3362,7 @@ function pullHint(text) {
 
 /** Vuelve a pedir permiso a Spotify (sesión caducada o falta un permiso). */
 async function reconnect() {
+  if (S.demo) return exitDemo();
   try {
     await auth.startLogin();
   } catch (e) {
@@ -3431,6 +3454,7 @@ async function boot() {
   // El enlace profundo se quita de la barra en cuanto se lee: recargar nunca vuelve a barajar ni a reproducir.
   const link = parseDeepLink(location.search);
   if (LINK_PARAMS.some((p) => new URLSearchParams(location.search).has(p))) history.replaceState(null, '', withoutDeepLink(location.href));
+  if (wantsDemo(location.search)) return startDemo(link);
   let problem = null;
   try {
     await auth.handleCallback();
@@ -3446,6 +3470,8 @@ async function boot() {
     mountApp();
     await loadPlaylists();
     await probeLiked();
+    // Inicio se pintó antes de tener las playlists: ahora ya puede poner la carátula de tu última baraja.
+    S.show(S.tab);
     if (link) await S.openDeepLink(link);
   } catch (e) {
     console.error(e);
@@ -3457,6 +3483,48 @@ async function boot() {
       info.reconnect ? h('button', { class: 'btn', type: 'button', onclick: () => reconnect() }, t('reconnectBtn')) : null));
   }
 }
+
+/**
+ * Modo demo: la app entera con un Spotify inventado en memoria (js/demo.js). Nada sale a la red y nada se guarda:
+ * ni en tu cuenta de Spotify ni en el almacenamiento de la app de verdad (sesión, mezclas, Deshacer, caché).
+ * `?demo=1` se queda en la dirección para que recargar siga en la demo.
+ */
+async function startDemo(link) {
+  S.demo = true;
+  setVolatile();
+  idbVolatile();
+  allowDemoImages();
+  document.documentElement.classList.add('demo');
+  // Sin el aviso del logo ni la pregunta de borrar copias antiguas: en la demo no hay nada tuyo que proteger.
+  setItem(KEYS.logoNotice, true);
+  setItem(KEYS.purgeOk, { me: DEMO_ME.id });
+  const sample = demoMixes(getLang());
+  setItem(KEYS.mixes, sample.mixes);
+  setItem(KEYS.lastMix, sample.last);
+  S.api = new SpotifyApi({ auth: demoAuth, fetchImpl: createDemoFetch(createDemoState(getLang())), onRequest: countRequest });
+  S.me = await S.api.getMe();
+  mountApp();
+  await loadPlaylists();
+  await probeLiked();
+  S.show(S.tab);
+  if (link) await S.openDeepLink(link);
+}
+
+function exitDemo() {
+  location.assign(location.pathname);
+}
+
+// En la demo las playlists no existen en Spotify: «Abrir en Spotify» explica eso en vez de abrir una página rota
+// (también con el botón central, que abre en otra pestaña).
+const demoLinkGuard = (e) => {
+  if (!S.demo) return;
+  const a = e.target.closest?.('a[href^="https://open.spotify.com/playlist/"]');
+  if (!a) return;
+  e.preventDefault();
+  showToast(t('demoNoSpotify'));
+};
+document.addEventListener('click', demoLinkGuard, true);
+document.addEventListener('auxclick', demoLinkGuard, true);
 
 function showUpdateBanner(apply) {
   if (document.getElementById('update-banner')) return;

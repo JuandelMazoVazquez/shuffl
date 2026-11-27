@@ -7,11 +7,13 @@ PWA estática (HTML + CSS + JS vanilla con ES modules, sin build ni dependencias
 - `npm test`: unitarios (core y api)
 - `npm run test:e2e`: Playwright con Spotify simulado (390x844)
 - `npm run icons`: regenera los iconos
+- `npm run media`: capturas, GIFs, vídeo y social preview de `docs/media/` con el modo demo (GIF y MP4 necesitan ffmpeg). Regenerar tras cambiar la interfaz.
 
 ## Reglas propias
 - El barajado es uniforme y puro: sin pesos, sin evitar lo escuchado, sin reglas de artista.
 - Solo endpoints de Development Mode (feb 2026): /me, /me/playlists (GET y POST), /playlists/{id} (GET de metadatos y PUT de nombre y descripción de playlists propias), /playlists/{id}/items, /playlists/{id}/images, /me/tracks, /me/albums, /me/following, /me/top/tracks, /me/top/artists, /me/player (GET del estado para comprobar qué suena, devices, play, shuffle, recently-played), /me/library/contains (máx. 40), DELETE /me/library (solo URIs `spotify:playlist:` de playlists de Shuffl propias, máx. 40; exige user-library-modify y user-follow-modify), /artists/{id}/albums (limit ≤ 10), /albums/{id}/tracks, /search (solo type=artist con genre:, limit ≤ 10). Nada de browse, recomendaciones, audio-features, `popularity`, `/users/{id}/...`, `/tracks` en lotes ni `/playlists/{id}/tracks`. Cualquier endpoint nuevo hay que comprobarlo contra esa lista.
 - Nunca `innerHTML` con datos de Spotify; sin tokens en logs; el service worker no toca otros orígenes.
+- Modo demo (`?demo=1`, `js/demo.js`): un Spotify inventado en memoria inyectado como `fetchImpl`. Cero peticiones a la red (lo comprueba `tests/e2e/demo.spec.mjs`) y almacenamiento volátil: no lee ni escribe la sesión, las mezclas ni la caché de verdad. Un endpoint nuevo de la app hay que añadirlo también a la demo. Nada real en sus datos: nombres inventados y carátulas SVG generadas.
 - Cuota (v1.3.2): ninguna acción normal debe pasar de unas 40 peticiones (lo mide `tests/e2e/quota.spec.mjs`). La caché vive en IndexedDB (`js/idb.js`) con el id de la cuenta en la clave; las playlists valen mientras no cambie su `snapshot_id`. Lo que escribe en su propio origen (Ordenar, Duplicados, «la misma playlist») lee siempre de Spotify, nunca de la caché. Con QUOTA_EXCEEDED no se reintenta.
 - Errores: nunca un código ni un texto técnico de Spotify en pantalla; cada error pasa por `errorInfo` (mensaje y acción) y queda en el registro local sin nombres ni tokens (`js/diag.js`). Un `UserError` lleva como código su clave de texto.
 - Antes de sobrescribir una playlist: guardar Deshacer (`saveUndo`) y no escribir si la lectura fue incompleta.
