@@ -14,7 +14,7 @@ import * as auth from './auth.js';
 import { KEYS, OBSOLETE_KEYS, getItem, setItem, removeItem } from './storage.js';
 import { t, setLang, getLang, LANGS } from './i18n.js';
 import { REPO_URL, APP_NAME, APP_VERSION } from './config.js';
-import { idbGet, idbSet, idbDelete, idbClear, idbPrune } from './idb.js';
+import { idbGet, idbSet, idbClear, idbPrune } from './idb.js';
 import {
   countRequest, requestStats, beginAction, endAction, actionSpent, logError, getErrors, clearErrors, buildReport,
 } from './diag.js';
@@ -910,6 +910,7 @@ function makeRemovable(li, tr, onRemove) {
   let dx = 0;
   const go = () => {
     if (li.classList.contains('gone')) return;
+    if (S.busy) { li.style.transform = ''; return; }
     li.classList.add('gone');
     const done = () => { li.remove(); onRemove(tr); };
     if (prefersReducedMotion()) done(); else setTimeout(done, 220);
@@ -956,17 +957,18 @@ function renderResult(container, status, o) {
   container.cancelPending?.();
   let saveTimer = null;
   let pending = false;
+  /** Guarda lo quitado. «Pendiente» solo se limpia cuando Spotify lo ha guardado entero: si falla, «Reintentar» lo repite. */
   const writeRemovals = async () => {
     clearTimeout(saveTimer);
     if (!pending) return;
-    pending = false;
     const uris = tracks.map((x) => x.uri);
     if (!uris.length) throw new UserError(t('errEmpty'), 'errEmpty');
     status.phase('saving');
     await withWriteLock(async () => {
       await assertStillAppPlaylist(o.playlistId);
-      await S.api.replaceItems(o.playlistId, uris, (d, tot) => status.progress('saving', d, tot));
+      await overwritePlaylist(o.playlistId, uris, status);
     });
+    pending = false;
   };
   const saveRemovals = () => {
     if (S.busy) { saveTimer = setTimeout(saveRemovals, 800); return; }
@@ -974,7 +976,7 @@ function renderResult(container, status, o) {
   };
   const onRemove = (tr) => {
     tracks = tracks.filter((x) => x !== tr);
-    o.onTracks?.(tracks);
+    o.onTracks?.(tracks, tr);
     syncMeta();
     pending = true;
     clearTimeout(saveTimer);
@@ -1005,7 +1007,7 @@ function renderResult(container, status, o) {
       h('button', { class: 'btn', type: 'button', id: 'share-link', onclick: () => shareLink(o.playlistId, info) }, t('share')),
       ...(o.extra ?? []),
       undoBtn,
-      h('button', { class: 'btn', type: 'button', onclick: o.onBack }, t('back'))),
+      h('button', { class: 'btn', type: 'button', onclick: () => { if (pending) { clearTimeout(saveTimer); saveRemovals(); } o.onBack?.(); } }, t('back'))),
   );
   container.playNow = () => playNow(o.playlistId, info, status);
   // Tirar hacia abajo en el resultado rebaraja (si la pantalla lo permite); fuera del resultado, refresca las playlists.
@@ -1491,7 +1493,7 @@ function shufflePanel() {
       status.phase('shuffling');
       const unique = doDedupe ? uniqueByUri(tracks) : tracks;
       const base = filterTracks(unique, filters);
-      if (!base.length) throw new UserError(hasFilters(filters) ? t('errFiltersEmpty') : t('errEmpty'));
+      if (!base.length) throw hasFilters(filters) ? new UserError(t('errFiltersEmpty'), 'errFiltersEmpty') : new UserError(t('errEmpty'), 'errEmpty');
       const { order, truncated, notes: kindNotes } = arrange(base, minutes);
       const source = coverTitle(sel, origin);
       const presetLabel = presetKey ? t(`preset_${presetKey}`) : '';
@@ -1854,6 +1856,7 @@ function orphansPanel() {
     task(status, async () => {
       const liked = S.playlists.find((p) => p.isLiked);
       const mine = S.playlists.filter((p) => !p.isLiked && p.readable);
+      await ensureFreshLibrary();
       const likedRead = await readSource(liked, (d, tot) => status.progress('reading', d, tot), { useCache: true });
       const inPlaylists = new Set();
       let done = 0;
@@ -2299,7 +2302,7 @@ function diagPanel() {
     await step('devices', async () => {
       const devices = await S.api.getDevices();
       const pick = pickDevice(devices);
-      device = pick.device ?? pick.choose?.[0] ?? null;
+      device = pick.device ?? (pick.choose ? await chooseDevice(pick.choose) : null);
       const n = devices.length;
       if (pick.problem === 'restricted') throw new UserError(t('playRestricted'), 'restricted');
       return { text: n ? t('fullDevices', { n: fmt(n), name: device?.name ?? '' }) : t('fullNoDevice'), detail: `${n} ${device?.type ?? '-'}${device?.is_active ? ' activo' : ''}` };
@@ -2569,6 +2572,7 @@ const INDEX_BUDGET = 8;
  * Tus me gusta no se lee entera: se pregunta a Spotify solo por las candidatas (`dropSaved`).
  */
 async function playlistIndex(status) {
+  await ensureFreshLibrary();
   const ids = new Set();
   const mine = S.raw.filter((p) => p?.id && (p.owner?.id === S.me.id || p.collaborative) && !isAppPlaylist(p, S.me.id));
   let spent = 0;
@@ -2874,8 +2878,7 @@ function discoverGenPanel(kind) {
   return panel;
 }
 
-/** Olvidadas: Tus me gusta de hace años. Como toda playlist de Shuffl, sustituye a la anterior. */
-/** Olvidadas: como mucho 100, elegidas al azar entre todas las olvidadas (crear una de miles gastaría mucha cuota). */
+/** Olvidadas: Tus me gusta de hace años; como mucho 100, elegidas al azar entre todas las olvidadas (crear una de miles gastaría mucha cuota). */
 const FORGOTTEN_MAX = 100;
 
 function forgottenPanel() {
@@ -2912,7 +2915,7 @@ function forgottenPanel() {
           name, notes, tracks, playlistId: w.id,
           headExtra: h('button', { class: 'btn reshuffle', type: 'button', id: 'forgotten-again', onclick: () => again() }, icon(...ICONS.shuffle), h('span', {}, t('reshuffle'))),
           editable: true,
-          onTracks: (left) => { const keep = new Set(left.map((x) => x.uri)); for (const x of tracks) if (!keep.has(x.uri)) removed.add(x.uri); },
+          onTracks: (_left, tr) => { removed.add(tr.uri); },
           reshuffle: () => again(),
           onBack: () => { result.hidden = true; form.hidden = false; status.clear(); },
         });

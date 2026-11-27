@@ -185,8 +185,7 @@ export class SpotifyApi {
     return this.paginate('/me/albums', onProgress);
   }
 
-  /** Artistas seguidos: la paginación es por cursor (`after`), no por offset. */
-  /** Con `maxPages` se para ahí (Descubrir solo necesita los primeros); sin él, todos (copia de seguridad). */
+  /** Artistas seguidos: la paginación es por cursor (`after`), no por offset. Con `maxPages` se para ahí (Descubrir solo necesita los primeros); sin él, todos (copia de seguridad). */
   async getFollowedArtists(maxPages = 200) {
     const out = [];
     let after = '';

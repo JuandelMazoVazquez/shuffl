@@ -120,6 +120,7 @@ Lo mide `tests/e2e/quota.spec.mjs` con una cuenta simulada de tamaño realista: 
   - **Quitar**: en el resultado, deslizar una canción a la izquierda (o tocar su ×, accesible con teclado y lector) la quita. Los cambios se guardan de una vez 1,2 s después del último, tras comprobar que la playlist sigue siendo de Shuffl.
   - **Rebarajar**: el botón «Volver a barajar» (con el icono de la app) o tirar hacia abajo rebarajan la misma playlist. Las quitadas no vuelven.
   - Solo en playlists de Shuffl, nunca en la tuya («la misma playlist»).
+  - Guardar reescribe la playlist entera (una petición por cada 100 canciones), una vez tras el último gesto. No se usa `DELETE /playlists/{id}/items` porque no está en la lista de endpoints comprobados en Development Mode.
   - «Buscar más» guarda antes lo pendiente.
   - Tirar hacia abajo fuera de un resultado sigue refrescando tus playlists.
 - **Animaciones**:

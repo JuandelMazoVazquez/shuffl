@@ -50,11 +50,6 @@ export function idbSet(key, data, now = Date.now()) {
   return run('readwrite', (s) => s.put(value, key), () => FAILED).then((r) => { if (r !== FAILED && mem.get(key) === value) mem.delete(key); });
 }
 
-export function idbDelete(key) {
-  mem.delete(key);
-  return run('readwrite', (s) => s.delete(key), () => undefined);
-}
-
 /** Borra todo (al cerrar sesión). */
 export function idbClear() {
   mem.clear();

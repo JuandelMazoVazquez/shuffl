@@ -312,3 +312,43 @@ test.describe('más interactiva', () => {
     expect(Math.abs(ms - 30 * 60000)).toBeLessThanOrEqual(2 * 60000);
   });
 });
+
+test.describe('revisión de seguridad, ronda 1', () => {
+  test('si guardar lo quitado falla, «Reintentar» lo guarda de verdad (no dice «Guardado» sin escribir)', async ({ page }) => {
+    await login(page);
+    await shuffleOnce(page, 'Chill');
+    const [list] = byName('Chill · Shuffle');
+    state.failures.push({ match: /PUT \/playlists\/new\d+\/items/, status: 500, body: {}, times: 3 });
+    await page.locator('#panel-shuffle .tracks .track').first().locator('.track-remove').click();
+    await expect(errorBox(page)).toContainText('Spotify no responde');
+    expect(list.tracks).toHaveLength(80);
+    await errorBox(page).getByRole('button', { name: 'Reintentar' }).click();
+    await expect(page.locator('#panel-shuffle .live')).toContainText('Guardado en Spotify.');
+    expect(list.tracks).toHaveLength(79);
+  });
+
+  test('Olvidadas: una canción quitada tras rebarajar tampoco vuelve', async ({ page }) => {
+    await login(page);
+    await openPanel(page, 'forgotten');
+    await page.locator('#forgotten-go').click();
+    await expect(resultMeta(page, 'forgotten')).toContainText('60 canciones');
+    await idle(page);
+    const rows = page.locator('#panel-forgotten .tracks .track');
+    const first = await rows.first().locator('.track-name').textContent();
+    await rows.first().locator('.track-remove').click();
+    await expect(page.locator('#panel-forgotten .live')).toContainText('Guardado');
+    await idle(page);
+    await page.locator('#forgotten-again').click();
+    await expect(resultMeta(page, 'forgotten')).toContainText('59 canciones');
+    await idle(page);
+    const second = await rows.first().locator('.track-name').textContent();
+    await rows.first().locator('.track-remove').click();
+    await expect(page.locator('#panel-forgotten .live')).toContainText('Guardado');
+    await idle(page);
+    await page.locator('#forgotten-again').click();
+    await expect(resultMeta(page, 'forgotten')).toContainText('58 canciones');
+    await idle(page);
+    const [list] = byName('Olvidadas · Shuffle');
+    expect(list.tracks.some((t) => t.name === first || t.name === second)).toBe(false);
+  });
+});

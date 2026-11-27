@@ -45,8 +45,6 @@ export function endAction() {
   counter.action = null;
 }
 
-export const currentAction = () => counter.action;
-
 /**
  * Guarda un error: qué acción, qué clase y, si es de Spotify, el código, el motivo y la ruta sin ids.
  * Nunca el texto que pueda llevar nombres de playlists, ni tokens.
