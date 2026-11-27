@@ -1,16 +1,19 @@
 import { expect } from '@playwright/test';
 import { CLIENT_ID, createState, mockSpotify } from './mock.mjs';
 
+/** Dirección de la app en los tests (playwright.config.mjs, variable PORT). */
+export const BASE = `http://127.0.0.1:${Number(process.env.PORT) || 5173}/`;
+
 /** Estado simulado nuevo + rutas de Spotify + idioma y diálogos. Devuelve el estado. */
 export async function installMock(page, { lang = 'es', logoNotice = false, purgeAsk = false } = {}) {
   const state = createState();
   await mockSpotify(page, state);
   page.on('dialog', (d) => (state.dismissNext ? ((state.dismissNext = false), d.dismiss()) : d.accept()));
   await page.addInitScript(({ l, notice, ask }) => {
-    if (!localStorage.getItem('baraja.lang')) localStorage.setItem('baraja.lang', JSON.stringify(l));
+    if (!localStorage.getItem('shuffl.lang')) localStorage.setItem('shuffl.lang', JSON.stringify(l));
     // Por defecto el borrado de las playlists antiguas ya está aceptado; los tests de la hoja pasan purgeAsk.
-    if (!ask && localStorage.getItem('baraja.purgeOk') === null) localStorage.setItem('baraja.purgeOk', JSON.stringify({ me: 'me' }));
-    if (!notice && localStorage.getItem('baraja.logoNotice.v12') === null) localStorage.setItem('baraja.logoNotice.v12', 'true');
+    if (!ask && localStorage.getItem('shuffl.purgeOk') === null) localStorage.setItem('shuffl.purgeOk', JSON.stringify({ me: 'me' }));
+    if (!notice && localStorage.getItem('shuffl.logoNotice.v12') === null) localStorage.setItem('shuffl.logoNotice.v12', 'true');
     delete navigator.canShare;
   }, { l: lang, notice: logoNotice, ask: purgeAsk });
   return state;
@@ -44,7 +47,7 @@ export async function moreOptions(page) {
 
 /** La app marca `body.busy` de forma síncrona al empezar una tarea; esperar a que se quite es esperar a que termine. */
 export const idle = (page) => expect(page.locator('body')).not.toHaveClass(/busy/);
-/** Marca la playlist cuyo nombre es exactamente `name` (si no, «Rock» también encontraría «Rock · Shuffle»). */
+/** Marca la playlist cuyo nombre es exactamente `name` (si no, «Rock» también encontraría «Rock · Shuffl»). */
 export const pick = (page, panel, name) => page.locator(`#panel-${panel} label.row`)
   .filter({ has: page.locator('.row-name', { hasText: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`) }) }).click();
 /** Captura para el README esperando a que terminen las animaciones de entrada. */

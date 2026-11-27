@@ -116,6 +116,8 @@ export async function mockSpotify(page, state) {
     const url = new URL(req.url());
     if (url.pathname === '/authorize') {
       state.authorizeParams = Object.fromEntries(url.searchParams);
+      // Como Spotify con una Redirect URI que no está en el dashboard: su página de error, sin volver a la app.
+      if (state.badRedirect) return route.fulfill({ status: 400, contentType: 'text/html', body: '<p>INVALID_CLIENT: Invalid redirect URI</p>' });
       const back = new URL(url.searchParams.get('redirect_uri'));
       back.searchParams.set('code', 'fake-code');
       back.searchParams.set('state', url.searchParams.get('state'));
@@ -124,6 +126,7 @@ export async function mockSpotify(page, state) {
     if (url.pathname === '/api/token') {
       state.tokens++;
       state.lastTokenBody = new URLSearchParams(req.postData());
+      if (state.tokenRedirectError) return json(route, { error: 'invalid_grant', error_description: 'Invalid redirect URI' }, 400);
       return json(route, {
         access_token: `access-${state.tokens}`, refresh_token: 'refresh-1', expires_in: 3600, token_type: 'Bearer',
         scope: state.grantedScope ?? state.authorizeParams?.scope ?? '',

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { installMock, login, idle, shot, openPanel } from './helpers.mjs';
+import { installMock, login, idle, shot, openPanel, BASE } from './helpers.mjs';
 
 let state;
 
@@ -7,7 +7,7 @@ const MIX = { id: 'm1', name: 'Coche', library: false, ids: ['pl_rock'], names: 
 
 test.beforeEach(async ({ page }) => {
   state = await installMock(page);
-  await page.addInitScript((mix) => { if (!localStorage.getItem('baraja.mixes')) localStorage.setItem('baraja.mixes', JSON.stringify([mix])); }, MIX);
+  await page.addInitScript((mix) => { if (!localStorage.getItem('shuffl.mixes')) localStorage.setItem('shuffl.mixes', JSON.stringify([mix])); }, MIX);
 });
 
 const byName = (name) => [...state.lists.values()].filter((l) => l.name === name);
@@ -15,19 +15,19 @@ const writesTo = (id) => state.writes.filter((w) => w.id === id);
 
 const KEY = 'AbCdEfGhIjKlMnOpQrSt_-';
 
-test('?mezcla=<id>&play=1&k=<clave> rebaraja la mezcla en «Coche · Shuffle» y la reproduce sin preguntar, nunca en el origen', async ({ page }) => {
+test('?mezcla=<id>&play=1&k=<clave> rebaraja la mezcla en «Coche · Shuffl» y la reproduce sin preguntar, nunca en el origen', async ({ page }) => {
   const dialogs = [];
   page.on('dialog', (d) => dialogs.push(d.message()));
-  await page.addInitScript((k) => localStorage.setItem('baraja.linkKey', JSON.stringify(k)), KEY);
+  await page.addInitScript((k) => localStorage.setItem('shuffl.linkKey', JSON.stringify(k)), KEY);
   await login(page);
   await page.goto(`/?mezcla=m1&play=1&k=${KEY}`);
   await expect(page.locator('#play-msg')).toContainText('Sonando en iPhone de prueba');
-  const [gen] = byName('Coche · Shuffle');
+  const [gen] = byName('Coche · Shuffl');
   expect(gen.tracks).toHaveLength(80);
   expect(writesTo('pl_rock')).toEqual([]);
   expect(state.playerCalls.map((c) => c.path)).toEqual(['/me/player/play', '/me/player/shuffle', '/me/player']);
   expect(state.playerCalls[0].body.context_uri).toBe(`spotify:playlist:${gen.id}`);
-  expect(page.url()).toBe('http://127.0.0.1:5173/');
+  expect(page.url()).toBe(BASE);
   expect(dialogs).toEqual([]);
 
   const writes = state.writes.length;
@@ -37,16 +37,16 @@ test('?mezcla=<id>&play=1&k=<clave> rebaraja la mezcla en «Coche · Shuffle» y
   expect(state.writes.length).toBe(writes);
 });
 
-test('?origen=<playlist>&play=1 baraja esa playlist en su «· Shuffle»; sin play no reproduce', async ({ page }) => {
+test('?origen=<playlist>&play=1 baraja esa playlist en su «· Shuffl»; sin play no reproduce', async ({ page }) => {
   await login(page);
   await page.goto('/?origen=pl_chill&play=1');
   await expect(page.locator('#play-msg')).toContainText('Sonando en iPhone de prueba');
-  expect(byName('Chill · Shuffle')[0].tracks).toHaveLength(80);
+  expect(byName('Chill · Shuffl')[0].tracks).toHaveLength(80);
 
   await page.goto('/?origen=pl_rock');
   await expect(page.locator('#result-meta:visible')).toContainText('120 canciones');
   await idle(page);
-  expect(byName('Rock · Shuffle')).toHaveLength(1);
+  expect(byName('Rock · Shuffl')).toHaveLength(1);
   expect(state.playerCalls.filter((c) => c.path === '/me/player/play')).toHaveLength(1);
 });
 
@@ -70,7 +70,7 @@ test('enlaces con una mezcla o playlist que no existe, ajena o con id raro no es
 test('sin sesión el enlace no hace nada y se quita de la dirección', async ({ page }) => {
   await page.goto('/?mezcla=m1&play=1');
   await expect(page.locator('#connect')).toBeVisible();
-  expect(page.url()).toBe('http://127.0.0.1:5173/');
+  expect(page.url()).toBe(BASE);
   expect(state.writes).toEqual([]);
 });
 
@@ -80,8 +80,8 @@ test('«Crear atajo de Siri» muestra el enlace de la mezcla, los pasos y el avi
   await page.getByRole('button', { name: 'Crear atajo de Siri para Coche' }).click();
   const sheet = page.locator('#shortcut-sheet');
   await expect(sheet).toBeVisible();
-  await expect(page.locator('#shortcut-link')).toHaveValue(/^http:\/\/127\.0\.0\.1:5173\/\?mezcla=m1&play=1&k=[A-Za-z0-9_-]{22}$/);
-  const key = await page.evaluate(() => JSON.parse(localStorage.getItem('baraja.linkKey')));
+  await expect(page.locator('#shortcut-link')).toHaveValue(new RegExp(`^${BASE.replace(/[.?]/g, (c) => `\\${c}`)}\\?mezcla=m1&play=1&k=[A-Za-z0-9_-]{22}$`));
+  const key = await page.evaluate(() => JSON.parse(localStorage.getItem('shuffl.linkKey')));
   await expect(page.locator('#shortcut-link')).toHaveValue(new RegExp(`k=${key}$`));
   await expect(sheet).toContainText('«Oye Siri, Shuffl coche»');
   await expect(sheet).toContainText('Abrir URL');
@@ -125,5 +125,5 @@ test('un enlace sin la clave de este navegador (por ejemplo, desde otra web) pre
   await page.goto('/?origen=pl_chill');
   await expect(page.locator('#result-meta:visible')).toContainText('80 canciones');
   expect(dialogs[2]).toBe('Un enlace quiere barajar «Chill» en una playlist nueva de Shuffl. ¿Seguir?');
-  expect(byName('Chill · Shuffle')).toHaveLength(1);
+  expect(byName('Chill · Shuffl')).toHaveLength(1);
 });

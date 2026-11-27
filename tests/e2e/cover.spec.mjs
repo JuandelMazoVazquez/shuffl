@@ -31,16 +31,16 @@ async function shuffleChill(page) {
 
 test('barajar sube una portada JPEG de 640x640 y menos de 256 KB, y pone la descripción fija', async ({ page }) => {
   await shuffleChill(page);
-  const baraja = [...state.lists.values()].find((l) => l.name === 'Chill · Shuffle');
+  const created = [...state.lists.values()].find((l) => l.name === 'Chill · Shuffl');
   expect(state.images).toHaveLength(1);
   const [img] = state.images;
-  expect(img.id).toBe(baraja.id);
+  expect(img.id).toBe(created.id);
   expect(img.contentType).toBe('image/jpeg');
   expect(img.body.length).toBeLessThan(256 * 1024);
   const bytes = Buffer.from(img.body, 'base64');
   expect([...bytes.subarray(0, 3)]).toEqual([0xff, 0xd8, 0xff]);
   expect(jpegSize(bytes)).toEqual({ width: 640, height: 640 });
-  const create = state.writes.find((w) => w.op === 'create' && w.name === 'Chill · Shuffle');
+  const create = state.writes.find((w) => w.op === 'create' && w.name === 'Chill · Shuffl');
   expect(create.description).toMatch(/ · shuffl:src=[a-f0-9]{10}.[a-f0-9]{6}$/);
 
   expect(create.description.replace(/ · shuffl:src=[a-f0-9]{10}.[a-f0-9]{6}$/, '')).toBe('Barajada con Shuffl (aleatorio uniforme; reprodúcela con el aleatorio de Spotify apagado). Origen: Chill');
@@ -51,11 +51,11 @@ test('barajar sube una portada JPEG de 640x640 y menos de 256 KB, y pone la desc
   expect(state.images).toHaveLength(1);
 });
 
-test('si la portada falla la baraja sigue bien y solo hay un aviso discreto', async ({ page }) => {
+test('si la portada falla el shuffle sigue bien y solo hay un aviso discreto', async ({ page }) => {
   state.failImage = true;
   await shuffleChill(page);
   await expect(page.getByText('No se pudo subir la portada')).toBeVisible();
-  expect([...state.lists.values()].find((l) => l.name === 'Chill · Shuffle').tracks).toHaveLength(80);
+  expect([...state.lists.values()].find((l) => l.name === 'Chill · Shuffl').tracks).toHaveLength(80);
   await expect(page.getByRole('alert')).toBeHidden();
 });
 
@@ -87,12 +87,12 @@ test('«Tenerla siempre a mano» explica pines, destino fijo y accesos de Inicio
   await page.locator('#open-pin-result').click();
   const panel = page.locator('#panel-pin');
   await expect(panel).toBeVisible();
-  await expect(panel).toContainText('mantén pulsada tu playlist «… · Shuffle» y elige Fijar');
+  await expect(panel).toContainText('mantén pulsada tu playlist «… · Shuffl» y elige Fijar');
   await expect(panel).toContainText('el pin de Tu biblioteca no pasa a la nueva');
   await expect(panel).toContainText('90 días');
   await expect(panel).toContainText('Spotify según lo que reproduces a menudo y hace poco');
-  const baraja = [...state.lists.values()].find((l) => l.name === 'Chill · Shuffle');
-  await expect(page.locator('#pin-open')).toHaveAttribute('href', `https://open.spotify.com/playlist/${baraja.id}`);
+  const created = [...state.lists.values()].find((l) => l.name === 'Chill · Shuffl');
+  await expect(page.locator('#pin-open')).toHaveAttribute('href', `https://open.spotify.com/playlist/${created.id}`);
   await page.locator('#pin-back').click();
   await expect(page.locator('#panel-shuffle')).toBeVisible();
 });
@@ -103,5 +103,5 @@ test('la pantalla de ayuda y la portada salen en inglés', async ({ page }) => {
   await page.locator('#lang-select').selectOption('en');
   await expect(page.getByText('Upload a custom cover')).toBeVisible();
   await openPanel(page, 'pin');
-  await expect(page.locator('#panel-pin')).toContainText('press and hold your “… · Shuffle” playlist and choose Pin');
+  await expect(page.locator('#panel-pin')).toContainText('press and hold your “… · Shuffl” playlist and choose Pin');
 });

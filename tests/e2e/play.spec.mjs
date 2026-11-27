@@ -16,7 +16,7 @@ async function shuffleChill(page) {
   await page.locator('#shuffle-go').click();
   await expect(page.locator('#result-meta:visible', { hasText: /^80 (canciones|songs) ·/ })).toBeVisible();
   await idle(page);
-  return [...state.lists.values()].find((l) => l.name === 'Chill · Shuffle');
+  return [...state.lists.values()].find((l) => l.name === 'Chill · Shuffl');
 }
 const calls = (path) => state.playerCalls.filter((c) => c.path === path);
 const msg = (page) => page.locator('#play-msg');

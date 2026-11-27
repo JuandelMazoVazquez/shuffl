@@ -41,13 +41,13 @@ test('actualizar una instantánea no pisa el Deshacer de otra playlist', async (
   await expect(page.locator('#result-meta:visible')).toContainText('30 canciones');
   await expect(page.locator('#result-playlist:visible')).toHaveText('📸 Top 4 semanas');
   await idle(page);
-  await page.evaluate(() => localStorage.setItem('baraja.undo', JSON.stringify({ playlistId: 'pl_rock', name: 'Rock', uris: ['spotify:track:x'], pending: false, after: 1, date: new Date().toISOString() })));
+  await page.evaluate(() => localStorage.setItem('shuffl.undo', JSON.stringify({ playlistId: 'pl_rock', name: 'Rock', uris: ['spotify:track:x'], pending: false, after: 1, date: new Date().toISOString() })));
   await page.getByRole('button', { name: 'Volver', exact: true }).first().click();
   await page.locator('#snap-go').click();
   await expect(page.locator('#result-meta:visible')).toContainText('30 canciones');
   await expect(page.locator('#result-playlist:visible')).toHaveText('📸 Top 4 semanas');
   await idle(page);
-  const undo = await page.evaluate(() => JSON.parse(localStorage.getItem('baraja.undo')));
+  const undo = await page.evaluate(() => JSON.parse(localStorage.getItem('shuffl.undo')));
   expect(undo.playlistId).toBe('pl_rock');
   expect(undo.uris).toEqual(['spotify:track:x']);
 });
@@ -95,7 +95,7 @@ test('Me gusta sin playlist: encuentra las que no están en ninguna playlist pro
   expect(state.itemRequests).not.toContain('pl_top');
 });
 
-test('Me gusta sin playlist: no cuenta las playlists que genera Baraja y avisa si no hay ninguna', async ({ page }) => {
+test('Me gusta sin playlist: no cuenta las playlists que genera Shuffl (también las del nombre anterior) y avisa si no hay ninguna', async ({ page }) => {
   state.lists.set('pl_baraja', { id: 'pl_baraja', name: '🔀 Baraja', description: 'Barajada con Baraja · aleatorio uniforme · reprodúcela con el aleatorio de Spotify apagado', owner: { id: 'me' }, tracks: state.liked.slice(0, 5) });
   state.liked = state.liked.slice(0, 5);
   await login(page);

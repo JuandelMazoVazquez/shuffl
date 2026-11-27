@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { CLIENT_ID } from './mock.mjs';
-import { installMock, login, idle, pick, shot, openPanel } from './helpers.mjs';
+import { installMock, login, idle, pick, shot, openPanel, BASE } from './helpers.mjs';
 
 let state;
 
@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => {
   state = await installMock(page);
 });
 
-const baraja = () => [...state.lists.values()].find((l) => l.name.startsWith('Rock ('));
+const created = () => [...state.lists.values()].find((l) => l.name.startsWith('Rock ('));
 
 test('orden combinado: artista → álbum cronológico → nº de pista', async ({ page }) => {
   await login(page);
@@ -92,7 +92,7 @@ test('copia solo de álbumes y artistas, y restaurar avisa de que no los restaur
   await page.getByRole('button', { name: 'Preparar copia' }).click();
   await expect(page.locator('#backup-extra')).toBeVisible();
   await expect(page.locator('#save-csv')).toHaveCount(0);
-  const backup = { app: 'baraja', version: 1, playlists: [], albums: [{}, {}], artists: [{}] };
+  const backup = { app: 'shuffl', version: 1, playlists: [], albums: [{}, {}], artists: [{}] };
   await page.locator('#restore-file').setInputFiles({ name: 'b.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(backup)) });
   await expect(page.locator('#restore-library-note')).toContainText('2 álbumes y 1 artistas');
 });
@@ -102,7 +102,7 @@ test('asistente de alta: pasos guiados, copiar la Redirect URI y ayuda de errore
   await expect(page.locator('#open-dashboard')).toHaveAttribute('href', 'https://developer.spotify.com/dashboard');
   const steps = page.locator('.steps .step');
   await expect(steps).toHaveCount(5);
-  await expect(steps.nth(2).locator('.copybox input')).toHaveValue('http://127.0.0.1:5173/');
+  await expect(steps.nth(2).locator('.copybox input')).toHaveValue(BASE);
   await expect(steps.nth(3).locator('#client-id')).toBeVisible();
   await page.getByLabel('Paso 1 hecho').check();
   await expect(steps.nth(0)).toHaveClass(/done/);

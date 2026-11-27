@@ -21,7 +21,7 @@ const cacheNames = (page) => page.evaluate(() => caches.keys().then((k) => k.sor
 
 test('el service worker avisa de la versión nueva, la aplica al pulsar y limpia cachés viejas', async ({ page, context }) => {
   build = 'v1';
-  await page.addInitScript(() => localStorage.setItem('baraja.lang', JSON.stringify('es')));
+  await page.addInitScript(() => localStorage.setItem('shuffl.lang', JSON.stringify('es')));
   await page.goto(base);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
@@ -91,7 +91,7 @@ test('«Actualizar» no recarga mientras hay una tarea en curso y sí cuando ter
 
 test('el banner sale en inglés con el idioma en inglés', async ({ page }) => {
   build = 'a1';
-  await page.addInitScript(() => localStorage.setItem('baraja.lang', JSON.stringify('en')));
+  await page.addInitScript(() => localStorage.setItem('shuffl.lang', JSON.stringify('en')));
   await page.goto(base);
   await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
   build = 'a2';
