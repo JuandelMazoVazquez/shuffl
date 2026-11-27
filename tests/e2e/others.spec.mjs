@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => {
 
 const ANA = 'AbCdEfGhIjKlMnOpQrStUv';
 const owner = (id) => ({ id, display_name: id === 'ana' ? 'Ana' : id });
-const baraja = () => state.lists.get(state.writes.filter((w) => w.op === 'create').at(-1).id);
+const created = () => state.lists.get(state.writes.filter((w) => w.op === 'create').at(-1).id);
 
 test('«Playlists que sigues»: sección propia, marcadas y con guía para hacerse una copia', async ({ page }) => {
   await login(page);
@@ -43,7 +43,7 @@ test('una playlist propia con el mismo nombre que una seguida es «Tu copia de�
   await page.locator('#shuffle-go').click();
   await expect(page.locator('#result-meta:visible', { hasText: /^30 (canciones|songs) ·/ })).toBeVisible();
   await idle(page);
-  expect(baraja().tracks).toHaveLength(30);
+  expect(created().tracks).toHaveLength(30);
 });
 
 test('una colaborativa de otra persona se puede barajar como si fuera propia', async ({ page }) => {

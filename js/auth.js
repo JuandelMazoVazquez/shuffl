@@ -26,7 +26,7 @@ export class AuthError extends Error {
   }
 }
 
-/** Origen + ruta base: funciona en "/" y en "/new-spoti/". */
+/** Origen + ruta base: funciona en "/" y en "/shuffl/". */
 export function redirectUri() {
   return new URL('./', location.href).href;
 }
@@ -57,7 +57,7 @@ export async function startLogin() {
   const verifier = randomString(96);
   const state = randomString(24);
   const challenge = b64url(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))));
-  setItem(KEYS.pkce, { verifier, state });
+  setItem(KEYS.pkce, { verifier, state, at: Date.now() });
   const url = new URL(AUTHORIZE_URL);
   url.search = new URLSearchParams({
     client_id: clientId,
@@ -78,7 +78,11 @@ async function tokenRequest(params) {
     body: new URLSearchParams({ client_id: getClientId(), ...params }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new AuthError(data.error === 'invalid_grant' ? 'invalid_grant' : 'tokenFailed', data.error_description);
+  if (!res.ok) {
+    // «Invalid redirect URI»: la del dashboard no es la de esta dirección (por ejemplo, tras la mudanza a /shuffl/).
+    if (/redirect.?uri/i.test(String(data.error_description ?? ''))) throw new AuthError('redirectUri');
+    throw new AuthError(data.error === 'invalid_grant' ? 'invalid_grant' : 'tokenFailed', data.error_description);
+  }
   return data;
 }
 
@@ -91,10 +95,22 @@ function storeTokens(data, previous) {
   });
 }
 
-/** Procesa ?code&state (o ?error) al volver de Spotify. Devuelve true si había callback. */
+/**
+ * Procesa ?code&state (o ?error) al volver de Spotify. Devuelve true si había callback.
+ * Sin callback pero con un inicio de sesión a medias, Spotify no volvió aquí: lo más probable es que rechazara la
+ * Redirect URI (su página de error no redirige). Se lanza `redirectStalled` una sola vez, y solo si el intento es
+ * reciente, para enseñar cómo añadirla. El intento no se borra: si sigue en curso en otra pestaña (Spotify pidiendo
+ * un código por email), su callback tiene que poder terminar.
+ */
+const STALLED_MAX_MS = 15 * 60 * 1000;
 export async function handleCallback() {
   const params = new URLSearchParams(location.search);
-  if (!params.has('code') && !params.has('error')) return false;
+  if (!params.has('code') && !params.has('error')) {
+    const pending = getItem(KEYS.pkce);
+    if (!pending || pending.reported || !(Date.now() - pending.at < STALLED_MAX_MS)) return false;
+    setItem(KEYS.pkce, { ...pending, reported: true });
+    throw new AuthError('redirectStalled');
+  }
   const saved = getItem(KEYS.pkce);
   removeItem(KEYS.pkce);
   history.replaceState(null, '', redirectUri());

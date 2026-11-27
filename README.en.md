@@ -1,7 +1,7 @@
 [Español](README.md) · **English**
 
 <p align="center">
-  <a href="https://juandelmazovazquez.github.io/new-spoti/?demo=1"><img src="docs/media/header-en.png" alt="Shuffl: Spotify shuffle, finally truly random" width="100%"></a>
+  <a href="https://juandelmazovazquez.github.io/shuffl/?demo=1"><img src="docs/media/header-en.png" alt="Shuffl: Spotify shuffle, finally truly random" width="100%"></a>
 </p>
 
 <h1 align="center">Shuffl</h1>
@@ -10,14 +10,14 @@
 A free, open-source web app that shuffles your playlists with a uniform Fisher-Yates. No server, no new accounts and no analytics.</p>
 
 <p align="center">
-  <a href="https://github.com/JuandelMazoVazquez/new-spoti/actions/workflows/ci.yml"><img src="https://github.com/JuandelMazoVazquez/new-spoti/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/JuandelMazoVazquez/new-spoti?color=c6ff3d&labelColor=0b0b0b" alt="MIT license"></a>
-  <a href="https://github.com/JuandelMazoVazquez/new-spoti/releases/latest"><img src="https://img.shields.io/github/v/release/JuandelMazoVazquez/new-spoti?color=c6ff3d&labelColor=0b0b0b" alt="Latest release"></a>
-  <a href="https://juandelmazovazquez.github.io/new-spoti/?demo=1"><img src="https://img.shields.io/badge/demo-try_without_an_account-c6ff3d?labelColor=0b0b0b" alt="Try the demo"></a>
+  <a href="https://github.com/JuandelMazoVazquez/shuffl/actions/workflows/ci.yml"><img src="https://github.com/JuandelMazoVazquez/shuffl/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/JuandelMazoVazquez/shuffl?color=c6ff3d&labelColor=0b0b0b" alt="MIT license"></a>
+  <a href="https://github.com/JuandelMazoVazquez/shuffl/releases/latest"><img src="https://img.shields.io/github/v/release/JuandelMazoVazquez/shuffl?color=c6ff3d&labelColor=0b0b0b" alt="Latest release"></a>
+  <a href="https://juandelmazovazquez.github.io/shuffl/?demo=1"><img src="https://img.shields.io/badge/demo-try_without_an_account-c6ff3d?labelColor=0b0b0b" alt="Try the demo"></a>
 </p>
 
 <p align="center">
-  <a href="https://juandelmazovazquez.github.io/new-spoti/?demo=1"><img src="https://img.shields.io/badge/%E2%96%B6%20Try%20the%20demo-c6ff3d?style=for-the-badge&labelColor=c6ff3d" alt="Try the demo" height="44"></a>
+  <a href="https://juandelmazovazquez.github.io/shuffl/?demo=1"><img src="https://img.shields.io/badge/%E2%96%B6%20Try%20the%20demo-c6ff3d?style=for-the-badge&labelColor=c6ff3d" alt="Try the demo" height="44"></a>
   &nbsp;
   <a href="#get-started-in-5-minutes"><img src="https://img.shields.io/badge/Use%20with%20my%20Spotify-0b0b0b?style=for-the-badge&labelColor=0b0b0b" alt="Use with my Spotify" height="44"></a>
 </p>
@@ -61,18 +61,20 @@ Every feature in detail: [docs/FEATURES.md](docs/FEATURES.md). Dark and light th
 
 ## Get started in 5 minutes
 
-**Just want to look?** Open the [demo](https://juandelmazovazquez.github.io/new-spoti/?demo=1): made-up data, no account, and Spotify is never touched.
+**Just want to look?** Open the [demo](https://juandelmazovazquez.github.io/shuffl/?demo=1): made-up data, no account, and Spotify is never touched.
 
 **With your Spotify.** Shuffl has no server, so each person connects their own Spotify "app" (a free Client ID):
 
 1. Go to the [Spotify for Developers dashboard](https://developer.spotify.com/dashboard), sign in and click **Create app**.
 2. Use any name and description, tick **Web API** and, under **Redirect URIs**, paste exactly this address (with the trailing slash):
    ```
-   https://juandelmazovazquez.github.io/new-spoti/
+   https://juandelmazovazquez.github.io/shuffl/
    ```
 3. Save, open **Settings** and copy the **Client ID**.
 4. Under **User Management**, add the name and Spotify email of everyone who will use it (5 at most).
-5. Open [Shuffl](https://juandelmazovazquez.github.io/new-spoti/), paste the Client ID and tap **Connect to Spotify**.
+5. Open [Shuffl](https://juandelmazovazquez.github.io/shuffl/), paste the Client ID and tap **Connect to Spotify**.
+
+> **Set it up before v1.4.1?** Shuffl has moved to `https://juandelmazovazquez.github.io/shuffl/`. The previous address redirects here, but Spotify only accepts the login on a Redirect URI it knows: in the dashboard, open your app → **Settings** → **Edit** → **Redirect URIs**, add the new address (with the trailing slash), press **Add** and **Save**. You can keep the old one. If it is missing, the app tells you and gives you the URI to copy.
 
 **Install it as an app:**
 
@@ -136,7 +138,7 @@ Spotify limits each app in Development Mode to 5 users that the owner adds by ha
 
 <details><summary><b>Does it delete my playlists?</b></summary>
 
-No. Shuffl creates a new playlist, such as "Rock · Shuffle", and your original playlist stays as it was. To keep your library tidy, before creating another one it removes the previous one it created, and only that one: never one of yours, a renamed one or someone else's. The first time it shows you the list and asks. Removed playlists can be recovered for 90 days at spotify.com → Account → Recover playlists. If you choose to shuffle the playlist itself, it asks first and you can Undo.
+No. Shuffl creates a new playlist, such as "Rock · Shuffl", and your original playlist stays as it was. To keep your library tidy, before creating another one it removes the previous one it created, and only that one: never one of yours, a renamed one or someone else's. The first time it shows you the list and asks. Removed playlists can be recovered for 90 days at spotify.com → Account → Recover playlists. If you choose to shuffle the playlist itself, it asks first and you can Undo.
 </details>
 
 <details><summary><b>Is it safe?</b></summary>
@@ -181,11 +183,11 @@ Yes. Fork it, turn on GitHub Pages with "GitHub Actions" as the source and add y
 
 ## Roadmap
 
-The next ideas are in [ROADMAP.md](ROADMAP.md) and the [issues](https://github.com/JuandelMazoVazquez/new-spoti/issues). New proposals go to [Discussions → Ideas](https://github.com/JuandelMazoVazquez/new-spoti/discussions/categories/ideas).
+The next ideas are in [ROADMAP.md](ROADMAP.md) and the [issues](https://github.com/JuandelMazoVazquez/shuffl/issues). New proposals go to [Discussions → Ideas](https://github.com/JuandelMazoVazquez/shuffl/discussions/categories/ideas).
 
 ## Contributing
 
-Welcome! Issues labelled [`good first issue`](https://github.com/JuandelMazoVazquez/new-spoti/labels/good%20first%20issue) are a good place to start, and you do not need a Spotify account: with `npm run dev` and the demo you can try everything. How to get started, the tests and the style are in [CONTRIBUTING.md](CONTRIBUTING.md). There is a [code of conduct](CODE_OF_CONDUCT.md).
+Welcome! Issues labelled [`good first issue`](https://github.com/JuandelMazoVazquez/shuffl/labels/good%20first%20issue) are a good place to start, and you do not need a Spotify account: with `npm run dev` and the demo you can try everything. How to get started, the tests and the style are in [CONTRIBUTING.md](CONTRIBUTING.md). There is a [code of conduct](CODE_OF_CONDUCT.md).
 
 ## Credits
 

@@ -13,7 +13,7 @@ async function shuffleChill(page) {
   await page.locator('#panel-shuffle .btn.primary.big').click();
   await expect(page.locator('#result-meta:visible', { hasText: /^80 (canciones|songs) ·/ })).toBeVisible();
   await idle(page);
-  return [...state.lists.values()].find((l) => l.name === 'Chill · Shuffle');
+  return [...state.lists.values()].find((l) => l.name === 'Chill · Shuffl');
 }
 
 test('Compartir usa la hoja del sistema (Web Share) con el enlace de la playlist', async ({ page }) => {

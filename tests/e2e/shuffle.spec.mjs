@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { CLIENT_ID } from './mock.mjs';
-import { installMock, login, idle, pick, names, shot, openPanel, moreOptions } from './helpers.mjs';
+import { installMock, login, idle, pick, names, shot, openPanel, moreOptions, BASE } from './helpers.mjs';
 
 const SHOTS = 'docs/capturas';
 mkdirSync(SHOTS, { recursive: true });
@@ -15,7 +15,7 @@ test.beforeEach(async ({ page }) => {
 test('pantalla inicial, guía y login completo con PKCE', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Shuffl' })).toBeVisible();
-  await expect(page.locator('.copybox input')).toHaveValue('http://127.0.0.1:5173/');
+  await expect(page.locator('.copybox input')).toHaveValue(BASE);
   await shot(page, `${SHOTS}/01-bienvenida.png`, { fullPage: true });
 
   await page.locator('#client-id').fill('mal');
@@ -26,9 +26,9 @@ test('pantalla inicial, guía y login completo con PKCE', async ({ page }) => {
   expect(state.authorizeParams.code_challenge_method).toBe('S256');
   expect(state.authorizeParams.client_id).toBe(CLIENT_ID);
   expect(state.authorizeParams.scope).toContain('playlist-modify-private');
-  expect(state.authorizeParams.redirect_uri).toBe('http://127.0.0.1:5173/');
+  expect(state.authorizeParams.redirect_uri).toBe(BASE);
   expect(state.lastTokenBody.get('code_verifier')).toHaveLength(96);
-  expect(page.url()).toBe('http://127.0.0.1:5173/');
+  expect(page.url()).toBe(BASE);
   await expect(page.locator('#panel-shuffle .followed', { hasText: 'Top 50 Global' })).toContainText('No se puede leer');
   await expect(page.locator('#panel-shuffle input[type=checkbox]:disabled')).toHaveCount(0);
   await shot(page, `${SHOTS}/02-barajar.png`);
@@ -36,14 +36,14 @@ test('pantalla inicial, guía y login completo con PKCE', async ({ page }) => {
 
 test('state incorrecto en el callback cierra el intento sin iniciar sesión', async ({ page }) => {
   await page.goto('/');
-  await page.evaluate(() => localStorage.setItem('baraja.pkce', JSON.stringify({ verifier: 'v', state: 'esperado' })));
+  await page.evaluate(() => localStorage.setItem('shuffl.pkce', JSON.stringify({ verifier: 'v', state: 'esperado' })));
   await page.goto('/?code=abc&state=otro');
   await expect(page.getByRole('alert')).toContainText('no coincide');
-  expect(await page.evaluate(() => localStorage.getItem('baraja.tokens'))).toBeNull();
-  expect(page.url()).toBe('http://127.0.0.1:5173/');
+  expect(await page.evaluate(() => localStorage.getItem('shuffl.tokens'))).toBeNull();
+  expect(page.url()).toBe(BASE);
 });
 
-test('barajar dos playlists combinadas en «Mix · Shuffle», volver a barajar y deshacer', async ({ page }) => {
+test('barajar dos playlists combinadas en «Mix · Shuffl», volver a barajar y deshacer', async ({ page }) => {
   await login(page);
   await pick(page, 'shuffle', 'Rock');
   await pick(page, 'shuffle', 'Chill');
@@ -51,49 +51,49 @@ test('barajar dos playlists combinadas en «Mix · Shuffle», volver a barajar y
   await expect(page.locator('#result-meta:visible', { hasText: /^180 (canciones|songs) ·/ })).toBeVisible();
   await expect(page.getByText('20 repetidas quitadas.')).toBeVisible();
 
-  const baraja = [...state.lists.values()].find((l) => l.name === 'Mix · Shuffle');
-  expect(baraja).toBeTruthy();
-  expect(new Set(baraja.tracks.map((t) => t.uri)).size).toBe(180);
-  expect(baraja.description).toMatch(/ · shuffl:src=[a-f0-9]{10}.[a-f0-9]{6}$/);
+  const created = [...state.lists.values()].find((l) => l.name === 'Mix · Shuffl');
+  expect(created).toBeTruthy();
+  expect(new Set(created.tracks.map((t) => t.uri)).size).toBe(180);
+  expect(created.description).toMatch(/ · shuffl:src=[a-f0-9]{10}.[a-f0-9]{6}$/);
 
-  expect(baraja.description.replace(/ · shuffl:src=[a-f0-9]{10}.[a-f0-9]{6}$/, '')).toBe('Barajada con Shuffl (aleatorio uniforme; reprodúcela con el aleatorio de Spotify apagado). Origen: Rock, Chill');
+  expect(created.description.replace(/ · shuffl:src=[a-f0-9]{10}.[a-f0-9]{6}$/, '')).toBe('Barajada con Shuffl (aleatorio uniforme; reprodúcela con el aleatorio de Spotify apagado). Origen: Rock, Chill');
   const natural = [...state.lists.get('pl_rock').tracks, ...state.lists.get('pl_chill').tracks].map((t) => t.name);
-  expect(names(baraja)).not.toEqual(natural.slice(0, 180));
+  expect(names(created)).not.toEqual(natural.slice(0, 180));
   // Playlist nueva: se crea y se llena en bloques de 100 (nada que sobrescribir).
-  expect(state.writes.filter((w) => w.op === 'put' && w.id === baraja.id)).toHaveLength(0);
-  expect(state.writes.filter((w) => w.op === 'post' && w.id === baraja.id)).toHaveLength(2);
+  expect(state.writes.filter((w) => w.op === 'put' && w.id === created.id)).toHaveLength(0);
+  expect(state.writes.filter((w) => w.op === 'post' && w.id === created.id)).toHaveLength(2);
   await expect(page.locator('#panel-shuffle .tracks .track')).toHaveCount(30);
 
-  const first = names(baraja).join();
+  const first = names(created).join();
   await page.getByRole('button', { name: 'Volver a barajar' }).click();
   await idle(page);
-  expect(baraja.tracks).toHaveLength(180);
-  expect(names(baraja).join()).not.toBe(first);
-  expect(new Set(baraja.tracks.map((t) => t.uri)).size).toBe(180);
-  expect([...state.lists.values()].filter((l) => l.name === 'Mix · Shuffle')).toHaveLength(1);
+  expect(created.tracks).toHaveLength(180);
+  expect(names(created).join()).not.toBe(first);
+  expect(new Set(created.tracks.map((t) => t.uri)).size).toBe(180);
+  expect([...state.lists.values()].filter((l) => l.name === 'Mix · Shuffl')).toHaveLength(1);
 
   await page.getByRole('button', { name: 'Deshacer último cambio' }).click();
   await expect(page.getByText('Cambio deshecho.')).toBeVisible();
-  expect(names(baraja).join()).toBe(first);
+  expect(names(created).join()).toBe(first);
 
   await page.getByRole('button', { name: 'Volver', exact: true }).click();
   await page.locator('#panel-shuffle .btn.primary.big').click();
   await idle(page);
   await expect(page.locator('#result-meta:visible', { hasText: /^180 (canciones|songs) ·/ })).toBeVisible();
-  expect([...state.lists.values()].filter((l) => l.name === 'Mix · Shuffle')).toHaveLength(1);
+  expect([...state.lists.values()].filter((l) => l.name === 'Mix · Shuffl')).toHaveLength(1);
 });
 
-test('si la playlist «· Shuffle» desaparece se crea una nueva', async ({ page }) => {
+test('si la playlist «· Shuffl» desaparece se crea una nueva', async ({ page }) => {
   await login(page);
   await pick(page, 'shuffle', 'Rock');
   await page.locator('#panel-shuffle .btn.primary.big').click();
   await expect(page.locator('#result-meta:visible', { hasText: /^120 (canciones|songs) ·/ })).toBeVisible();
-  const old = [...state.lists.values()].find((l) => l.name === 'Rock · Shuffle');
+  const old = [...state.lists.values()].find((l) => l.name === 'Rock · Shuffl');
   state.lists.delete(old.id);
   await page.getByRole('button', { name: 'Volver', exact: true }).click();
   await page.locator('#panel-shuffle .btn.primary.big').click();
   await expect(page.locator('#result-meta:visible', { hasText: /^120 (canciones|songs) ·/ })).toBeVisible();
-  const now = [...state.lists.values()].filter((l) => l.name === 'Rock · Shuffle');
+  const now = [...state.lists.values()].filter((l) => l.name === 'Rock · Shuffl');
   expect(now).toHaveLength(1);
   expect(now[0].id).not.toBe(old.id);
 });
@@ -219,7 +219,7 @@ test('copia de seguridad: exportar JSON y CSV y restaurar', async ({ page }) => 
 test('ajustes: Redirect URI, idioma e inglés, cerrar sesión', async ({ page }) => {
   await login(page);
   await openPanel(page, 'settings');
-  await expect(page.locator('#panel-settings .copybox input')).toHaveValue('http://127.0.0.1:5173/');
+  await expect(page.locator('#panel-settings .copybox input')).toHaveValue(BASE);
   await expect(page.locator('#settings-client-id')).toHaveValue(CLIENT_ID);
   await shot(page, `${SHOTS}/07-ajustes.png`, { fullPage: true });
   await page.locator('#lang-select').selectOption('en');
@@ -227,7 +227,7 @@ test('ajustes: Redirect URI, idioma e inglés, cerrar sesión', async ({ page })
   await expect(page.locator('#panel-settings')).toBeVisible();
   await page.locator('#logout').click();
   await expect(page.locator('#connect')).toBeVisible();
-  expect(await page.evaluate(() => localStorage.getItem('baraja.tokens'))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem('shuffl.tokens'))).toBeNull();
 });
 
 test('sin horizontal scroll y objetivos táctiles de 44 px', async ({ page }) => {
@@ -353,7 +353,7 @@ test('ninguna pantalla de resultado muestra «null», «undefined» ni «false»
   await clean('copia');
 
   const uri = (i) => `spotify:track:${String(i).padStart(22, '0')}`;
-  const backup = { app: 'baraja', version: 1, playlists: [{ id: 'x', name: 'Mi lista', tracks: [{ uri: uri(1) }, { uri: uri(2) }] }] };
+  const backup = { app: 'shuffl', version: 1, playlists: [{ id: 'x', name: 'Mi lista', tracks: [{ uri: uri(1) }, { uri: uri(2) }] }] };
   await page.locator('#restore-file').setInputFiles({ name: 'b.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(backup)) });
   await expect(page.getByRole('button', { name: 'Restaurar' })).toBeVisible();
   await clean('restaurar (lista)');

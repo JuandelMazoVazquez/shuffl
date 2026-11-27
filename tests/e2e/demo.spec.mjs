@@ -14,7 +14,7 @@ async function watchSpotify(page) {
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
-    if (!localStorage.getItem('baraja.lang')) localStorage.setItem('baraja.lang', JSON.stringify('es'));
+    if (!localStorage.getItem('shuffl.lang')) localStorage.setItem('shuffl.lang', JSON.stringify('es'));
   });
 });
 
@@ -89,9 +89,9 @@ test('la demo no lee ni escribe tu sesión, tus mezclas ni tu caché de la app d
   await page.addInitScript(() => {
     if (sessionStorage.getItem('seeded')) return;
     sessionStorage.setItem('seeded', '1');
-    localStorage.setItem('baraja.clientId', JSON.stringify('0123456789abcdef0123456789abcdef'));
-    localStorage.setItem('baraja.tokens', JSON.stringify({ access_token: 'real', refresh_token: 'real', expires_at: Date.now() + 3600000, scope: '' }));
-    localStorage.setItem('baraja.mixes', JSON.stringify([]));
+    localStorage.setItem('shuffl.clientId', JSON.stringify('0123456789abcdef0123456789abcdef'));
+    localStorage.setItem('shuffl.tokens', JSON.stringify({ access_token: 'real', refresh_token: 'real', expires_at: Date.now() + 3600000, scope: '' }));
+    localStorage.setItem('shuffl.mixes', JSON.stringify([]));
   });
   await page.goto('/?demo=1');
   await page.locator('#tab-shuffle').click();
@@ -100,9 +100,9 @@ test('la demo no lee ni escribe tu sesión, tus mezclas ni tu caché de la app d
   await expect(page.locator('#panel-shuffle #result-meta')).toBeVisible();
   await idle(page);
   const stored = await page.evaluate(() => Object.fromEntries(Object.keys(localStorage).map((k) => [k, localStorage.getItem(k)])));
-  expect(JSON.parse(stored['baraja.tokens']).access_token).toBe('real');
-  expect(stored['baraja.mixes']).toBe('[]');
-  for (const k of ['baraja.undo', 'baraja.lastMix', 'baraja.reqDay', 'baraja.recent', 'baraja.purgeOk']) expect(stored[k], k).toBeUndefined();
+  expect(JSON.parse(stored['shuffl.tokens']).access_token).toBe('real');
+  expect(stored['shuffl.mixes']).toBe('[]');
+  for (const k of ['shuffl.undo', 'shuffl.lastMix', 'shuffl.reqDay', 'shuffl.recent', 'shuffl.purgeOk']) expect(stored[k], k).toBeUndefined();
   const dbs = await page.evaluate(async () => (await indexedDB.databases()).map((d) => d.name));
   expect(dbs).not.toContain('shuffl-cache');
   expect(calls).toEqual([]);
@@ -129,7 +129,7 @@ test('«Conectar mi Spotify» sale de la demo a la pantalla de conexión', async
 });
 
 test('la demo también está en inglés', async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('baraja.lang', JSON.stringify('en')));
+  await page.addInitScript(() => localStorage.setItem('shuffl.lang', JSON.stringify('en')));
   await page.goto('/?demo=1');
   await expect(page.locator('#demo-bar')).toHaveText('Demo mode · changes are not saved to Spotify');
   await page.locator('#tab-shuffle').click();

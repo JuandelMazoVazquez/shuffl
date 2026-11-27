@@ -38,7 +38,7 @@ test('Novedades: 30 canciones por defecto, «Buscar más» añade 30 a la misma 
   await expect(resultMeta(page)).toContainText('30 canciones');
   await idle(page);
   await shot(page, 'docs/capturas/25-novedades.png');
-  const [list] = byName('Novedades · Shuffle');
+  const [list] = byName('Novedades · Shuffl');
   expect(list.tracks).toHaveLength(30);
   expect(list.tracks.some((t) => t.uri === owned.uri)).toBe(false);
   const liked = new Set(state.liked.map((t) => t.uri));
@@ -47,7 +47,7 @@ test('Novedades: 30 canciones por defecto, «Buscar más» añade 30 a la misma 
   await page.locator('#new-more-songs').click();
   await expect(resultMeta(page)).toContainText('60 canciones');
   await idle(page);
-  expect(byName('Novedades · Shuffle')).toHaveLength(1);
+  expect(byName('Novedades · Shuffl')).toHaveLength(1);
   expect(list.tracks).toHaveLength(60);
   expect(new Set(list.tracks.map((t) => t.uri)).size).toBe(60);
 });
@@ -62,7 +62,7 @@ test('Novedades por duración (60 min ± 2) desde «Más opciones»', async ({ p
   await page.locator('#new-go').click();
   await expect(resultMeta(page)).toBeVisible();
   await idle(page);
-  const ms = byName('Novedades · Shuffle')[0].tracks.reduce((n, t) => n + t.duration_ms, 0);
+  const ms = byName('Novedades · Shuffl')[0].tracks.reduce((n, t) => n + t.duration_ms, 0);
   expect(Math.abs(ms - 60 * 60000)).toBeLessThanOrEqual(2 * 60000);
 });
 
@@ -77,7 +77,7 @@ test('Novedades «Como mi playlist…»: usa los artistas de la playlist elegida
   await page.locator('#new-go').click();
   await expect(resultMeta(page)).toBeVisible();
   await idle(page);
-  const albums = new Set(byName('Novedades · Shuffle')[0].tracks.map((t) => t.album.id));
+  const albums = new Set(byName('Novedades · Shuffl')[0].tracks.map((t) => t.album.id));
   expect([...albums].every((a) => /^rel_artist\d$/.test(a))).toBe(true);
 });
 
@@ -96,7 +96,7 @@ test('Novedades por género: chips de tus artistas y búsqueda de más artistas 
   expect(state.searchCalls.length).toBeGreaterThan(0);
   expect(state.searchCalls.every((c) => c.type === 'artist' && Number(c.limit) <= 10 && c.q === 'genre:"trap latino"')).toBe(true);
   // Tus artistas de ese género (art0, con «rel_new») y los que encuentra la búsqueda.
-  const albums = new Set(byName('Novedades · Shuffle')[0].tracks.map((t) => t.album.id));
+  const albums = new Set(byName('Novedades · Shuffl')[0].tracks.map((t) => t.album.id));
   expect([...albums].every((a) => /^rel_gen\d+$/.test(a) || a === 'rel_new')).toBe(true);
   expect([...albums].some((a) => /^rel_gen/.test(a))).toBe(true);
 });
@@ -115,7 +115,7 @@ test('Novedades sin artistas: estado vacío que dice qué hacer', async ({ page 
   await openPanel(page, 'new');
   await page.locator('#new-go').click();
   await expect(page.locator('#new-empty')).toContainText('No hay artistas de los que tirar');
-  expect(byName('Novedades · Shuffle')).toHaveLength(0);
+  expect(byName('Novedades · Shuffl')).toHaveLength(0);
 });
 
 test('Descubre: canciones de los álbumes que escuchas, sin las que ya tienes ni las escuchadas', async ({ page }) => {
@@ -124,7 +124,7 @@ test('Descubre: canciones de los álbumes que escuchas, sin las que ya tienes ni
   await page.locator('#explore-go').click();
   await expect(resultMeta(page)).toContainText('30 canciones');
   await idle(page);
-  const [list] = byName('Descubre · Shuffle');
+  const [list] = byName('Descubre · Shuffl');
   const listened = new Set([...state.recent, ...state.top.short_term].map((t) => t.uri));
   const owned = new Set([...state.liked, ...state.lists.get('pl_rock').tracks, ...state.lists.get('pl_chill').tracks].map((t) => t.uri));
   expect(list.tracks.some((t) => listened.has(t.uri) || owned.has(t.uri))).toBe(false);
@@ -158,7 +158,7 @@ test('Olvidadas: Me gusta de hace más de 2 años; con 5 años, estado vacío', 
   await expect(page.locator('#forgotten-empty')).toContainText('Nada olvidado todavía');
 });
 
-test('Tu resumen: tarjeta vertical y cuadrada, logo de Spotify y «Mi top · Shuffle»', async ({ page }) => {
+test('Tu resumen: tarjeta vertical y cuadrada, logo de Spotify y «Mi top · Shuffl»', async ({ page }) => {
   await login(page);
   await openPanel(page, 'summary');
   await page.locator('#summary-go').click();
@@ -170,7 +170,7 @@ test('Tu resumen: tarjeta vertical y cuadrada, logo de Spotify y «Mi top · Shu
   expect(download.suggestedFilename()).toMatch(/^shuffl-resumen-cuadrado-\d{4}-\d{2}-\d{2}\.png$/);
   await page.locator('#summary-playlist').click();
   await idle(page);
-  expect(byName('Mi top · Shuffle')[0].tracks).toHaveLength(30);
+  expect(byName('Mi top · Shuffl')[0].tracks).toHaveLength(30);
 });
 
 test('«Tal día como hoy» y «Por álbumes» ya no existen', async ({ page }) => {
@@ -183,7 +183,7 @@ test('«Tal día como hoy» y «Por álbumes» ya no existen', async ({ page }) 
 });
 
 test('en inglés: Discover y Novedades traducidos', async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('baraja.lang', JSON.stringify('en')));
+  await page.addInitScript(() => localStorage.setItem('shuffl.lang', JSON.stringify('en')));
   seedReleases(10);
   await login(page);
   await openPanel(page, 'new');
@@ -191,5 +191,5 @@ test('en inglés: Discover y Novedades traducidos', async ({ page }) => {
   await page.locator('#new-go').click();
   await expect(resultMeta(page)).toContainText('songs');
   await idle(page);
-  expect(byName('New releases · Shuffle')).toHaveLength(1);
+  expect(byName('New releases · Shuffl')).toHaveLength(1);
 });

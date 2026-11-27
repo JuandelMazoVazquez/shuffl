@@ -1,6 +1,6 @@
 {
-  "name": "baraja",
-  "version": "1.4.0",
+  "name": "shuffl",
+  "version": "1.4.1",
   "description": "Aleatorio de verdad para tus playlists. PWA estática.",
   "type": "module",
   "private": true,

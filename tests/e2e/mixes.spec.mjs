@@ -12,8 +12,8 @@ const openFilters = async (page) => {
   await page.locator('#filters-box summary').click();
   await expect(page.locator('#filters-box')).toHaveAttribute('open', '');
 };
-/** La última playlist escrita por la app (la generada «· Shuffle»). */
-const baraja = () => state.lists.get(state.writes.filter((w) => w.op === 'create').at(-1).id);
+/** La última playlist escrita por la app (la generada «· Shuffl»). */
+const created = () => state.lists.get(state.writes.filter((w) => w.op === 'create').at(-1).id);
 const yearOf = (t) => Number(t.album.release_date.slice(0, 4));
 
 test('filtros: contador en vivo, barajado solo del subconjunto y la propia playlist queda bloqueada', async ({ page }) => {
@@ -33,7 +33,7 @@ test('filtros: contador en vivo, barajado solo del subconjunto y la propia playl
   await page.locator('#shuffle-go').click();
   await expect(page.locator('#result-meta:visible', { hasText: /^64 (canciones|songs) ·/ })).toBeVisible();
   await idle(page);
-  const out = baraja().tracks;
+  const out = created().tracks;
   expect(out).toHaveLength(64);
   expect(out.every((t) => yearOf(t) >= 2000 && !t.explicit)).toBe(true);
   await expect(page.getByText('56 canciones quedaron fuera por los filtros.')).toBeVisible();
@@ -62,8 +62,8 @@ test('toda la biblioteca: resumen, salta las de otros y no se lee a sí misma', 
   await expect(page.locator('#panel-shuffle .result-kicker')).toContainText('Listo');
   await idle(page);
   const unique = new Set([...state.lists.get('pl_rock').tracks, ...state.lists.get('pl_chill').tracks, ...state.lists.get('pl_dupes').tracks, ...state.liked].map((t) => t.uri));
-  expect(baraja().name).toBe('Toda mi música · Shuffle');
-  expect(baraja().tracks).toHaveLength(unique.size);
+  expect(created().name).toBe('Toda mi música · Shuffl');
+  expect(created().tracks).toHaveLength(unique.size);
   expect(requested.some((u) => u.includes('pl_top'))).toBe(false);
 
   await page.getByRole('button', { name: 'Volver', exact: true }).click();
@@ -91,8 +91,8 @@ test('mezclas guardadas: guardar con filtros, reutilizar desde Inicio, editar, b
   await card.click();
   await expect(page.locator('#result-meta:visible', { hasText: /^80 (canciones|songs) ·/ })).toBeVisible();
   await idle(page);
-  expect(baraja().tracks.every((t) => yearOf(t) >= 2000)).toBe(true);
-  expect(baraja().name).toBe('Coche · Shuffle');
+  expect(created().tracks.every((t) => yearOf(t) >= 2000)).toBe(true);
+  expect(created().name).toBe('Coche · Shuffl');
 
   await page.locator('#tab-home').click();
   await page.getByRole('button', { name: 'Editar mezcla Coche' }).click();
@@ -106,7 +106,7 @@ test('mezclas guardadas: guardar con filtros, reutilizar desde Inicio, editar, b
   await page.locator('#ask-name').fill('Gym');
   await page.locator('#ask-ok').click();
   await expect(page.getByText('Mezcla «Gym» guardada.')).toBeVisible();
-  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('baraja.mixes')));
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('shuffl.mixes')));
   expect(stored).toHaveLength(1);
   expect(stored[0]).toMatchObject({ name: 'Gym', filters: { yearFrom: '2010' }, ids: ['pl_rock'] });
 
@@ -114,7 +114,7 @@ test('mezclas guardadas: guardar con filtros, reutilizar desde Inicio, editar, b
   await expect(page.locator('[data-mix]')).toHaveCount(1);
   await page.getByRole('button', { name: 'Borrar mezcla Gym' }).click();
   await expect(page.locator('[data-mix]')).toHaveCount(0);
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('baraja.mixes')))).toEqual([]);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('shuffl.mixes')))).toEqual([]);
 });
 
 test('una mezcla de biblioteca incluye las playlists nuevas al volver a barajarla', async ({ page }) => {
@@ -134,7 +134,7 @@ test('una mezcla de biblioteca incluye las playlists nuevas al volver a barajarl
 
 test('una mezcla cuyas playlists ya no existen avisa sin escribir nada', async ({ page }) => {
   await login(page);
-  await page.evaluate(() => localStorage.setItem('baraja.mixes', JSON.stringify([
+  await page.evaluate(() => localStorage.setItem('shuffl.mixes', JSON.stringify([
     { id: 'm1', name: 'Fantasma', ids: ['no_existe'], names: ['X'], dedupe: true, mode: 'reuse' },
   ])));
   await page.reload();
@@ -148,7 +148,7 @@ test('las mezclas viajan en la copia de seguridad: se restauran y se limpian las
   await login(page);
   await openPanel(page, 'backup');
   const backup = {
-    app: 'baraja', version: 1, playlists: [],
+    app: 'shuffl', version: 1, playlists: [],
     mixes: [
       { id: 'a1', name: 'Gym', ids: ['pl_rock'], names: ['Rock'], dedupe: true, mode: 'reuse', filters: { explicit: 'none', yearFrom: 'abc' } },
       { id: 'a2', name: '', ids: [] },
@@ -159,7 +159,7 @@ test('las mezclas viajan en la copia de seguridad: se restauran y se limpian las
   await expect(page.locator('#restore-mixes')).toBeVisible();
   await page.getByRole('button', { name: 'Restaurar' }).click();
   await expect(page.getByText('Mezclas restauradas: 1.')).toBeVisible();
-  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('baraja.mixes')));
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('shuffl.mixes')));
   expect(stored).toHaveLength(1);
   expect(stored[0].filters).toMatchObject({ explicit: 'none', yearFrom: '' });
   await page.locator('#tab-home').click();
@@ -168,12 +168,12 @@ test('las mezclas viajan en la copia de seguridad: se restauran y se limpian las
 
 test('restaurar no pisa una mezcla local con el mismo id', async ({ page }) => {
   await login(page);
-  await page.evaluate(() => localStorage.setItem('baraja.mixes', JSON.stringify([
+  await page.evaluate(() => localStorage.setItem('shuffl.mixes', JSON.stringify([
     { id: 'a1', name: 'Editada', ids: ['pl_rock'], names: ['Rock'], dedupe: true, mode: 'reuse', filters: {} },
   ])));
   await openPanel(page, 'backup');
   const backup = {
-    app: 'baraja', version: 1, playlists: [],
+    app: 'shuffl', version: 1, playlists: [],
     mixes: [
       { id: 'a1', name: 'Antigua', ids: ['pl_rock'], names: ['Rock'] },
       { id: 'a2', name: 'Nueva', ids: ['pl_chill'], names: ['Chill'] },
@@ -182,13 +182,13 @@ test('restaurar no pisa una mezcla local con el mismo id', async ({ page }) => {
   await page.locator('#restore-file').setInputFiles({ name: 'b.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(backup)) });
   await page.getByRole('button', { name: 'Restaurar' }).click();
   await expect(page.getByText('Mezclas restauradas: 1. 1 ya existían y no se han tocado.')).toBeVisible();
-  const names = (await page.evaluate(() => JSON.parse(localStorage.getItem('baraja.mixes')))).map((m) => m.name);
+  const names = (await page.evaluate(() => JSON.parse(localStorage.getItem('shuffl.mixes')))).map((m) => m.name);
   expect(names).toEqual(['Editada', 'Nueva']);
 });
 
 test('el JSON exportado incluye las mezclas guardadas', async ({ page }) => {
   await login(page);
-  await page.evaluate(() => localStorage.setItem('baraja.mixes', JSON.stringify([
+  await page.evaluate(() => localStorage.setItem('shuffl.mixes', JSON.stringify([
     { id: 'a1', name: 'Gym', ids: ['pl_rock'], names: ['Rock'], dedupe: true, mode: 'reuse', filters: {} },
   ])));
   await openPanel(page, 'backup');

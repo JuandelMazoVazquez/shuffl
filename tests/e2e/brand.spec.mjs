@@ -57,7 +57,7 @@ test('el logo oficial de Spotify acompaña a carátulas y metadatos: selector, r
 });
 
 test('en tema claro se ve el logo negro; en automático sigue al sistema', async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('baraja.theme', JSON.stringify('light')));
+  await page.addInitScript(() => localStorage.setItem('shuffl.theme', JSON.stringify('light')));
   await login(page);
   expectLogo(await measure(page.locator('#panel-shuffle .picker-wrap .spotify-attrib')), 'black', /open\.spotify\.com/);
 

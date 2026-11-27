@@ -2,6 +2,50 @@
 
 Trabajo hecho sin supervisión el 2026-11-23. Todo lo reversible lo decidí yo; lo demás está en [docs/bandeja.md](docs/bandeja.md).
 
+## v1.4.1 (2026-11-27): todo se llama Shuffl y usa la misma paleta
+
+### Nombre
+
+- **Qué cuenta como nombre antiguo**: «Baraja» con mayúscula (el nombre), las claves `baraja.<clave>` y `new-spoti`. «baraja» en minúscula es el verbo o el sustantivo en español («baraja tus playlists») y se queda. Las frases que empezaban por el verbo («Baraja de verdad tus playlists», «Baraja tus playlists…» en los medios) se reescriben para que no se lean como el nombre viejo.
+- **Excepciones** (las fija `tests/unit/palette.test.js`): el historial (CHANGELOG con su nota, DECISIONES, `docs/registro/`, `docs/bandeja.md`), `docs/BRAND.md` y SIGUIENTES_PASOS (cuentan la mudanza), la migración de playlists (`js/targets.js` y sus tests), la de claves (`js/storage.js`) y la redirección (`redirect/` y su test). Reescribir el historial sería falsearlo; el CHANGELOG solo cambia sus enlaces de versión, que no son entradas.
+- **El aviso de un solo uso del icono** ya no dice «Baraja ahora se llama Shuffl»: queda «Shuffl estrena icono». Misma clave, así que quien lo vio no lo vuelve a ver.
+- **Copias de seguridad con `app: 'baraja'`** se siguen aceptando (`BACKUP_APPS`): es una entrada de archivo del usuario, como la migración. El comentario ya no nombra la app antigua.
+- **INVESTIGACION.md** pasa a decir Shuffl: es documentación viva del producto, no un registro fechado.
+
+### Playlists «· Shuffl»
+
+- `SHUFFLE_SUFFIX` pasa a « · Shuffl». Las nuevas se reconocen siempre por la etiqueta con el resumen del nombre (v1.3.1), así que el sufijo nuevo **no entra** en `isAppName` ni en los nombres esperados de las versiones sin etiqueta: esas nunca lo pusieron, y añadirlo solo ampliaría lo que se puede borrar (una playlist tuya «Rock · Shuffl» con una descripción vieja). Todo lo antiguo usa `LEGACY_SUFFIX` (« · Shuffle»), igual que antes. Test con los dos casos.
+
+### Claves y migración
+
+- **Copiar y borrar al arrancar** (`migrateLegacyKeys`), solo las claves conocidas (`KEYS`), antes de leer nada. Si la nueva ya existe gana la nueva (otra pestaña con la versión nueva pudo escribirla). Las obsoletas siguen su borrado aparte (`OBSOLETE_KEYS`).
+- **Si una copia falla (almacenamiento lleno)**, la antigua no se borra, `getItem` la lee como respaldo y se reintenta en el siguiente arranque. `removeItem` borra también la antigua: si no, cerrar sesión con la migración a medias resucitaría los tokens.
+- **La demo no migra** (no escribe en el almacenamiento de verdad); el idioma y el tema los lee igual por el respaldo.
+- **IndexedDB y caché del service worker ya eran `shuffl-cache` y `shuffl-<hash>`** desde la v1.3.2 y la v1.2; el `activate` ya borra cualquier caché que no sea la suya. No hay nada que migrar.
+- Riesgo aceptado: si queda abierta una pestaña con la versión anterior y renueva el token después de la migración, escribe `baraja.tokens` y la nueva puede acabar con un refresh token rotado; el peor caso es volver a iniciar sesión una vez.
+
+### Dirección nueva y redirección
+
+- **`start_url` y `scope` del manifest se quedan en `./`**: relativos funcionan en `/shuffl/` y en cualquier fork. Ponerlos absolutos no cambia nada para quien instala desde la dirección nueva.
+- **La redirección vive en `redirect/` de este repo** (probada aquí con `tests/e2e/redirect.spec.mjs`) y se copia al repo `new-spoti`, con `index.html` también como `404.html` para que cualquier subruta redirija. Usa `location.replace` (no deja la dirección vieja en el historial) y valida que el destino sigue dentro de `/shuffl/` aunque la ruta traiga `//` o `..`.
+- **Callback de OAuth** (`?code`, `?error` o `?state`): no se reenvía (el código va ligado a la Redirect URI antigua y no hay que moverlo entre páginas), se quita de la barra con `replaceState` y se avisa de conectar desde la dirección nueva.
+- **Service worker antiguo**: la página de redirección da de baja los registrados en `/new-spoti/`, y `redirect/sw.js` sustituye al viejo cuando el navegador busca actualización y se da de baja. No borra cachés porque el origen es el mismo que el de la app nueva.
+- **Redirect URI que falla**: Spotify enseña su propia página de error y no vuelve a la app, así que no hay `?error` que leer. La app lo detecta al volver sin callback con un inicio de sesión a medias y reciente (`pkce` con menos de 15 min): avisa una vez con la URI para copiar y los pasos, y marca el intento como avisado sin borrarlo (revisión: borrarlo rompía un inicio de sesión que seguía en curso en otra pestaña, por ejemplo mientras Spotify pide un código por email). Con sesión abierta, el aviso sale como mensaje flotante. El texto habla de «un error sobre la Redirect URI» sin citar el de Spotify.
+- **Repo público `new-spoti` para la redirección**: lo pide el encargo de forma explícita, así que no pasa por la bandeja. Comparte origen con la app (podría leer la sesión), por eso solo lleva los tres archivos de `redirect/`, sin dependencias ni Actions.
+- **Almacenamiento lleno a mitad de la migración**: escribir una clave nueva borra antes la antigua y reintenta; si no, la antigua volvería a leerse al recargar con un refresh token ya rotado. Si el error llega al pedir el token («Invalid redirect URI»), es un `AuthError('redirectUri')` con el mismo aviso; nunca el texto de Spotify. Si solo volviste atrás sin error, el aviso lo dice en condicional.
+- **Open Graph**: `og:image` apunta a `og.png`, que el despliegue copia de `docs/media/social-preview-es.png` (la app es primero en español).
+
+### Paleta
+
+- **Fuente única `js/brand.js`** (`DARK`, `LIGHT`, `GLOW`). El CSS no puede importar JS, así que repite los valores y un test compara variable a variable en los dos temas. Descartado generar el CSS desde JS: la app no tiene paso de build.
+- **Ningún color fuera de la paleta** en `css/`, `js/`, `scripts/`, `redirect/`, los SVG de `icons/`, `index.html` y el manifest, ni en hex ni en `rgb()`. Las sombras con negro puro pasan al negro de la paleta (`rgba(11, 11, 11, …)`); el marco negro de los móviles de los medios, igual.
+- Los colores de la marca antigua no aparecían ya en ningún archivo; el test lo fija para siempre.
+- **Etiquetas de GitHub** con la paleta (lima, verde oscuro, superficies y el rojo de error).
+
+### Pruebas
+
+- `playwright.config.mjs` lee `PORT`: con otro `npm run dev` abierto en 5173 (otra copia del repo), Playwright lo reutilizaba y probaba código ajeno. Los tests usan `BASE` de `helpers.mjs` en vez del puerto escrito.
+
 ## v1.4.0 (2026-11-27): repo listo para el lanzamiento open source
 
 ### Modo demo

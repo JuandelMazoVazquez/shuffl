@@ -1,7 +1,9 @@
 // Playlists que crea Shuffl: nombre, descripción con etiqueta y cómo reconocerlas para borrarlas (v1.3.1).
 // En tu cuenta solo existe una playlist de Shuffl a la vez: antes de crear la nueva se quitan todas las anteriores.
 
-export const SHUFFLE_SUFFIX = ' · Shuffle';
+/** v1.4.1: las playlists nuevas terminan en «· Shuffl»; hasta la v1.4.0 terminaban en «· Shuffle». */
+export const SHUFFLE_SUFFIX = ' · Shuffl';
+const LEGACY_SUFFIX = ' · Shuffle';
 export const MAX_NAME = 100;
 export const MAX_DESCRIPTION = 300;
 const SOURCE_ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -25,7 +27,7 @@ export function sourceKey({ mixId, library, ids = [] }) {
 }
 
 /**
- * «Reggaeton · Shuffle», «Tus me gusta · Shuffle», «Mix · Shuffle», «Coche · Shuffle» o «Toda mi música · Shuffle».
+ * «Reggaeton · Shuffl», «Tus me gusta · Shuffl», «Mix · Shuffl», «Coche · Shuffl» o «Toda mi música · Shuffl».
  * `labels` trae los textos traducidos de Me gusta y de la biblioteca.
  */
 export function generatedName({ mixName, library, sources = [] }, labels) {
@@ -37,7 +39,7 @@ export function generatedName({ mixName, library, sources = [] }, labels) {
 }
 
 /**
- * Shuffle por tiempo (v1.3.2): con un acceso rápido, «Gym 45 min · Shuffle»; personalizado, «Rock · 45 min · Shuffle».
+ * Shuffle por tiempo (v1.3.2): con un acceso rápido, «Gym 45 min · Shuffl»; personalizado, «Rock · 45 min · Shuffl».
  * Si el origen es muy largo se recorta él, nunca los minutos.
  */
 export function timeName({ minutes, presetLabel = '', base = 'Mix' }) {
@@ -122,12 +124,15 @@ export const SNAPSHOT_LABELS = ['Top 4 semanas', 'Top 6 meses', 'Top siempre', '
 /** «Rock · Shuffle · 26/11/26, 10:00» (v1.2, «una nueva cada vez»): fecha corta con hora, también en formato inglés con AM/PM. */
 const DATED_RE = / · \d{1,2}\/\d{1,2}\/\d{2,4},?\s\d{1,2}:\d{2}(?:\s?[AP]M)?$/;
 /** El nombre con fecha de la v1.2 siempre llevaba « · Shuffle» antes de la fecha. */
-const SHUFFLE_DATED_RE = new RegExp(`${SHUFFLE_SUFFIX}${DATED_RE.source}`);
+const SHUFFLE_DATED_RE = new RegExp(`${LEGACY_SUFFIX}${DATED_RE.source}`);
 
-/** Nombres que pone Shuffl: «… · Shuffle», «📸 …» y «🔀 Baraja» (y la v1.2 con fecha). */
+/**
+ * Nombres que ponían las versiones con etiqueta sin resumen del nombre (v1.3): «… · Shuffle», «📸 …», «🔀 Baraja» y la
+ * v1.2 con fecha. No incluye «· Shuffl» (v1.4.1): esas llevan siempre el resumen del nombre y se reconocen por él.
+ */
 export function isAppName(name) {
   if (typeof name !== 'string' || !name.trim()) return false;
-  return name.endsWith(SHUFFLE_SUFFIX) || SHUFFLE_DATED_RE.test(name) || name.startsWith(SNAPSHOT_PREFIX) || name === LEGACY_PLAYLIST;
+  return name.endsWith(LEGACY_SUFFIX) || SHUFFLE_DATED_RE.test(name) || name.startsWith(SNAPSHOT_PREFIX) || name === LEGACY_PLAYLIST;
 }
 
 /** Si la descripción (sin etiqueta) es una de las que generaron las versiones anteriores. */
@@ -148,13 +153,13 @@ function isLegacyAppPlaylist(name, description, v13 = false) {
   const prefix = LEGACY_DESCRIPTIONS.fromPrefix.find((p) => d.startsWith(p) && d.length > p.length);
   if (!prefix) return false;
   const origin = d.slice(prefix.length);
-  const expected = [cut(origin, MAX_NAME - SHUFFLE_SUFFIX.length) + SHUFFLE_SUFFIX];
+  const expected = [cut(origin, MAX_NAME - LEGACY_SUFFIX.length) + LEGACY_SUFFIX];
   // Varias playlists se llamaban «Mix · Shuffle» y la descripción las listaba separadas por comas.
-  if (origin.includes(', ')) expected.push(`Mix${SHUFFLE_SUFFIX}`);
+  if (origin.includes(', ')) expected.push(`Mix${LEGACY_SUFFIX}`);
   if (v13) {
     if (/^\d{1,3} min · Shuffle$/.test(name)) return true;
     for (const label of [origin, ...(origin.includes(', ') ? ['Mix'] : [])]) {
-      for (const word of ['Álbumes', 'Albums']) expected.push(cut(`${label} · ${word}`, MAX_NAME - SHUFFLE_SUFFIX.length) + SHUFFLE_SUFFIX);
+      for (const word of ['Álbumes', 'Albums']) expected.push(cut(`${label} · ${word}`, MAX_NAME - LEGACY_SUFFIX.length) + LEGACY_SUFFIX);
     }
   }
   const base = name.replace(DATED_RE, '');

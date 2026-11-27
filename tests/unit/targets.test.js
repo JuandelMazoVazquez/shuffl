@@ -9,12 +9,12 @@ const es = { liked: 'Tus me gusta', library: 'Toda mi música' };
 const en = { liked: 'Liked Songs', library: 'All my music' };
 
 test('nombres de las playlists generadas en español e inglés', () => {
-  assert.equal(generatedName({ sources: [{ name: 'Reggaeton' }] }, es), 'Reggaeton · Shuffle');
-  assert.equal(generatedName({ sources: [{ name: 'x', isLiked: true }] }, es), 'Tus me gusta · Shuffle');
-  assert.equal(generatedName({ sources: [{ name: 'x', isLiked: true }] }, en), 'Liked Songs · Shuffle');
-  assert.equal(generatedName({ sources: [{ name: 'A' }, { name: 'B' }] }, es), 'Mix · Shuffle');
-  assert.equal(generatedName({ mixName: 'Coche', sources: [{ name: 'A' }, { name: 'B' }] }, es), 'Coche · Shuffle');
-  assert.equal(generatedName({ library: true }, en), 'All my music · Shuffle');
+  assert.equal(generatedName({ sources: [{ name: 'Reggaeton' }] }, es), 'Reggaeton · Shuffl');
+  assert.equal(generatedName({ sources: [{ name: 'x', isLiked: true }] }, es), 'Tus me gusta · Shuffl');
+  assert.equal(generatedName({ sources: [{ name: 'x', isLiked: true }] }, en), 'Liked Songs · Shuffl');
+  assert.equal(generatedName({ sources: [{ name: 'A' }, { name: 'B' }] }, es), 'Mix · Shuffl');
+  assert.equal(generatedName({ mixName: 'Coche', sources: [{ name: 'A' }, { name: 'B' }] }, es), 'Coche · Shuffl');
+  assert.equal(generatedName({ library: true }, en), 'All my music · Shuffl');
   assert.equal(snapshotName('Top 4 semanas'), '📸 Top 4 semanas');
 });
 
@@ -110,6 +110,23 @@ test('v1.3.1: sin etiqueta solo vale el nombre exacto que le corresponde a su de
   assert.ok(isAppPlaylist(pl('Rock, Chill · Shuffle', `${V12}Rock, Chill`), 'me'), 'una playlist con coma en el nombre');
   assert.ok(!isAppPlaylist(pl('Coche · Shuffle', `${V12}Rock`), 'me'), 'mezcla de la v1.2 con otro nombre: no se sabe, no se toca');
   assert.ok(isAppPlaylist(pl('Tus me gusta · Shuffle', `${V12}Tus me gusta`), 'me'));
+});
+
+test('v1.4.1: las nuevas terminan en «· Shuffl» y se reconocen por la etiqueta; el sufijo nuevo no amplía lo que se borra', async () => {
+  assert.equal(SHUFFLE_SUFFIX, ' · Shuffl');
+  const tag = await tagFor('pl:x');
+  const name = generatedName({ sources: [{ name: 'Rock' }] }, es);
+  assert.equal(name, 'Rock · Shuffl');
+  assert.ok(isAppPlaylist(pl(name, withTag('Desde: Rock', tag, name)), 'me'));
+  assert.ok(!isAppPlaylist(pl('Rock · Shuffl bueno', withTag('Desde: Rock', tag, name)), 'me'), 'renombrada');
+  // Sin el resumen del nombre (etiqueta v1.3) o sin etiqueta, «· Shuffl» no basta: esas versiones nunca lo pusieron.
+  assert.ok(!isAppName('Rock · Shuffl'));
+  assert.ok(!isAppPlaylist(pl('Rock · Shuffl', `Desde: Rock${TAG}`), 'me'), 'etiqueta v1.3 con el sufijo nuevo');
+  assert.ok(!isAppPlaylist(pl('Rock · Shuffl', `${V12}Rock`), 'me'), 'descripción v1.2 con el sufijo nuevo');
+  // Las de antes siguen reconociéndose para poder quitarlas.
+  assert.ok(isAppPlaylist(pl('Rock · Shuffle', withTag('Desde: Rock', tag, 'Rock · Shuffle')), 'me'), 'v1.4.0 con etiqueta');
+  assert.ok(isAppPlaylist(pl('Rock · Shuffle', `${V12}Rock`), 'me'), 'v1.2');
+  assert.ok(isAppPlaylist(pl('🔀 Baraja', LEGACY_DESCRIPTIONS.shuffle[0]), 'me'), 'la del nombre anterior');
 });
 
 test('ronda 2: etiqueta v1.3 con descripción conocida exige el nombre exacto; fechas solo tras « · Shuffle»; nombres con entidades', async () => {

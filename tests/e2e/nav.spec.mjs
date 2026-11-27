@@ -12,7 +12,7 @@ test('4 pestañas, Inicio sin historial con «Empezar» y «volver» a la pesta�
   await login(page);
   await expect(page.locator('nav.tabs button')).toHaveText(['Inicio', 'Shuffle', 'Descubrir', 'Más']);
   await page.locator('#tab-home').click();
-  await expect(page.locator('#welcome-card')).toContainText('Baraja de verdad tus playlists');
+  await expect(page.locator('#welcome-card')).toContainText('Aleatorio de verdad para tus playlists');
   await expect(page.locator('#mixes-empty')).toBeVisible();
   await page.locator('#hero-start').click();
   await expect(page.locator('#panel-shuffle')).toBeVisible();
@@ -126,7 +126,7 @@ test('el resultado: nombre, canciones y duración, ▶ Reproducir y Abrir arriba
   await page.locator('#shuffle-go').click();
   await expect(page.locator('#result-meta:visible')).toBeVisible();
   await idle(page);
-  await expect(page.locator('#result-playlist:visible')).toHaveText('Rock · Shuffle');
+  await expect(page.locator('#result-playlist:visible')).toHaveText('Rock · Shuffl');
   await expect(page.locator('#result-meta:visible')).toHaveText(/^120 canciones · \d+ h \d+ min$/);
   const head = page.locator('#panel-shuffle .result-head');
   await expect(head.locator('#play-now')).toBeVisible();

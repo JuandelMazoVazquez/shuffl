@@ -257,21 +257,21 @@ test('backup: construir, validar, CSV y rechazo de archivos malos', () => {
   assert.match(csv, /'=cmd\(\)/);
   assert.match(csv, /"A, B"/);
   assert.match(toCsv([{ name: 'p', tracks: [tr({ name: 'x;=1+1' })] }]), /"x;=1\+1"/);
-  const huge = validateBackup({ app: 'baraja', version: 1, playlists: [{ name: 'x', tracks: Array.from({ length: MAX_PLAYLIST + 1 }, () => ({ uri: `spotify:track:${ID22}` })) }, { name: 'y', tracks: [] }] });
+  const huge = validateBackup({ app: 'shuffl', version: 1, playlists: [{ name: 'x', tracks: Array.from({ length: MAX_PLAYLIST + 1 }, () => ({ uri: `spotify:track:${ID22}` })) }, { name: 'y', tracks: [] }] });
   assert.equal(huge[0].tracks.length, MAX_PLAYLIST);
   assert.equal(huge.length, 2);
   const many = Array.from({ length: MAX_BACKUP_PLAYLISTS + 1 }, () => ({ name: 'x', tracks: [] }));
-  assert.throws(() => validateBackup({ app: 'baraja', version: 1, playlists: many }), { code: 'tooBig' });
+  assert.throws(() => validateBackup({ app: 'shuffl', version: 1, playlists: many }), { code: 'tooBig' });
   for (const uri of [`spotify:track:${'a'.repeat(1_000_000)}`, 'spotify:track:abc', `spotify:track:${ID22}\n`]) {
-    assert.throws(() => validateBackup({ app: 'baraja', version: 1, playlists: [{ name: 'x', tracks: [{ uri }] }] }), { code: 'badTrack' });
+    assert.throws(() => validateBackup({ app: 'shuffl', version: 1, playlists: [{ name: 'x', tracks: [{ uri }] }] }), { code: 'badTrack' });
   }
-  const proto = validateBackup(JSON.parse(`{"app":"baraja","version":1,"playlists":[{"name":"x","__proto__":{"polluted":1},"tracks":[]}]}`));
+  const proto = validateBackup(JSON.parse(`{"app":"shuffl","version":1,"playlists":[{"name":"x","__proto__":{"polluted":1},"tracks":[]}]}`));
   assert.equal(({}).polluted, undefined);
   assert.equal(proto[0].polluted, undefined);
-  for (const bad of [null, {}, { app: 'otra', version: 1, playlists: [] }, { app: 'baraja', version: 1, playlists: 'x' }]) {
+  for (const bad of [null, {}, { app: 'otra', version: 1, playlists: [] }, { app: 'shuffl', version: 1, playlists: 'x' }]) {
     assert.throws(() => validateBackup(bad), { code: 'notBackup' });
   }
-  assert.throws(() => validateBackup({ app: 'baraja', version: 2, playlists: [] }), { code: 'badVersion' });
-  assert.throws(() => validateBackup({ app: 'baraja', version: 1, playlists: [{ name: 'x', tracks: [{ uri: 'spotify:local:a:b:c:1' }] }] }), { code: 'badTrack' });
-  assert.throws(() => validateBackup({ app: 'baraja', version: 1, playlists: [{ name: 'x', tracks: [{ uri: 'javascript:alert(1)' }] }] }), { code: 'badTrack' });
+  assert.throws(() => validateBackup({ app: 'shuffl', version: 2, playlists: [] }), { code: 'badVersion' });
+  assert.throws(() => validateBackup({ app: 'shuffl', version: 1, playlists: [{ name: 'x', tracks: [{ uri: 'spotify:local:a:b:c:1' }] }] }), { code: 'badTrack' });
+  assert.throws(() => validateBackup({ app: 'shuffl', version: 1, playlists: [{ name: 'x', tracks: [{ uri: 'javascript:alert(1)' }] }] }), { code: 'badTrack' });
 });

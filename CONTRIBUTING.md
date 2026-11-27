@@ -9,8 +9,8 @@ Gracias por querer ayudar. Shuffl es pequeño a propósito: HTML, CSS y JavaScri
 Necesitas Node.js 22 o superior.
 
 ```
-git clone https://github.com/JuandelMazoVazquez/new-spoti.git
-cd new-spoti
+git clone https://github.com/JuandelMazoVazquez/shuffl.git
+cd shuffl
 npm install          # solo instala Playwright (tests)
 npm run dev          # http://127.0.0.1:5173
 ```
@@ -43,7 +43,7 @@ npm run media        # regenera capturas, GIFs y vídeo de docs/media (necesita 
 
 ## Proponer cambios
 
-1. Para algo grande, abre antes un issue o una idea en [Discussions](https://github.com/JuandelMazoVazquez/new-spoti/discussions/categories/ideas) y lo hablamos.
+1. Para algo grande, abre antes un issue o una idea en [Discussions](https://github.com/JuandelMazoVazquez/shuffl/discussions/categories/ideas) y lo hablamos.
 2. Haz un fork y crea una rama `feat/nombre` o `fix/nombre`.
 3. Commits pequeños que expliquen el porqué en el cuerpo del mensaje.
 4. Con `npm test` y `npm run test:e2e` en verde, abre el pull request y rellena la plantilla.
@@ -54,7 +54,7 @@ Los errores de seguridad no van a issues públicos: mira [SECURITY.md](SECURITY.
 
 1. Haz un fork y, en Settings → Pages, elige «GitHub Actions» como origen.
 2. `.github/workflows/pages.yml` publica la app cuando el CI de `main` pasa (o a mano con «Run workflow»).
-3. Añade `https://USUARIO.github.io/new-spoti/` como Redirect URI en tu app de Spotify.
+3. Añade `https://USUARIO.github.io/shuffl/` como Redirect URI en tu app de Spotify.
 4. Opcional: pon tu Client ID en `DEFAULT_CLIENT_ID` de `js/config.js`. No es secreto (PKCE no usa client secret), pero cada app admite como máximo 5 usuarios.
 
 ---
@@ -70,8 +70,8 @@ Thanks for wanting to help. Shuffl is small on purpose: HTML, CSS and JavaScript
 You need Node.js 22 or later.
 
 ```
-git clone https://github.com/JuandelMazoVazquez/new-spoti.git
-cd new-spoti
+git clone https://github.com/JuandelMazoVazquez/shuffl.git
+cd shuffl
 npm install          # only installs Playwright (tests)
 npm run dev          # http://127.0.0.1:5173
 ```
@@ -104,7 +104,7 @@ npm run media        # regenerates screenshots, GIFs and video in docs/media (ne
 
 ## Proposing changes
 
-1. For anything big, open an issue or an idea in [Discussions](https://github.com/JuandelMazoVazquez/new-spoti/discussions/categories/ideas) first so we can talk about it.
+1. For anything big, open an issue or an idea in [Discussions](https://github.com/JuandelMazoVazquez/shuffl/discussions/categories/ideas) first so we can talk about it.
 2. Fork and create a `feat/name` or `fix/name` branch.
 3. Small commits that explain the why in the message body.
 4. With `npm test` and `npm run test:e2e` green, open the pull request and fill in the template.
@@ -115,5 +115,5 @@ Security issues do not go in public issues: see [SECURITY.md](SECURITY.md). By t
 
 1. Fork it and, in Settings → Pages, choose "GitHub Actions" as the source.
 2. `.github/workflows/pages.yml` publishes the app when CI on `main` passes (or by hand with "Run workflow").
-3. Add `https://USERNAME.github.io/new-spoti/` as a Redirect URI in your Spotify app.
+3. Add `https://USERNAME.github.io/shuffl/` as a Redirect URI in your Spotify app.
 4. Optional: put your Client ID in `DEFAULT_CLIENT_ID` in `js/config.js`. It is not secret (PKCE uses no client secret), but each app allows 5 users at most.

@@ -77,7 +77,7 @@ test.describe('caché y cuota', () => {
     const n = Number((await resultMeta(page, 'new').textContent()).match(/^(\d+) canciones/)[1]);
     expect(n).toBeGreaterThanOrEqual(10);
     await expect(page.locator('#panel-new .note')).toContainText(`Spotify limita cuántas búsquedas puede hacer la app, así que hay ${n} canciones`);
-    expect(byName('Novedades · Shuffle')[0].tracks).toHaveLength(n);
+    expect(byName('Novedades · Shuffl')[0].tracks).toHaveLength(n);
     const calls = state.apiCalls.length;
     await page.locator('#new-more-songs').click();
     await expect(errorBox(page, 'new')).toContainText('Spotify limita cuántas búsquedas puede hacer la app. Vuelve a intentarlo en un rato.');
@@ -109,7 +109,7 @@ test.describe('caché y cuota', () => {
     await expect(resultMeta(page, 'new')).toBeVisible();
     await idle(page);
     expect(state.apiCalls.length - before).toBeLessThanOrEqual(40);
-    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('baraja.artistsPerSearch')))).toBe(25);
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('shuffl.artistsPerSearch')))).toBe(25);
   });
 });
 
@@ -235,7 +235,7 @@ test.describe('más interactiva', () => {
   test('quitar canciones con × (o deslizando) las quita de la playlist de Shuffl de una vez, y no vuelven al rebarajar', async ({ page }) => {
     await login(page);
     await shuffleOnce(page, 'Chill');
-    const [list] = byName('Chill · Shuffle');
+    const [list] = byName('Chill · Shuffl');
     const rows = page.locator('#panel-shuffle .tracks .track');
     const first = await rows.nth(0).locator('.track-name').textContent();
     const second = await rows.nth(1).locator('.track-name').textContent();
@@ -267,7 +267,7 @@ test.describe('más interactiva', () => {
   test('tirar hacia abajo en el resultado vuelve a barajar la misma playlist', async ({ page }) => {
     await login(page);
     await shuffleOnce(page, 'Rock');
-    const [list] = byName('Rock · Shuffle');
+    const [list] = byName('Rock · Shuffl');
     const before = list.tracks.map((t) => t.uri).join();
     const puts = state.writes.filter((w) => w.op === 'put').length;
     await page.evaluate(() => {
@@ -283,7 +283,7 @@ test.describe('más interactiva', () => {
     await idle(page);
     await expect.poll(() => state.writes.filter((w) => w.op === 'put').length).toBeGreaterThan(puts);
     expect(list.tracks.map((t) => t.uri).join()).not.toBe(before);
-    expect(byName('Rock · Shuffle')).toHaveLength(1);
+    expect(byName('Rock · Shuffl')).toHaveLength(1);
   });
 
   test('una mezcla por tiempo guardada recuerda el acceso rápido y se baraja desde Inicio y desde el atajo de Siri', async ({ page }) => {
@@ -295,20 +295,20 @@ test.describe('más interactiva', () => {
     await page.locator('#save-mix').click();
     await page.locator('#ask-name').fill('Mañanas');
     await page.locator('#ask-ok').click();
-    const [mix] = await page.evaluate(() => JSON.parse(localStorage.getItem('baraja.mixes')));
+    const [mix] = await page.evaluate(() => JSON.parse(localStorage.getItem('shuffl.mixes')));
     expect(mix).toMatchObject({ kind: 'time', minutes: 30, preset: 'run' });
     await page.locator('#tab-home').click();
     await expect(page.locator('[data-mix]', { hasText: 'Mañanas' })).toContainText('🏃 Correr 30 min');
     await page.locator('[data-mix]', { hasText: 'Mañanas' }).click();
     await expect(resultMeta(page)).toBeVisible();
     await idle(page);
-    expect(byName('Correr 30 min · Shuffle')).toHaveLength(1);
-    const key = await page.evaluate(() => JSON.parse(localStorage.getItem('baraja.linkKey')));
+    expect(byName('Correr 30 min · Shuffl')).toHaveLength(1);
+    const key = await page.evaluate(() => JSON.parse(localStorage.getItem('shuffl.linkKey')));
     await page.goto(`/?mezcla=${mix.id}${key ? `&k=${key}` : ''}`);
     await expect(resultMeta(page)).toBeVisible();
     await idle(page);
-    expect(byName('Correr 30 min · Shuffle')).toHaveLength(1);
-    const ms = byName('Correr 30 min · Shuffle')[0].tracks.reduce((n, t) => n + t.duration_ms, 0);
+    expect(byName('Correr 30 min · Shuffl')).toHaveLength(1);
+    const ms = byName('Correr 30 min · Shuffl')[0].tracks.reduce((n, t) => n + t.duration_ms, 0);
     expect(Math.abs(ms - 30 * 60000)).toBeLessThanOrEqual(2 * 60000);
   });
 });
@@ -317,7 +317,7 @@ test.describe('revisión de seguridad, ronda 1', () => {
   test('si guardar lo quitado falla, «Reintentar» lo guarda de verdad (no dice «Guardado» sin escribir)', async ({ page }) => {
     await login(page);
     await shuffleOnce(page, 'Chill');
-    const [list] = byName('Chill · Shuffle');
+    const [list] = byName('Chill · Shuffl');
     state.failures.push({ match: /PUT \/playlists\/new\d+\/items/, status: 500, body: {}, times: 3 });
     await page.locator('#panel-shuffle .tracks .track').first().locator('.track-remove').click();
     await expect(errorBox(page)).toContainText('Spotify no responde');
@@ -330,7 +330,7 @@ test.describe('revisión de seguridad, ronda 1', () => {
   test('ronda 3: si la playlist ya no está, quitar una canción lo explica y «Volver» sigue saliendo', async ({ page }) => {
     await login(page);
     await shuffleOnce(page, 'Chill');
-    const [list] = byName('Chill · Shuffle');
+    const [list] = byName('Chill · Shuffl');
     state.lists.delete(list.id);
     await page.locator('#panel-shuffle .tracks .track').first().locator('.track-remove').click();
     await expect(errorBox(page)).toContainText('ya no está en tu biblioteca');
@@ -341,7 +341,7 @@ test.describe('revisión de seguridad, ronda 1', () => {
   test('ronda 2: quitar otra mientras se guarda no deja la lista y Spotify distintas', async ({ page }) => {
     await login(page);
     await shuffleOnce(page, 'Chill');
-    const [list] = byName('Chill · Shuffle');
+    const [list] = byName('Chill · Shuffl');
     await page.route('https://api.spotify.com/v1/playlists/new*/items', async (route) => {
       if (route.request().method() === 'PUT') await new Promise((r) => setTimeout(r, 900));
       await route.fallback();
@@ -378,7 +378,7 @@ test.describe('revisión de seguridad, ronda 1', () => {
     await page.locator('#forgotten-again').click();
     await expect(resultMeta(page, 'forgotten')).toContainText('58 canciones');
     await idle(page);
-    const [list] = byName('Olvidadas · Shuffle');
+    const [list] = byName('Olvidadas · Shuffl');
     expect(list.tracks.some((t) => t.name === first || t.name === second)).toBe(false);
   });
 });

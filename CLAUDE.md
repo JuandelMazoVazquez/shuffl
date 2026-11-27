@@ -1,6 +1,6 @@
 # Shuffl
 
-PWA estática (HTML + CSS + JS vanilla con ES modules, sin build ni dependencias de runtime) que baraja de verdad playlists de Spotify, las ordena, quita duplicados y hace copias. Cada usuario usa su propio Client ID (Development Mode de Spotify). Nombre visible: Shuffl (antes Baraja); repo: new-spoti. Las claves de localStorage siguen siendo `baraja.*` a propósito (no se renombran).
+PWA estática (HTML + CSS + JS vanilla con ES modules, sin build ni dependencias de runtime) que baraja de verdad playlists de Spotify, las ordena, quita duplicados y hace copias. Cada usuario usa su propio Client ID (Development Mode de Spotify). Todo se llama Shuffl: repo `shuffl`, app en https://juandelmazovazquez.github.io/shuffl/, claves `shuffl.*` (las antiguas se migran solas en `js/storage.js`). La dirección antigua la redirige otro repo, con la fuente en `redirect/`. Nombre, logo y paleta: `docs/BRAND.md`.
 
 ## Comandos
 - `npm run dev`: servidor en http://127.0.0.1:5173
@@ -18,7 +18,7 @@ PWA estática (HTML + CSS + JS vanilla con ES modules, sin build ni dependencias
 - Errores: nunca un código ni un texto técnico de Spotify en pantalla; cada error pasa por `errorInfo` (mensaje y acción) y queda en el registro local sin nombres ni tokens (`js/diag.js`). Un `UserError` lleva como código su clave de texto.
 - Antes de sobrescribir una playlist: guardar Deshacer (`saveUndo`) y no escribir si la lectura fue incompleta.
 - La versión de la caché la inyecta el despliegue (`__BUILD__` en `sw.js`, hash del commit): no se sube a mano. Si añades un archivo JS a la app, inclúyelo en `SHELL` de `sw.js` (un test lo exige; los de `js/` ya se copian con la carpeta en `pages.yml`).
-- Las playlists que escribe la app sin pedir confirmación son siempre las generadas «· Shuffle» (`js/targets.js`); los enlaces profundos y agitar nunca escriben en el origen.
+- Las playlists que escribe la app sin pedir confirmación son siempre las generadas «· Shuffl» (`js/targets.js`; las de antes de la v1.4.1 terminaban en «· Shuffle»); los enlaces profundos y agitar nunca escriben en el origen.
 - En la cuenta solo hay una playlist de Shuffl a la vez: antes de crear una (shuffle, Descubrir, Olvidadas, Instantáneas, Mi top) se quitan todas las de Shuffl (`isAppPlaylist` en `js/targets.js`), con la biblioteca recién leída dentro del candado de escritura, y se comprueba con /me/library/contains que se han quitado. De Shuffl = propia, no colaborativa y:
   - con etiqueta `shuffl:src=<origen>.<nombre>`: el nombre actual tiene que dar el mismo resumen (si la renombraste, es tuya);
   - con etiqueta de la v1.3 (sin resumen del nombre) o sin etiqueta: una descripción de versiones anteriores (`LEGACY_DESCRIPTIONS`) y exactamente el nombre que le correspondía. La playlist de prueba del diagnóstico lleva etiqueta y cuenta como de Shuffl.
@@ -26,6 +26,7 @@ PWA estática (HTML + CSS + JS vanilla con ES modules, sin build ni dependencias
 - La primera vez se enseña la lista y solo se borra lo que estaba en ella; el «no volver a preguntar» se guarda con el id de la cuenta y solo tras borrar bien.
 - Pages despliega solo desde main y solo si el CI pasa.
 - No se usa "Spotify" en el nombre ni el logo de la app.
+- Colores solo de la paleta de `js/brand.js` (fuente única; `css/styles.css` repite sus valores). `tests/unit/palette.test.js` falla con un color fuera de ella o con un nombre antiguo fuera de las excepciones.
 - Los logos de `icons/spotify/` son los oficiales sin modificar (un test fija su hash): no se editan ni se recolorean. Donde se muestren carátulas o metadatos de Spotify, añadir `spotifyAttribution()`.
 - Push y merge a main sin pedir OK, siempre que el CI esté en verde y el cambio haya pasado la revisión de seguridad.
 - Siguen necesitando confirmación del usuario (ver docs/bandeja.md): hacer público algo nuevo, borrar ramas con trabajo sin mergear y cualquier acción irreversible fuera del repo.

@@ -57,7 +57,7 @@ test('«Elige por mí»: la ruleta se para en una de tus playlists (nunca en una
     // El resultado anterior sigue en la página: se espera a la escritura de esta baraja.
     await expect.poll(() => state.writes.filter((w) => w.op === 'create').length).toBe(i + 2);
     await idle(page);
-    expect(byName(`${name} · Shuffle`)).toHaveLength(1);
+    expect(byName(`${name} · Shuffl`)).toHaveLength(1);
   }
   expect(state.writes.some((w) => w.op === 'put' && ['pl_rock', 'pl_chill', 'pl_dupes'].includes(w.id))).toBe(false);
 });
@@ -77,7 +77,7 @@ test('la ruleta anima los nombres antes de pararse (sin movimiento reducido)', a
 test('agitar en Inicio rebaraja la última mezcla tras confirmar; cancelar o estar en otra pantalla no hace nada', async ({ page }) => {
   await noPermissionApi(page);
   await shuffleRock(page);
-  const [gen] = byName('Rock · Shuffle');
+  const [gen] = byName('Rock · Shuffl');
   await page.locator('#tab-home').click();
   await expect(page.locator('#shake-hint')).toBeVisible();
 
@@ -92,7 +92,7 @@ test('agitar en Inicio rebaraja la última mezcla tras confirmar; cancelar o est
   await expect(page.locator('#panel-shuffle .result-kicker')).toContainText('Listo');
   await idle(page);
   expect(puts()).toBe(2);
-  expect(byName('Rock · Shuffle')).toHaveLength(1);
+  expect(byName('Rock · Shuffl')).toHaveLength(1);
 
   await page.waitForTimeout(3100);
   await openPanel(page, 'sort');
@@ -111,7 +111,7 @@ test('agitar se puede desactivar en Ajustes', async ({ page }) => {
   await shake(page);
   await page.waitForTimeout(300);
   expect(state.writes.filter((w) => w.op === 'create')).toHaveLength(1);
-  expect(await page.evaluate(() => localStorage.getItem('baraja.shake'))).toBe('false');
+  expect(await page.evaluate(() => localStorage.getItem('shuffl.shake'))).toBe('false');
 });
 
 test('en iOS pide el permiso del acelerómetro con un toque antes de escuchar', async ({ page }) => {
@@ -141,7 +141,7 @@ test('en iOS pide el permiso del acelerómetro con un toque antes de escuchar', 
   expect(state.writes.filter((w) => w.op === 'create')).toHaveLength(2);
 });
 
-test('agitar tras barajar «la propia playlist» escribe en su «· Shuffle», nunca en la original', async ({ page }) => {
+test('agitar tras barajar «la propia playlist» escribe en su «· Shuffl», nunca en la original', async ({ page }) => {
   await noPermissionApi(page);
   await login(page);
   await pick(page, 'shuffle', 'Rock');
@@ -150,13 +150,13 @@ test('agitar tras barajar «la propia playlist» escribe en su «· Shuffle», n
   await page.locator('#shuffle-go').click();
   await expect(page.locator('#panel-shuffle .result-kicker')).toContainText('Listo');
   await idle(page);
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('baraja.lastMix')).mode)).toBe('self');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('shuffl.lastMix')).mode)).toBe('self');
   const ownPuts = () => state.writes.filter((w) => w.op === 'put' && w.id === 'pl_rock').length;
   expect(ownPuts()).toBe(1);
   await page.locator('#tab-home').click();
   await expect(page.locator('#shake-hint')).toBeVisible();
   await shake(page);
-  await expect.poll(() => byName('Rock · Shuffle').length).toBe(1);
+  await expect.poll(() => byName('Rock · Shuffl').length).toBe(1);
   await idle(page);
   expect(ownPuts()).toBe(1);
 });
@@ -179,7 +179,7 @@ test('celebración al terminar, salvo con movimiento reducido', async ({ page })
 });
 
 test('lo nuevo sale en inglés y los botones miden al menos 44 px', async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('baraja.lang', JSON.stringify('en')));
+  await page.addInitScript(() => localStorage.setItem('shuffl.lang', JSON.stringify('en')));
   await login(page);
   await page.locator('#tab-shuffle').click();
   await expect(page.locator('#card-roulette')).toContainText('Pick for me');

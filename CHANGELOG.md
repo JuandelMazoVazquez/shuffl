@@ -2,6 +2,23 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). El proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 
+Shuffl se llamó Baraja hasta la v1.2.0, y hasta la v1.4.0 el repositorio y la dirección eran `new-spoti`. Las entradas anteriores se dejan como se escribieron.
+
+## [1.4.1] - 2026-11-27
+
+Todo se llama Shuffl y usa la misma paleta: el repo, la dirección, la app, las playlists que crea y los medios.
+
+### Cambiado
+
+- **Dirección nueva: https://juandelmazovazquez.github.io/shuffl/** (el repo pasa a llamarse `shuffl`). La antigua redirige a la nueva con la misma ruta, la query (`?demo=1`, `?mezcla=`, `?origen=`) y el hash; si la redirección no funciona, avisa «Shuffl se ha mudado → nueva dirección» con el enlace.
+  - **Hay que añadir la Redirect URI nueva** `https://juandelmazovazquez.github.io/shuffl/` en tu app del dashboard de Spotify (puedes dejar la antigua). Mientras no esté, la app lo detecta y enseña la URI para copiarla y los pasos.
+  - Un inicio de sesión que vuelve de Spotify a la dirección antigua no se reenvía (el código va ligado a esa Redirect URI): la página avisa de que hay que conectar desde la nueva.
+  - En iPhone, para tener la app instalada con la dirección nueva, quítala de la pantalla de inicio y vuelve a añadirla desde la dirección nueva.
+- **Las playlists nuevas terminan en «· Shuffl»** (antes «· Shuffle»). Las que creó una versión anterior se siguen reconociendo y quitando como hasta ahora.
+- **El almacenamiento pasa a `shuffl.*`**: al abrir la app, sesión, Client ID, mezclas, Deshacer y ajustes se copian solos de las claves antiguas y se borran las de antes. No hay que volver a iniciar sesión.
+- **Una sola paleta** en `js/brand.js` (negro `#0B0B0B`, lima `#C6FF3D`, verde oscuro `#3D6B00` en claro), que usan el CSS, las portadas, «Tu resumen», la demo, los iconos y los medios del README. Guía de marca en `docs/BRAND.md`. Un test falla si aparece un color fuera de ella o un nombre antiguo fuera del historial.
+- La página tiene metadatos Open Graph con la imagen de social preview.
+
 ## [1.4.0] - 2026-11-27
 
 Lanzamiento como proyecto open source: se puede probar sin cuenta y el repositorio explica qué es, cómo empezar y cómo contribuir.
@@ -231,5 +248,5 @@ Correcciones tras probar con Spotify real en el iPhone. **Hay que volver a conec
 - Máximo 10.000 canciones por playlist.
 - Spotify limita las apps en Development Mode a 5 usuarios y exige Premium al dueño.
 
-[1.1.0]: https://github.com/JuandelMazoVazquez/new-spoti/releases/tag/v1.1.0
-[1.0.0]: https://github.com/JuandelMazoVazquez/new-spoti/releases/tag/v1.0.0
+[1.1.0]: https://github.com/JuandelMazoVazquez/shuffl/releases/tag/v1.1.0
+[1.0.0]: https://github.com/JuandelMazoVazquez/shuffl/releases/tag/v1.0.0
