@@ -32,5 +32,5 @@ export function createAppServer({ getBuild = () => 'dev' } = {}) {
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const port = Number(process.env.PORT) || 5173;
-  createAppServer().listen(port, '127.0.0.1', () => console.log(`Baraja en http://127.0.0.1:${port}`));
+  createAppServer().listen(port, '127.0.0.1', () => console.log(`Shuffl en http://127.0.0.1:${port}`));
 }

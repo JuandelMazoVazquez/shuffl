@@ -26,7 +26,7 @@ export class AuthError extends Error {
   }
 }
 
-/** Origen + ruta base: funciona en "/" y en "/new-spoti/". */
+/** Origen + ruta base: funciona en "/" y en "/shuffl/". */
 export function redirectUri() {
   return new URL('./', location.href).href;
 }
@@ -78,7 +78,11 @@ async function tokenRequest(params) {
     body: new URLSearchParams({ client_id: getClientId(), ...params }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new AuthError(data.error === 'invalid_grant' ? 'invalid_grant' : 'tokenFailed', data.error_description);
+  if (!res.ok) {
+    // «Invalid redirect URI»: la del dashboard no es la de esta dirección (por ejemplo, tras la mudanza a /shuffl/).
+    if (/redirect.?uri/i.test(String(data.error_description ?? ''))) throw new AuthError('redirectUri');
+    throw new AuthError(data.error === 'invalid_grant' ? 'invalid_grant' : 'tokenFailed', data.error_description);
+  }
   return data;
 }
 
@@ -91,10 +95,18 @@ function storeTokens(data, previous) {
   });
 }
 
-/** Procesa ?code&state (o ?error) al volver de Spotify. Devuelve true si había callback. */
+/**
+ * Procesa ?code&state (o ?error) al volver de Spotify. Devuelve true si había callback.
+ * Sin callback pero con un inicio de sesión a medias, Spotify no volvió aquí: lo más probable es que rechazara la
+ * Redirect URI (su página de error no redirige). Se lanza `redirectStalled` para enseñar cómo añadirla.
+ */
 export async function handleCallback() {
   const params = new URLSearchParams(location.search);
-  if (!params.has('code') && !params.has('error')) return false;
+  if (!params.has('code') && !params.has('error')) {
+    if (!getItem(KEYS.pkce)) return false;
+    removeItem(KEYS.pkce);
+    throw new AuthError('redirectStalled');
+  }
   const saved = getItem(KEYS.pkce);
   removeItem(KEYS.pkce);
   history.replaceState(null, '', redirectUri());

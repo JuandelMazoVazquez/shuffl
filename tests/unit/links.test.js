@@ -19,7 +19,7 @@ test('parseDeepLink rechaza ids peligrosos, vacíos o ambiguos', () => {
 });
 
 test('buildDeepLink y withoutDeepLink', () => {
-  const base = 'https://juandelmazovazquez.github.io/new-spoti/';
+  const base = 'https://juandelmazovazquez.github.io/shuffl/';
   assert.equal(buildDeepLink(base, { mixId: 'm1', key: KEY }), `${base}?mezcla=m1&play=1&k=${KEY}`);
   assert.equal(buildDeepLink(`${base}?x=1#y`, { mixId: 'm2', play: false }), `${base}?mezcla=m2`);
   assert.deepEqual(parseDeepLink(new URL(buildDeepLink(base, { mixId: 'm-2', key: KEY })).search), { kind: 'mix', id: 'm-2', play: true, key: KEY });

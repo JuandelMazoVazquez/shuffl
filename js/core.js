@@ -1,9 +1,9 @@
-// Lógica pura de Baraja: sin DOM ni red, para poder probarla con node --test.
+// Lógica pura de Shuffl: sin DOM ni red, para poder probarla con node --test.
 
 export const MAX_PLAYLIST = 10000;
 export const MAX_BACKUP_PLAYLISTS = 200;
 export const MAX_BACKUP_BYTES = 20 * 1024 * 1024;
-/** Las copias de antes del cambio de nombre llevan `app: 'baraja'` y se siguen aceptando. */
+/** Las copias de antes de la v1.2.0 llevan el nombre anterior de la app en `app` y se siguen aceptando. */
 const BACKUP_APPS = ['shuffl', 'baraja'];
 export const LIKED_ID = '__liked__';
 

@@ -14,7 +14,8 @@ export function getItem(key, fallback = null) {
   if (memory.has(key)) return memory.get(key);
   if (!shared(key)) return fallback;
   try {
-    const raw = localStorage.getItem(key);
+    // Si la migración no pudo copiar una clave (almacenamiento lleno), se sigue leyendo la de antes.
+    const raw = localStorage.getItem(key) ?? (LEGACY[key] ? localStorage.getItem(LEGACY[key]) : null);
     return raw === null ? fallback : JSON.parse(raw);
   } catch {
     return fallback;
@@ -42,31 +43,61 @@ export function removeItem(key) {
   if (!shared(key)) return;
   try {
     localStorage.removeItem(key);
+    // También la de antes: si no, cerrar sesión con una migración a medias recuperaría los tokens viejos.
+    if (LEGACY[key]) localStorage.removeItem(LEGACY[key]);
   } catch { /* sin almacenamiento */ }
 }
 
 export const KEYS = {
-  clientId: 'baraja.clientId',
-  tokens: 'baraja.tokens',
-  pkce: 'baraja.pkce',
-  lang: 'baraja.lang',
-  undo: 'baraja.undo',
-  logoNotice: 'baraja.logoNotice.v12',
-  cover: 'baraja.cover',
-  lastMix: 'baraja.lastMix',
-  mixes: 'baraja.mixes',
-  theme: 'baraja.theme',
-  lastTarget: 'baraja.lastTarget',
-  shake: 'baraja.shake',
-  linkKey: 'baraja.linkKey',
-  recent: 'baraja.recent',
-  discoverDays: 'baraja.discoverDays',
-  purge: 'baraja.purge',
-  purgeOk: 'baraja.purgeOk',
-  reqDay: 'baraja.reqDay',
-  errors: 'baraja.errors',
-  artistsPerSearch: 'baraja.artistsPerSearch',
+  clientId: 'shuffl.clientId',
+  tokens: 'shuffl.tokens',
+  pkce: 'shuffl.pkce',
+  lang: 'shuffl.lang',
+  undo: 'shuffl.undo',
+  logoNotice: 'shuffl.logoNotice.v12',
+  cover: 'shuffl.cover',
+  lastMix: 'shuffl.lastMix',
+  mixes: 'shuffl.mixes',
+  theme: 'shuffl.theme',
+  lastTarget: 'shuffl.lastTarget',
+  shake: 'shuffl.shake',
+  linkKey: 'shuffl.linkKey',
+  recent: 'shuffl.recent',
+  discoverDays: 'shuffl.discoverDays',
+  purge: 'shuffl.purge',
+  purgeOk: 'shuffl.purgeOk',
+  reqDay: 'shuffl.reqDay',
+  errors: 'shuffl.errors',
+  artistsPerSearch: 'shuffl.artistsPerSearch',
 };
 
 /** Claves de versiones anteriores que ya no se usan (v1.3.1: cada playlist de Shuffl es nueva; v1.3.2: las cachés pasan a IndexedDB). Se borran al arrancar. */
 export const OBSOLETE_KEYS = ['baraja.snapshots', 'baraja.targets', 'baraja.migrationNotice', 'baraja.autoClean', 'baraja.playlistId', 'baraja.metaCache', 'baraja.libIndex'];
+
+// ---------- Migración de las claves (v1.4.1) ----------
+// Hasta la v1.4.0 las claves empezaban por «baraja.» (el nombre anterior de la app). El origen es el mismo, así que
+// los datos siguen ahí: se copian a «shuffl.» y se borra la antigua, sin cerrar la sesión ni perder nada.
+
+const OLD_PREFIX = 'baraja.';
+/** Clave nueva → la misma con el prefijo antiguo. */
+export const LEGACY = Object.fromEntries(Object.values(KEYS).map((k) => [k, OLD_PREFIX + k.slice(k.indexOf('.') + 1)]));
+
+/**
+ * Copia cada «baraja.x» a «shuffl.x» si la nueva aún no existe (la nueva gana siempre) y después borra la antigua.
+ * Si una copia falla (almacenamiento lleno), la antigua se queda, `getItem` la sigue leyendo y se reintenta en el
+ * próximo arranque. Devuelve cuántas claves quedan sin migrar.
+ */
+export function migrateLegacyKeys() {
+  let pending = 0;
+  for (const [key, old] of Object.entries(LEGACY)) {
+    try {
+      const value = localStorage.getItem(old);
+      if (value === null) continue;
+      if (localStorage.getItem(key) === null) localStorage.setItem(key, value);
+      localStorage.removeItem(old);
+    } catch {
+      pending += 1;
+    }
+  }
+  return pending;
+}

@@ -99,12 +99,12 @@ test('pickThumb: la más pequeña que llega a 120 px; sin tamaños, la penúltim
   assert.equal(track.thumb, 'https://i.scdn.co/300');
 });
 
-test('nombres por tiempo: «Gym 45 min · Shuffle» o «Rock · 45 min · Shuffle», sin cortar nunca los minutos', () => {
-  assert.equal(timeName({ minutes: 45, presetLabel: 'Gym' }), 'Gym 45 min · Shuffle');
-  assert.equal(timeName({ minutes: 45, base: 'Rock' }), 'Rock · 45 min · Shuffle');
+test('nombres por tiempo: «Gym 45 min · Shuffl» o «Rock · 45 min · Shuffl», sin cortar nunca los minutos', () => {
+  assert.equal(timeName({ minutes: 45, presetLabel: 'Gym' }), 'Gym 45 min · Shuffl');
+  assert.equal(timeName({ minutes: 45, base: 'Rock' }), 'Rock · 45 min · Shuffl');
   const long = timeName({ minutes: 120, base: 'x'.repeat(200) });
   assert.ok([...long].length <= MAX_NAME);
-  assert.ok(long.endsWith('… · 120 min · Shuffle'));
+  assert.ok(long.endsWith('… · 120 min · Shuffl'));
 });
 
 test('las playlists por tiempo se reconocen como de Shuffl y, si las renombras, no', async () => {

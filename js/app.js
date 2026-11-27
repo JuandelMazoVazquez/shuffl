@@ -11,7 +11,7 @@ import {
 } from './targets.js';
 import { SpotifyApi, ApiError } from './api.js';
 import * as auth from './auth.js';
-import { KEYS, OBSOLETE_KEYS, getItem, setItem, removeItem, setVolatile } from './storage.js';
+import { KEYS, OBSOLETE_KEYS, getItem, setItem, removeItem, setVolatile, migrateLegacyKeys } from './storage.js';
 import { DEMO_ME, demoAuth, wantsDemo, createDemoState, createDemoFetch, demoMixes } from './demo.js';
 import { t, setLang, getLang, LANGS } from './i18n.js';
 import { REPO_URL, APP_NAME, APP_VERSION } from './config.js';
@@ -1522,7 +1522,7 @@ function shufflePanel() {
       const { order, truncated, notes: kindNotes } = arrange(base, minutes);
       const source = coverTitle(sel, origin);
       const presetLabel = presetKey ? t(`preset_${presetKey}`) : '';
-      // «Gym 45 min · Shuffle» con un acceso rápido; «Rock · 45 min · Shuffle» si es personalizado.
+      // «Gym 45 min · Shuffl» con un acceso rápido; «Rock · 45 min · Shuffl» si es personalizado.
       const name = minutes ? timeName({ minutes, presetLabel, base: source })
         : generatedName({ mixName: origin.mixName, library: origin.library, sources: sel }, nameLabels());
       const title = minutes ? (presetLabel ? `${presetLabel} ${t('minutesShort', { n: minutes })}` : `${source} · ${t('minutesShort', { n: minutes })}`) : source;
@@ -3284,11 +3284,26 @@ function mountApp() {
 
 // ---------- Pantalla inicial ----------
 
+const REDIRECT_PROBLEMS = new Set(['redirectUri', 'redirectStalled']);
+const isRedirectProblem = (e) => e instanceof auth.AuthError && REDIRECT_PROBLEMS.has(e.code);
+
+/** Spotify no aceptó la Redirect URI (v1.4.1, mudanza a /shuffl/): la URI de esta dirección y cómo añadirla. */
+function redirectHelp(problem) {
+  if (!isRedirectProblem(problem)) return null;
+  return h('section', { class: 'card redirect-help', id: 'redirect-help', role: 'alert' },
+    h('p', {}, h('strong', {}, t(`authErr_${problem.code}`))),
+    h('p', {}, t('redirectHelpLead')),
+    copyBox(auth.redirectUri(), t('redirectUri'), 'redirect-help-uri'),
+    h('ol', { class: 'redirect-steps' }, ['redirectHelp1', 'redirectHelp2', 'redirectHelp3', 'redirectHelp4'].map((k) => h('li', {}, t(k)))),
+    h('a', { class: 'btn', href: 'https://developer.spotify.com/dashboard', target: '_blank', rel: 'noopener' }, t('openDashboard')));
+}
+
 function renderSetup(problem) {
   S.playlists = [];
   S.loaded = false;
   const idIn = h('input', { type: 'text', id: 'client-id', class: 'text mono', value: auth.getClientId(), placeholder: t('clientIdPlaceholder'), autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', 'aria-label': t('clientId') });
-  const err = h('p', { class: 'error', role: 'alert', hidden: !problem }, problem ? errorMessage(problem) : '');
+  const shown = problem && !isRedirectProblem(problem);
+  const err = h('p', { class: 'error', role: 'alert', hidden: !shown }, shown ? errorMessage(problem) : '');
   const connect = h('button', { class: 'btn primary big', type: 'button', id: 'connect', onclick: async () => {
     const id = idIn.value.trim();
     if (!/^[a-f0-9]{32}$/i.test(id)) { err.textContent = t('badClientId'); err.hidden = false; return; }
@@ -3312,6 +3327,7 @@ function renderSetup(problem) {
   };
   setKids(root,h('main', { class: 'setup' },
     h('div', { class: 'brand' }, h('img', { src: 'icons/icon.svg', alt: '', width: '72', height: '72' }), h('h1', {}, APP_NAME)),
+    redirectHelp(problem),
     h('p', { class: 'lead' }, t('welcome')),
     h('a', { class: 'btn big demo-cta', href: '?demo=1', id: 'try-demo' }, t('tryDemo')),
     h('p', { class: 'muted small center' }, t('tryDemoNote')),
@@ -3325,11 +3341,12 @@ function renderSetup(problem) {
     langSel));
 }
 
-function renderReconnect() {
+function renderReconnect(problem) {
   S.playlists = [];
   const err = h('p', { class: 'error', role: 'alert', hidden: true });
   setKids(root, h('main', { class: 'setup' },
     h('div', { class: 'brand' }, h('img', { src: 'icons/icon.svg', alt: '', width: '72', height: '72' }), h('h1', {}, APP_NAME)),
+    redirectHelp(problem),
     h('p', { class: 'lead', id: 'reconnect-msg' }, t('reconnectMsg')),
     err,
     h('button', { class: 'btn primary big', type: 'button', id: 'reconnect', onclick: async () => {
@@ -3447,6 +3464,8 @@ function bindGestures() {
 // ---------- Arranque ----------
 
 async function boot() {
+  // La demo no escribe en el almacenamiento de verdad; el idioma y el tema los lee igual con el respaldo de `getItem`.
+  if (!wantsDemo(location.search)) migrateLegacyKeys();
   setLang();
   applyTheme();
   OBSOLETE_KEYS.forEach(removeItem);
@@ -3462,7 +3481,7 @@ async function boot() {
     problem = e;
   }
   if (!auth.getClientId() || !auth.isLoggedIn()) return renderSetup(problem);
-  if (auth.needsReconnect()) return renderReconnect();
+  if (auth.needsReconnect()) return renderReconnect(problem);
   S.api = new SpotifyApi({ auth, onRequest: countRequest });
   try {
     S.me = await S.api.getMe();

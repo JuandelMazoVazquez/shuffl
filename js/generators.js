@@ -25,7 +25,7 @@ export function sanitizeMinutes(v) {
 }
 
 /**
- * Baraja de forma uniforme y toma canciones en ese orden mientras quepan en `minutes` ± 2 min.
+ * Ordena al azar de forma uniforme y toma canciones en ese orden mientras quepan en `minutes` ± 2 min.
  * Si una no cabe se salta y se sigue buscando entre las restantes otra que encaje.
  * Devuelve las elegidas (en el orden barajado) y su duración total.
  */

@@ -30,6 +30,26 @@ test('refresh: si otra pestaña ya rotó el token, no falla ni cierra la sesión
   assert.equal(getItem(KEYS.tokens).refresh_token, 'r2');
 });
 
+test('Redirect URI: «Invalid redirect URI» al pedir el token es un error propio, sin el texto de Spotify', async () => {
+  const { handleCallback } = await import('../../js/auth.js');
+  setItem(KEYS.clientId, '0123456789abcdef0123456789abcdef');
+  setItem(KEYS.pkce, { verifier: 'v', state: 's' });
+  globalThis.location = { href: 'https://x.github.io/shuffl/?code=c&state=s', search: '?code=c&state=s' };
+  globalThis.history = { replaceState: () => {} };
+  globalThis.fetch = async () => ({ ok: false, json: async () => ({ error: 'invalid_grant', error_description: 'Invalid redirect URI' }) });
+  await assert.rejects(() => handleCallback(), (e) => e.code === 'redirectUri' && e.message === 'redirectUri');
+  assert.equal(getItem(KEYS.pkce), null);
+});
+
+test('Redirect URI: un inicio de sesión que no volvió de Spotify avisa una vez y limpia el intento', async () => {
+  const { handleCallback } = await import('../../js/auth.js');
+  globalThis.location = { href: 'https://x.github.io/shuffl/', search: '' };
+  setItem(KEYS.pkce, { verifier: 'v', state: 's' });
+  await assert.rejects(() => handleCallback(), { code: 'redirectStalled' });
+  assert.equal(getItem(KEYS.pkce), null);
+  assert.equal(await handleCallback(), false, 'la segunda vez ya no avisa');
+});
+
 test('missingScopes: sesiones antiguas piden volver a conectar', () => {
   assert.deepEqual(missingScopes({ scope: SCOPE_LIST.join(' ') }), []);
   assert.deepEqual(missingScopes(null), SCOPE_LIST);

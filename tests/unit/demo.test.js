@@ -58,7 +58,7 @@ test('la API de verdad funciona sobre la demo: leer, crear, escribir y quitar', 
   assert.ok(tracks.every((t) => t.durationMs > 0 && isImageUrl(t.thumb)));
   const liked = await api.getLikedTracks();
   assert.equal(liked.length, 160);
-  const created = await api.createPlaylist('Domingo lento · Shuffle', 'x');
+  const created = await api.createPlaylist('Domingo lento · Shuffl', 'x');
   await api.replaceItems(created.id, tracks.map((t) => t.uri).reverse());
   assert.deepEqual((await api.getPlaylistItems(created.id)).map((e) => e.item.uri), tracks.map((t) => t.uri).reverse());
   assert.deepEqual(await api.libraryContains([`spotify:playlist:${created.id}`]), [true]);
