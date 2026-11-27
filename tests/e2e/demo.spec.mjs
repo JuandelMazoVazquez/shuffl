@@ -108,6 +108,18 @@ test('la demo no lee ni escribe tu sesión, tus mezclas ni tu caché de la app d
   expect(calls).toEqual([]);
 });
 
+test('Diagnóstico sale todo en verde en la demo (sin pedir permisos que no hay) y sin atajos de Siri', async ({ page }) => {
+  const calls = await watchSpotify(page);
+  await page.goto('/?demo=1');
+  await expect(page.locator('[data-mix]').first()).toBeVisible();
+  await expect(page.locator('[data-shortcut]')).toHaveCount(0);
+  await openPanel(page, 'diag');
+  await page.locator('#run-diag').click();
+  await expect(page.locator('#diag-results li')).toHaveCount(4);
+  await expect(page.locator('#diag-results li.bad')).toHaveCount(0);
+  expect(calls).toEqual([]);
+});
+
 test('«Conectar mi Spotify» sale de la demo a la pantalla de conexión', async ({ page }) => {
   await page.goto('/?demo=1');
   await page.locator('#demo-connect').click();

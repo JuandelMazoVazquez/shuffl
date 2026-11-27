@@ -8,7 +8,10 @@ globalThis.navigator ??= { userAgent: 'test', language: 'es' };
 
 const { createDemoState, createDemoFetch, coverSvg, wantsDemo, demoMixes, DEMO_ME } = await import('../../js/demo.js');
 const { SpotifyApi } = await import('../../js/api.js');
-const { isImageUrl, pickThumb, normalizeEntries } = await import('../../js/core.js');
+const { isImageUrl, pickThumb, normalizeEntries, allowDemoImages } = await import('../../js/core.js');
+// Con una cuenta de verdad, un SVG en data: no se acepta; la demo lo activa al arrancar.
+assert.equal(isImageUrl(coverSvg('antes')), false);
+allowDemoImages();
 const { sanitizeMixes } = await import('../../js/mixes.js');
 
 const demoApi = () => {

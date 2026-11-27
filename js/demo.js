@@ -254,7 +254,7 @@ export function createDemoState(lang = 'es', now = Date.now()) {
     topArtists: { short_term: topArtistsOf('s'), medium_term: topArtistsOf('m'), long_term: topArtistsOf('l') },
     recent: tops(40, 'r').map((track, i) => ({ track, played_at: new Date(now - i * 23 * 60000).toISOString() })),
     devices: [{ id: 'demodevice', name: lang === 'en' ? 'Demo iPhone' : 'iPhone de la demo', type: 'Smartphone', is_active: true, is_restricted: false, volume_percent: 60 }],
-    player: null, created: 0, requests: 0,
+    player: null, created: 0,
   };
 }
 
@@ -290,7 +290,6 @@ export function createDemoFetch(state, { delay = null } = {}) {
     const method = (init.method ?? 'GET').toUpperCase();
     const path = url.pathname.replace(/^\/v1/, '');
     const body = typeof init.body === 'string' && init.body.startsWith('{') ? JSON.parse(init.body) : null;
-    state.requests++;
     const ms = delay ?? globalThis.__shufflDemoDelay ?? 90;
     if (ms) await wait(ms * (0.6 + Math.random() * 0.8));
     if (url.hostname !== 'api.spotify.com') return fail(404, 'demo');

@@ -3,7 +3,7 @@ import {
   filterByAdded, findDuplicates, removeIndexes, buildBackup, toCsv, validateBackup, MAX_BACKUP_BYTES, MAX_BACKUP_PLAYLISTS,
   EXPLICIT_MODES, emptyFilters, hasFilters, filterTracks, sanitizeFilters, organizePlaylists, parsePlaylistRef,
   SPLIT_MODES, MAX_SPLIT_PARTS, splitTracks, MULTI_KEYS, sortTracksBy, normalizeAlbum, normalizeFollowedArtist, toLibraryCsv,
-  pickThumb, isImageUrl,
+  pickThumb, isImageUrl, allowDemoImages,
 } from './core.js';
 import { sanitizeMix, sanitizeMixes, upsertMix, removeMix, newMixId, mixSources } from './mixes.js';
 import {
@@ -359,12 +359,20 @@ async function cacheRead(k, maxAge) {
 }
 
 /** Lee de la caché o pide a Spotify y guarda (artistas y lanzamientos 24 h; canciones de álbumes 30 días). */
-async function cached(rawKey, fetcher, maxAge = DAY_MS) {
-  const hit = await cacheRead(rawKey, maxAge);
-  if (hit !== undefined) return hit;
-  const data = await fetcher();
-  idbSet(cacheKey(rawKey), data);
-  return data;
+const inflight = new Map();
+/** Dos pantallas que piden lo mismo a la vez (p. ej. al terminar de cargar) comparten la petición en curso. */
+function cached(rawKey, fetcher, maxAge = DAY_MS) {
+  const key = cacheKey(rawKey);
+  if (inflight.has(key)) return inflight.get(key);
+  const run = (async () => {
+    const hit = await cacheRead(rawKey, maxAge);
+    if (hit !== undefined) return hit;
+    const data = await fetcher();
+    idbSet(key, data);
+    return data;
+  })().finally(() => inflight.delete(key));
+  inflight.set(key, run);
+  return run;
 }
 
 /**
@@ -2239,7 +2247,7 @@ function diagPanel() {
     };
     await check(t('diagAccount'), async () => { const me = await S.api.getMe(); return me.display_name || me.id; });
     await check(t('diagPlaylists'), async () => { await S.api.request('GET', '/me/playlists?limit=1'); return ''; });
-    const missing = auth.missingScopes(getItem(KEYS.tokens));
+    const missing = grantedMissing();
     rows.push({ label: t('diagScopes'), ok: missing.length === 0, detail: missing.join(', ') });
     // Prueba real de borrado: crea una playlist vacía y la quita con DELETE /me/library. Si falla, se ve el error de Spotify.
     // También comprueba que Spotify devuelve la etiqueta en la descripción (sin ella no se reconocerían las de Shuffl)
@@ -2292,7 +2300,7 @@ function diagPanel() {
       return { text: t('fullPlaylistsN', { n: fmt(page?.total ?? 0) }), detail: `total ${page?.total ?? 0}` };
     });
     await step('scopes', async () => {
-      const missing = auth.missingScopes(getItem(KEYS.tokens));
+      const missing = grantedMissing();
       if (missing.length) throw new UserError(t('fullScopesMissing', { list: missing.join(', ') }), 'scopes');
     });
     let uri = null;
@@ -2537,6 +2545,9 @@ function linkKey() {
 }
 
 /** Pasos para crear en la app Atajos de iOS un atajo que abre el enlace profundo de una mezcla. */
+/** Permisos de Spotify que faltan en la sesión. En la demo no hay sesión ni permisos que pedir. */
+const grantedMissing = () => (S.demo ? [] : auth.missingScopes(getItem(KEYS.tokens)));
+
 function showShortcutSheet(mix) {
   const onKey = (e) => { if (e.key === 'Escape') close(); };
   const close = () => { document.removeEventListener('keydown', onKey); sheet.remove(); };
@@ -3138,7 +3149,8 @@ function homePanel() {
     h('button', { class: 'card', type: 'button', 'data-mix': mix.id, onclick: () => S.runMix(mix, mixOrigin(mix)) },
       h('span', { class: 'card-icon' }, icon(...ICONS[mix.kind === 'time' ? 'clock' : 'shuffle'])),
       h('span', {}, h('span', { class: 'card-title' }, mix.name), h('span', { class: 'card-sub' }, mixSummary(mix)))),
-    h('button', { class: 'icon-btn', type: 'button', 'data-shortcut': mix.id, 'aria-label': t('shortcutBtn', { name: mix.name }), onclick: () => showShortcutSheet(mix) }, icon(...ICONS.mic)),
+    // En la demo el atajo apuntaría a una mezcla que solo existe en esta pestaña.
+    S.demo ? null : h('button', { class: 'icon-btn', type: 'button', 'data-shortcut': mix.id, 'aria-label': t('shortcutBtn', { name: mix.name }), onclick: () => showShortcutSheet(mix) }, icon(...ICONS.mic)),
     h('button', { class: 'icon-btn', type: 'button', 'aria-label': t('editMix', { name: mix.name }), onclick: () => S.editMix(mix) }, icon(...ICONS.edit)),
     h('button', { class: 'icon-btn', type: 'button', 'aria-label': t('deleteMix', { name: mix.name }), onclick: () => {
       if (!confirm(t('confirmDeleteMix', { name: mix.name }))) return;
@@ -3481,6 +3493,7 @@ async function startDemo(link) {
   S.demo = true;
   setVolatile();
   idbVolatile();
+  allowDemoImages();
   document.documentElement.classList.add('demo');
   // Sin el aviso del logo ni la pregunta de borrar copias antiguas: en la demo no hay nada tuyo que proteger.
   setItem(KEYS.logoNotice, true);
@@ -3501,14 +3514,17 @@ function exitDemo() {
   location.assign(location.pathname);
 }
 
-// En la demo las playlists no existen en Spotify: «Abrir en Spotify» explica eso en vez de abrir una página rota.
-document.addEventListener('click', (e) => {
+// En la demo las playlists no existen en Spotify: «Abrir en Spotify» explica eso en vez de abrir una página rota
+// (también con el botón central, que abre en otra pestaña).
+const demoLinkGuard = (e) => {
   if (!S.demo) return;
   const a = e.target.closest?.('a[href^="https://open.spotify.com/playlist/"]');
   if (!a) return;
   e.preventDefault();
   showToast(t('demoNoSpotify'));
-}, true);
+};
+document.addEventListener('click', demoLinkGuard, true);
+document.addEventListener('auxclick', demoLinkGuard, true);
 
 function showUpdateBanner(apply) {
   if (document.getElementById('update-banner')) return;

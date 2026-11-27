@@ -92,16 +92,19 @@ export function normalizeEntry(entry) {
   };
 }
 
+let demoImages = false;
+/** Solo el modo demo: sus carátulas son SVG generados en `data:`. Con una cuenta de verdad, solo https. */
+export function allowDemoImages() {
+  demoImages = true;
+}
+
+/** Imagen que se puede pintar: https (Spotify) o, en la demo, un SVG en `data:` (en un <img> no ejecuta ni carga nada). */
+export const isImageUrl = (url) => typeof url === 'string' && (url.startsWith('https://') || (demoImages && url.startsWith('data:image/svg+xml,')));
+
 /**
  * Miniatura para filas de 48 px (unos 144 px en pantallas de 3x): la imagen más pequeña que llegue a `min` px.
  * Si ninguna llega, la más grande; si Spotify no da tamaños, la penúltima (va de mayor a menor: la de 300 px).
  */
-/**
- * Imagen que se puede pintar: https (Spotify) o un SVG en `data:` (las carátulas generadas del modo demo; dentro de un
- * <img> un SVG no ejecuta scripts ni carga nada).
- */
-export const isImageUrl = (url) => typeof url === 'string' && (url.startsWith('https://') || url.startsWith('data:image/svg+xml,'));
-
 export function pickThumb(images, min = 120) {
   const list = (Array.isArray(images) ? images : []).filter((i) => isImageUrl(i?.url));
   if (!list.length) return '';
