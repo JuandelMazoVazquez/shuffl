@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="es" data-theme="auto">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Guía de instalación · Shuffl</title>
+  <meta name="description" content="Cómo instalar Shuffl y conectarlo con tu Spotify en 3 pasos, sin iniciar sesión dos veces.">
+  <meta name="theme-color" content="#0B0B0B" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+  <meta name="color-scheme" content="dark light">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Shuffl">
+  <meta property="og:title" content="Guía de instalación de Shuffl">
+  <meta property="og:description" content="Instala la app, crea tu app en Spotify for Developers y conecta. 3 pasos, unos 5 minutos.">
+  <meta property="og:url" content="https://juandelmazovazquez.github.io/shuffl/guia/">
+  <meta property="og:image" content="https://juandelmazovazquez.github.io/shuffl/og.png">
+  <link rel="alternate" hreflang="en" href="https://juandelmazovazquez.github.io/shuffl/guide/">
+  <link rel="icon" href="../icons/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="../css/styles.css">
+  <link rel="stylesheet" href="../css/guide.css">
+</head>
+<body class="guide-page">
+  <header class="top">
+    <a class="guide-brand" href="../"><img src="../icons/icon.svg" alt="" width="32" height="32"><span>Shuffl</span></a>
+    <a class="guide-lang" href="../guide/" hreflang="en" lang="en">English</a>
+  </header>
+  <main class="guide">
+    <h1 class="guide-title">Guía de instalación</h1>
+    <p class="lead">Tres pasos, unos 5 minutos y una sola vez. Hazlos en este orden para no tener que iniciar sesión dos veces.</p>
+    <p class="muted small">Necesitas Spotify Premium en la cuenta que crea la app de Spotify for Developers: es una regla de Spotify para las apps en Development Mode. ¿Solo quieres verla? <a href="../?demo=1">Prueba la demo</a>, sin cuenta.</p>
+
+    <ol class="steps guide-steps">
+      <li class="step" id="paso-1">
+        <h2 class="step-title">Instala Shuffl en tu móvil</h2>
+        <p>Abre <a href="../">juandelmazovazquez.github.io/shuffl</a> en el móvil:</p>
+        <ul class="setup-list">
+          <li><strong>iPhone:</strong> abre la app (el enlace de arriba) en Safari, pulsa Compartir y elige «Añadir a pantalla de inicio».</li>
+          <li><strong>Android:</strong> abre la app (el enlace de arriba) en Chrome, pulsa el menú ⋮ y elige «Instalar app».</li>
+          <li><strong>Ordenador:</strong> en el ordenador no hace falta: sigue en el navegador.</li>
+        </ul>
+        <p class="setup-warn">No inicies sesión todavía en el navegador. En iPhone, Safari y la app instalada guardan los datos por separado y tendrías que conectarte dos veces. Instálala y sigue desde la app instalada.</p>
+      </li>
+
+      <li class="step" id="paso-2">
+        <h2 class="step-title">Desde la app instalada, crea tu app en Spotify for Developers</h2>
+        <ol class="setup-list">
+          <li>Abre Spotify for Developers e inicia sesión con tu cuenta de Spotify.
+            <a class="btn" href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener noreferrer">Abrir Spotify for Developers</a></li>
+          <li>Pulsa «Create app» y rellena el formulario:
+            <ul class="fields">
+              <li><strong class="field-name">App name</strong> «Shuffl» o el nombre que quieras.</li>
+              <li><strong class="field-name">App description</strong> cualquier texto, por ejemplo «Barajar mis playlists».</li>
+              <li><strong class="field-name">Website</strong> opcional, puedes dejarlo vacío.</li>
+              <li><strong class="field-name">Redirect URIs</strong> pega exactamente esta dirección (con la barra final) y pulsa «Add».
+                <span class="copybox"><input class="text mono" type="text" readonly value="https://juandelmazovazquez.github.io/shuffl/" aria-label="Redirect URI" id="redirect-uri"><button class="btn" type="button" data-copy="redirect-uri">Copiar</button></span></li>
+              <li><strong class="field-name">Which API/SDKs are you planning to use?</strong> marca «Web API».</li>
+              <li>Marca la casilla de aceptar las condiciones de Spotify y pulsa «Save».</li>
+            </ul>
+          </li>
+          <li>Spotify te lleva a la página de tu app y el Client ID aparece ahí mismo (32 letras y números): cópialo. No hace falta abrir Settings.</li>
+        </ol>
+      </li>
+
+      <li class="step" id="paso-3">
+        <h2 class="step-title">Pega el Client ID en la app instalada y conecta</h2>
+        <p>Vuelve a Shuffl, pega el Client ID y pulsa «Conectar con Spotify». Spotify te pedirá permiso una vez y volverás a la app.</p>
+      </li>
+    </ol>
+
+    <p class="muted small">¿Otra persona va a usar tu app con su cuenta? En la página de tu app en Spotify, abre «User Management» y añade su nombre y email (hasta 5 personas).</p>
+
+    <h2>Si algo falla</h2>
+    <ul class="setup-list">
+      <li>«Invalid redirect URI» al conectar: la Redirect URI de tu app de Spotify no es idéntica a la de arriba (incluida la barra final). Cópiala con el botón. Para cambiarla después: página de tu app → Settings → Edit.</li>
+      <li>Error 403 al cargar tus playlists: tu email no está en «User Management» (debe ser el email de tu cuenta de Spotify).</li>
+      <li>Error 403 en todo: la cuenta dueña de la app necesita Spotify Premium.</li>
+      <li>«Invalid client»: el Client ID no es el de tu app (son 32 caracteres).</li>
+    </ul>
+
+    <p class="guide-cta"><a class="btn primary big" href="../">Abrir Shuffl</a></p>
+    <p class="muted small">Proyecto independiente, no afiliado ni respaldado por Spotify. Spotify es una marca de Spotify AB. <a href="https://github.com/JuandelMazoVazquez/shuffl" target="_blank" rel="noopener noreferrer">Código en GitHub</a>.</p>
+  </main>
+  <script src="../js/guide.js"></script>
+</body>
+</html>

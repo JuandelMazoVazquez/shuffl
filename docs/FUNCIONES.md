@@ -23,29 +23,31 @@ Las capturas de esta página salen de los tests (Spotify simulado). Las del READ
 ![Barajar](capturas/02-barajar.png)
 
 - Debajo de las playlists eliges **Toda la playlist** o **Por tiempo**. Por tiempo tiene accesos rápidos (🚗 Trayecto 20 min, 🏋️ Gym 45, 🏃 Correr 30, ✈️ Viaje 90, 😴 Dormir 30) y «A medida», con un deslizador de 5 a 180 min. Se baraja de forma uniforme y se llena el tiempo con ±2 min: «Gym 45 min · Shuffl» o, a medida, «Rock · 45 min · Shuffl». Las mezclas guardadas y los atajos de Siri recuerdan el tiempo.
-- Quitar repetidas, filtros, destino, pegar enlace y guardar como mezcla también están en «Más opciones»; sin tocarlos funciona bien.
+- Junto al botón eliges **dónde barajar**: «Crear una playlist nueva» (por defecto) o «Barajar mi playlist original». Se recuerda la última elección.
+- Quitar repetidas, filtros, pegar enlace y guardar como mezcla están en «Más opciones»; sin tocarlos funciona bien.
 
 ![Shuffle por tiempo](capturas/24-shuffle-tiempo.png)
 
 - Elige una o varias playlists y Tus me gusta: se combinan y se barajan juntas. Por defecto quita las canciones repetidas (misma URI) al combinar. Hay filtros previos (año, fecha de añadida, duración, explícitas): se aplican antes y luego se baraja de forma uniforme lo que queda.
 - Destino:
   - Una playlist nueva de Shuffl (por defecto): «Reggaeton · Shuffl», «Tus me gusta · Shuffl», «Mix · Shuffl» (varias playlists; la descripción las lista), «Coche · Shuffl» (mezcla guardada) o «Toda mi música · Shuffl». Sustituye a la anterior de Shuffl (ver abajo).
-  - La propia playlist, solo con una playlist tuya y con confirmación.
+  - Barajar mi playlist original: cambia el orden de esa playlist sin crear otra, sin quitar canciones y sin borrar nada. Pregunta la primera vez y queda Deshacer. Se puede con una sola playlist tuya o colaborativa, entera; si no, la opción sale desactivada con el motivo en una línea: Tus me gusta (Spotify no deja reordenarla), varias playlists a la vez, por tiempo o con filtros.
 - La portada de la playlist generada lleva el icono de Shuffl, el nombre del origen y la fecha (se desactiva en Ajustes).
 - El resultado enseña el nombre, las canciones y la duración, con «▶ Reproducir ahora» (Premium) y «Abrir en Spotify», y la lista de canciones con la carátula de su álbum. Desliza una canción a la izquierda (o toca su ×) para quitarla de la playlist; tira hacia abajo o toca «Volver a barajar» para rebarajarla al momento. También puedes compartirla o pulsar Deshacer.
 - «Reproducir ahora» busca tu Spotify, pone la playlist desde la primera canción, apaga el aleatorio y comprueba que de verdad suena así. Si el móvil no está activo, pide abrir Spotify un momento; sin Premium, en un dispositivo que no se deja controlar o si Spotify no hace caso, lo explica y ofrece abrirla en Spotify.
 
 ![Resultado de barajar](capturas/03-resultado-barajar.png)
 
-### Solo una playlist de Shuffl en tu cuenta
+### Una playlist de Shuffl de cada tipo en tu cuenta
 
 ![Borrar las antiguas](capturas/23-borrar-antiguas.png)
 
-- Cada vez que Shuffl va a crear una playlist (shuffle, Descubrir, Olvidadas, Instantáneas, Mi top), primero lee las canciones, después quita de tu biblioteca todas las playlists que creó antes y por último crea la nueva. Así solo existe una, la última.
+- Cada vez que Shuffl va a crear una playlist, primero lee las canciones, después quita de tu biblioteca la que creó antes **del mismo tipo** y por último crea la nueva. Los tipos son: shuffle (también por tiempo y las mezclas), Descubre, Novedades, Olvidadas, e Instantáneas con Mi top. Así, tu shuffle y tu Descubre conviven, y otro shuffle solo sustituye al shuffle anterior.
+- El tipo va en la etiqueta (` · shuffl:cat=<tipo> · shuffl:src=<hash>`). Las creadas antes de la v1.5.0 se clasifican por su etiqueta de origen (una playlist tuya llamada «Descubre» y barajada es un shuffle); las que no llevan etiqueta son shuffles, salvo «📸 …», que son Instantáneas.
 - Son de Shuffl las tuyas con su etiqueta en la descripción (` · shuffl:src=<hash>`, sin ids ni nombres) o, las de versiones anteriores, con un nombre «… · Shuffle», «📸 …» o el de la primera versión y una descripción de las que ponía la app. Nunca se tocan las que renombraste, las de otras personas, las colaborativas ni las que no tienen esa descripción, y no se ofrecen como origen.
 - La primera vez se enseña la lista con «Borrar y no volver a preguntar»; después es automático, con un aviso. Se desactiva en Ajustes. Lo quitado se recupera durante 90 días en spotify.com → Cuenta → Recuperar playlists.
 - Si quitar o crear falla, se explica qué ha pasado con «Reintentar» (las canciones siguen en memoria). «Comprobar conexión», en Más → Diagnóstico, prueba que Shuffl puede quitar playlists.
-- Como cada shuffle crea una playlist nueva, el pin de Tu biblioteca no se conserva: ordena Tu biblioteca por «Recientes» para tenerla arriba.
+- Como cada shuffle crea una playlist nueva, el pin de Tu biblioteca no se conserva: ordena Tu biblioteca por «Recientes» para tenerla arriba, o baraja tu playlist original.
 
 ### Descubrir
 
@@ -53,7 +55,8 @@ Spotify ya no ofrece recomendaciones a apps como esta, así que Shuffl las busca
 
 - **Novedades**: lanzamientos de los últimos 7, 30 o 90 días.
 - **Descubre**: canciones de los álbumes que escuchas y de tus artistas.
-- En las dos: unas 30 canciones y «Buscar más» para añadir otras 30 a la misma playlist; en «Más opciones», número (15-100) o duración (30-90 min). Se basan en tus artistas, en una playlist tuya («Como mi playlist…») o en un género (si Spotify da géneros para tus artistas). Nunca salen canciones que ya tienes en tus playlists o en Tus me gusta.
+- En las dos: unas 30 canciones y «Buscar más» para añadir otras 30 a la misma playlist; en «Más opciones», número (15-100) o duración (30-90 min). Se basan en tus artistas, en una playlist tuya o en Tus me gusta («Como mi playlist…»; de Tus me gusta se usan las 200 más recientes) o en un género (si Spotify da géneros para tus artistas). Nunca salen canciones que ya tienes en tus playlists o en Tus me gusta.
+- Variedad: como mucho 3 canciones del mismo artista (1, 2, 3 o 5 en «Más opciones»), repartidas por turnos entre todos. Si no hay bastantes artistas distintos, lo dice en vez de rellenar con el mismo.
 - **Olvidadas**: 100 al azar entre tus Me gusta de hace más de 1, 2, 3 o 5 años.
 - **Tu resumen**: tus 5 artistas y canciones top (4 semanas, 6 meses o siempre) en una tarjeta vertical para historias (1080×1920) y otra cuadrada, para compartir o descargar. Las carátulas van enteras y sin nada encima, junto al logo de Spotify. Puedes crear «Mi top · Shuffl».
 

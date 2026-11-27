@@ -1,0 +1,13 @@
+/* Guía de instalación (guia/, guide/): usa la paleta y los componentes de styles.css; aquí solo su maquetación. */
+.guide-page main.guide { padding: 1.2rem 1rem 3rem; }
+.guide-brand { display: flex; align-items: center; gap: .5rem; color: var(--text); text-decoration: none; font: 900 1.2rem/1 var(--font-display); }
+.guide-lang { font-size: .9rem; }
+.guide-title { font-size: 1.8rem; margin: .4rem 0 .6rem; }
+.guide .lead { font-size: 1.05rem; }
+.guide-steps { margin-top: 1.2rem; }
+.guide-steps .step { padding: .8rem .9rem 1rem; }
+.guide-steps .step-title { font: 700 1.05rem/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; text-transform: none; letter-spacing: 0; color: var(--text); margin: 0 0 .4rem; }
+.guide-steps .step-title::before { content: counter(step) ". "; color: var(--accent); }
+.guide .copybox { display: flex; margin-top: .4rem; }
+.guide-cta { margin: 1.6rem 0 1rem; }
+.guide-cta .btn { display: flex; justify-content: center; width: 100%; }

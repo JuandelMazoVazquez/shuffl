@@ -27,7 +27,7 @@ test('filtros: contador en vivo, barajado solo del subconjunto y la propia playl
   await moreOptions(page);
   await page.locator('#f-explicit').selectOption('none');
   await expect(page.locator('#filter-count')).toHaveText('64 de 120 canciones pasan los filtros.');
-  await expect(page.locator('#panel-shuffle label.choice', { hasText: 'La propia playlist' }).locator('input')).toBeDisabled();
+  await expect(page.locator('#panel-shuffle label.choice', { hasText: 'Barajar mi playlist original' }).locator('input')).toBeDisabled();
   await shot(page, 'docs/capturas/10-filtros.png', { fullPage: true });
 
   await page.locator('#shuffle-go').click();

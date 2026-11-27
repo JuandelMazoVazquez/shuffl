@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en" data-theme="auto">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Setup guide · Shuffl</title>
+  <meta name="description" content="How to install Shuffl and connect it to your Spotify in 3 steps, without signing in twice.">
+  <meta name="theme-color" content="#0B0B0B" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+  <meta name="color-scheme" content="dark light">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Shuffl">
+  <meta property="og:title" content="Shuffl setup guide">
+  <meta property="og:description" content="Install the app, create your app in Spotify for Developers and connect. 3 steps, about 5 minutes.">
+  <meta property="og:url" content="https://juandelmazovazquez.github.io/shuffl/guide/">
+  <meta property="og:image" content="https://juandelmazovazquez.github.io/shuffl/og.png">
+  <link rel="alternate" hreflang="es" href="https://juandelmazovazquez.github.io/shuffl/guia/">
+  <link rel="icon" href="../icons/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="../css/styles.css">
+  <link rel="stylesheet" href="../css/guide.css">
+</head>
+<body class="guide-page">
+  <header class="top">
+    <a class="guide-brand" href="../"><img src="../icons/icon.svg" alt="" width="32" height="32"><span>Shuffl</span></a>
+    <a class="guide-lang" href="../guia/" hreflang="es" lang="es">Español</a>
+  </header>
+  <main class="guide">
+    <h1 class="guide-title">Setup guide</h1>
+    <p class="lead">Three steps, about 5 minutes, only once. Do them in this order so you do not have to sign in twice.</p>
+    <p class="muted small">The account that creates the app in Spotify for Developers needs Spotify Premium: it is a Spotify rule for apps in Development Mode. Just want to look around? <a href="../?demo=1">Try the demo</a>, no account needed.</p>
+
+    <ol class="steps guide-steps">
+      <li class="step" id="step-1">
+        <h2 class="step-title">Install Shuffl on your phone</h2>
+        <p>Open <a href="../">juandelmazovazquez.github.io/shuffl</a> on your phone:</p>
+        <ul class="setup-list">
+          <li><strong>iPhone:</strong> open the app (the link above) in Safari, tap Share and choose “Add to Home Screen”.</li>
+          <li><strong>Android:</strong> open the app (the link above) in Chrome, tap the ⋮ menu and choose “Install app”.</li>
+          <li><strong>Computer:</strong> on a computer you do not need to: carry on in the browser.</li>
+        </ul>
+        <p class="setup-warn">Do not sign in in the browser yet. On iPhone, Safari and the installed app keep their data separately, so you would have to connect twice. Install it and carry on from the installed app.</p>
+      </li>
+
+      <li class="step" id="step-2">
+        <h2 class="step-title">From the installed app, create your app in Spotify for Developers</h2>
+        <ol class="setup-list">
+          <li>Open Spotify for Developers and sign in with your Spotify account.
+            <a class="btn" href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener noreferrer">Open Spotify for Developers</a></li>
+          <li>Tap “Create app” and fill in the form:
+            <ul class="fields">
+              <li><strong class="field-name">App name</strong> “Shuffl” or any name you like.</li>
+              <li><strong class="field-name">App description</strong> any text, for example “Shuffle my playlists”.</li>
+              <li><strong class="field-name">Website</strong> optional, you can leave it empty.</li>
+              <li><strong class="field-name">Redirect URIs</strong> paste exactly this address (with the trailing slash) and tap “Add”.
+                <span class="copybox"><input class="text mono" type="text" readonly value="https://juandelmazovazquez.github.io/shuffl/" aria-label="Redirect URI" id="redirect-uri"><button class="btn" type="button" data-copy="redirect-uri">Copy</button></span></li>
+              <li><strong class="field-name">Which API/SDKs are you planning to use?</strong> tick “Web API”.</li>
+              <li>Tick the box to accept Spotify’s terms and tap “Save”.</li>
+            </ul>
+          </li>
+          <li>Spotify takes you to your app’s page and the Client ID is right there (32 letters and numbers): copy it. You do not need to open Settings.</li>
+        </ol>
+      </li>
+
+      <li class="step" id="step-3">
+        <h2 class="step-title">Paste the Client ID in the installed app and connect</h2>
+        <p>Go back to Shuffl, paste the Client ID and tap “Connect to Spotify”. Spotify asks for permission once and you come back to the app.</p>
+      </li>
+    </ol>
+
+    <p class="muted small">Will someone else use your app with their own account? On your app’s page in Spotify, open “User Management” and add their name and email (up to 5 people).</p>
+
+    <h2>If something fails</h2>
+    <ul class="setup-list">
+      <li>“Invalid redirect URI” when connecting: the Redirect URI in your Spotify app is not identical to the one above (including the trailing slash). Copy it with the button. To change it later: your app’s page → Settings → Edit.</li>
+      <li>Error 403 when loading your playlists: your email is not in “User Management” (it must be your Spotify account email).</li>
+      <li>Error 403 on everything: the account that owns the app needs Spotify Premium.</li>
+      <li>“Invalid client”: the Client ID is not your app’s (it has 32 characters).</li>
+    </ul>
+
+    <p class="guide-cta"><a class="btn primary big" href="../">Open Shuffl</a></p>
+    <p class="muted small">Independent project, not affiliated with or endorsed by Spotify. Spotify is a trademark of Spotify AB. <a href="https://github.com/JuandelMazoVazquez/shuffl" target="_blank" rel="noopener noreferrer">Code on GitHub</a>.</p>
+  </main>
+  <script src="../js/guide.js"></script>
+</body>
+</html>

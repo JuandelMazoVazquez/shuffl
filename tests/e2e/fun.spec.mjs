@@ -146,7 +146,7 @@ test('agitar tras barajar «la propia playlist» escribe en su «· Shuffl», nu
   await login(page);
   await pick(page, 'shuffle', 'Rock');
   await moreOptions(page);
-  await page.locator('#panel-shuffle label.choice', { hasText: 'La propia playlist' }).click();
+  await page.locator('#panel-shuffle label.choice', { hasText: 'Barajar mi playlist original' }).click();
   await page.locator('#shuffle-go').click();
   await expect(page.locator('#panel-shuffle .result-kicker')).toContainText('Listo');
   await idle(page);

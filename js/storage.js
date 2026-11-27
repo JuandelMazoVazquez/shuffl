@@ -83,6 +83,9 @@ export const KEYS = {
   reqDay: 'shuffl.reqDay',
   errors: 'shuffl.errors',
   artistsPerSearch: 'shuffl.artistsPerSearch',
+  dest: 'shuffl.dest',
+  selfOk: 'shuffl.selfOk',
+  perArtist: 'shuffl.perArtist',
 };
 
 /** Claves de versiones anteriores que ya no se usan (v1.3.1: cada playlist de Shuffl es nueva; v1.3.2: las cachés pasan a IndexedDB). Se borran al arrancar. */

@@ -166,6 +166,47 @@ export function takeAmount(pool, { count = DEFAULT_DISCOVER_COUNT, minutes = nul
   return { taken, rest };
 }
 
+// ---------- Variedad: máximo por artista y por turnos (v1.5.0) ----------
+
+/** Canciones como mucho de un mismo artista en una playlist de Descubre o Novedades (ajustable en «Más opciones»). */
+export const PER_ARTIST = [1, 2, 3, 5];
+export const DEFAULT_PER_ARTIST = 3;
+export const sanitizePerArtist = (v) => (PER_ARTIST.includes(v) ? v : DEFAULT_PER_ARTIST);
+/** El artista principal (el primero que firma la canción); sin id, su nombre. */
+export const mainArtist = (tr) => tr?.artistIds?.[0] || tr?.artists?.[0] || '';
+
+/**
+ * Ordena `pool` por turnos entre artistas (una canción de cada uno, luego la segunda…) sin pasar de `max` por artista,
+ * contando las que ya lleva la playlist (`used`, artista → canciones). Dentro de cada artista se respeta el orden del
+ * pool (ya barajado); los artistas siguen el orden en que aparecen. Devuelve { ordered, overflow }: `overflow` son las
+ * que sobran por el máximo.
+ */
+export function spreadByArtist(pool, max, used = new Map()) {
+  const groups = new Map();
+  for (const tr of pool) {
+    const key = mainArtist(tr);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(tr);
+  }
+  const ordered = [];
+  const overflow = [];
+  const queues = [...groups.entries()].map(([key, list]) => {
+    const room = Math.max(0, max - (used.get(key) ?? 0));
+    overflow.push(...list.slice(room));
+    return list.slice(0, room);
+  });
+  for (let round = 0; queues.some((q) => round < q.length); round++) {
+    for (const q of queues) if (round < q.length) ordered.push(q[round]);
+  }
+  return { ordered, overflow };
+}
+
+/** Suma a `used` (artista → canciones) las canciones de `tracks`. */
+export function countArtists(tracks, used = new Map()) {
+  for (const tr of tracks) used.set(mainArtist(tr), (used.get(mainArtist(tr)) ?? 0) + 1);
+  return used;
+}
+
 /** Los géneros más frecuentes de una lista de artistas (sin vacíos), del más al menos repetido. */
 export function topGenres(artists, max = 8) {
   const count = new Map();

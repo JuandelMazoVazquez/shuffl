@@ -4,6 +4,27 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). E
 
 Shuffl se llamó Baraja hasta la v1.2.0, y hasta la v1.4.0 el repositorio y la dirección eran `new-spoti`. Las entradas anteriores se dejan como se escribieron.
 
+## [1.5.0] - 2026-11-27
+
+Guía de instalación clara, elegir dónde barajar, borrado por tipos y más variedad en Descubre y Novedades.
+
+### Añadido
+
+- **Guía de instalación** como página propia, en [español](https://juandelmazovazquez.github.io/shuffl/guia/) e [inglés](https://juandelmazovazquez.github.io/shuffl/guide/), con todos los enlaces externos en otra pestaña. Tiene tres pasos en el orden que evita iniciar sesión dos veces: primero instalar la app en el móvil, después crear la app en Spotify for Developers campo por campo (con botón para copiar la Redirect URI) y por último conectar. El README lleva un resumen y un botón a la guía; el asistente de la app sigue los mismos pasos y, en la app instalada, da el primero por hecho.
+- **Dónde barajar**, a la vista en Shuffle: «Crear una playlist nueva» (por defecto) o «Barajar mi playlist original», que solo cambia el orden, pregunta la primera vez y deja Deshacer. Se recuerda la última elección.
+- **Máximo por artista** en Descubre y Novedades (3 por defecto; 1, 2, 3 o 5 en «Más opciones»), repartido por turnos. Si no hay bastantes artistas distintos, lo dice en vez de rellenar con el mismo.
+- **Tus me gusta** como base de «Como mi playlist…» en Descubre y Novedades (sus 200 canciones más recientes, para no gastar cuota).
+
+### Cambiado
+
+- Cada playlist nueva de Shuffl sustituye solo a la anterior **de su mismo tipo**: shuffle (también por tiempo y mezclas), Descubre, Novedades, Olvidadas, e Instantáneas con Mi top. Un shuffle y un Descubre conviven. La etiqueta de la descripción lleva el tipo (`shuffl:cat=…`); las anteriores se clasifican por su etiqueta de origen, con las mismas garantías: nunca playlists de otras personas, colaborativas ni renombradas.
+- El Client ID aparece en la página de tu app de Spotify: ya no se dice que hay que abrir Settings.
+
+### Corregido
+
+- «La propia playlist» a veces no se dejaba marcar sin decir por qué: estaba escondida en «Más opciones» y se desactivaba sin explicación con varias playlists, Tus me gusta, por tiempo o con filtros, y también con las playlists colaborativas, que sí se pueden reordenar. Ahora las colaborativas se pueden barajar en su sitio y, cuando no se puede, el motivo sale en una línea.
+- Descubre y Novedades podían salir casi enteras de un mismo artista: se tomaban las canciones artista por artista.
+
 ## [1.4.2] - 2026-11-27
 
 Shuffl explica por qué existe con una historia real, sin jerga.

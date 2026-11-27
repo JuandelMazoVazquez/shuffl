@@ -100,10 +100,22 @@ test('copia solo de álbumes y artistas, y restaurar avisa de que no los restaur
 test('asistente de alta: pasos guiados, copiar la Redirect URI y ayuda de errores típicos', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#open-dashboard')).toHaveAttribute('href', 'https://developer.spotify.com/dashboard');
+  await expect(page.locator('#open-dashboard')).toHaveAttribute('target', '_blank');
+  await expect(page.locator('#open-dashboard')).toHaveAttribute('rel', 'noopener noreferrer');
   const steps = page.locator('.steps .step');
-  await expect(steps).toHaveCount(5);
-  await expect(steps.nth(2).locator('.copybox input')).toHaveValue(BASE);
-  await expect(steps.nth(3).locator('#client-id')).toBeVisible();
+  // v1.5.0: instalar, crear la app en Spotify for Developers (campo por campo) y conectar, en ese orden.
+  await expect(steps).toHaveCount(3);
+  await expect(steps.nth(0)).toContainText('Instala Shuffl en tu móvil');
+  await expect(page.locator('#setup-warn')).toContainText('No inicies sesión todavía en el navegador');
+  await expect(steps.nth(1).locator('.copybox input')).toHaveValue(BASE);
+  for (const field of ['App name', 'App description', 'Website', 'Redirect URIs', 'Which API/SDKs are you planning to use?']) {
+    await expect(page.locator('#setup-fields')).toContainText(field);
+  }
+  await expect(page.locator('#setup-fields')).toContainText('Web API');
+  await expect(steps.nth(1)).toContainText('No hace falta abrir Settings');
+  await expect(steps.nth(2).locator('#client-id')).toBeVisible();
+  await expect(page.locator('#setup-guide')).toHaveAttribute('href', 'guia/');
+  await expect(page.locator('#setup-guide')).toHaveAttribute('target', '_blank');
   await page.getByLabel('Paso 1 hecho').check();
   await expect(steps.nth(0)).toHaveClass(/done/);
   await page.locator('#setup-diagnosis summary').click();

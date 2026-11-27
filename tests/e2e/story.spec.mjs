@@ -14,7 +14,7 @@ test('la historia sale en la bienvenida, en Acerca de y en la prueba, con el anu
   await openPanel(page, 'proof');
   await expect(page.locator('#proof-why')).toContainText('Según Spotify, su aleatorio por defecto tiene en cuenta lo que has escuchado hace poco');
   await expect(page.locator('#proof-source')).toHaveAttribute('href', NEWS);
-  await expect(page.locator('#proof-source')).toHaveAttribute('rel', 'noopener');
+  await expect(page.locator('#proof-source')).toHaveAttribute('rel', 'noopener noreferrer');
 });
 
 test('la historia también está en inglés', async ({ page }) => {
