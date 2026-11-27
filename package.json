@@ -1,6 +1,6 @@
 {
   "name": "shuffl",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "Aleatorio de verdad para tus playlists. PWA estática.",
   "type": "module",
   "private": true,

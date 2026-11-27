@@ -7,7 +7,7 @@
 <h1 align="center">Shuffl</h1>
 
 <p align="center"><b>Spotify shuffle, finally truly random.</b><br>
-A free, open-source web app that shuffles your playlists with a uniform Fisher-Yates. No server, no new accounts and no analytics.</p>
+A free, open-source web app that puts your playlists in random order, with the same chance for every song. No server, no new accounts and no analytics.</p>
 
 <p align="center">
   <a href="https://github.com/JuandelMazoVazquez/shuffl/actions/workflows/ci.yml"><img src="https://github.com/JuandelMazoVazquez/shuffl/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -28,9 +28,9 @@ A free, open-source web app that shuffles your playlists with a uniform Fisher-Y
 
 ## The problem
 
-Got a 1,500-song playlist where you keep hearing the same 30? You are not alone. Spotify's shuffle is not a deck you can check. "Fewer Repeats" deliberately favours what you have heard less, and Smart Shuffle slips recommendations in between your songs.
+When I used Spotify, I noticed shuffle kept playing me the same songs. Sometimes it even got stuck in a kind of loop, repeating a small group over and over, even though my playlists have many more. I looked it up and saw I was not the only one: people in Spotify's forums have been describing the same thing for years ([1](https://community.spotify.com/forum/en/discussion/4880594/all-platforms-option-to-have-a-true-shuffle), [2](https://community.spotify.com/forum/en/discussion/5280042/shuffle-mode-playing-the-same-songs-all-the-time), [3](https://community.spotify.com/forum/en/discussion/7037040/add-a-true-random-shuffle-option)).
 
-Shuffl does not touch the player: it **rewrites the playlist's order** with Fisher-Yates and `crypto.getRandomValues` (no modulo bias), and Spotify plays it **in order**. Every song has the same chance of landing in any position, and the app lets you check it:
+That is how Shuffl started: **a truly random shuffle, where every song has the same chance**. According to Spotify itself, its default shuffle (Fewer Repeats) [takes your recent listening into account](https://newsroom.spotify.com/2025-11-13/shuffle-update-fewer-repeats/); Shuffl does not look at your history: it puts your playlist in random order and Spotify plays it as is. And you can check it in the app:
 
 <p align="center">
   <img src="docs/media/proof-en.gif" alt="Is it really random?: 10,000 simulated shuffles, Shuffl flat against a biased shuffle" width="300">
@@ -103,6 +103,8 @@ Everything happens on your device. Shuffl is a static page: no server, database,
 
 ## How it works
 
+Shuffl does not touch the player: it rewrites the playlist's order with the Fisher-Yates algorithm and numbers from `crypto.getRandomValues` (no modulo bias), so every order is equally likely, and Spotify plays it in order.
+
 ```mermaid
 flowchart LR
   U([You]) --> A[Shuffl<br/>PWA in your browser]
@@ -151,9 +153,9 @@ The code is open and can be reviewed in full. There is no server storing anythin
 The account that creates the Client ID needs Premium: that is Spotify's rule for apps in Development Mode. "Play now" needs it too. If you just want to see what it is like, the demo needs nothing.
 </details>
 
-<details><summary><b>Why is Spotify's shuffle not enough?</b></summary>
+<details><summary><b>How is it different from Spotify's shuffle?</b></summary>
 
-Because it is not a uniform deck you can check: the "Fewer Repeats" and Smart Shuffle modes change what plays on purpose. Shuffl fixes a uniform order in the playlist and Spotify plays it as is, with its own shuffle off.
+It depends on what you want. According to Spotify, its default shuffle [takes your recent listening into account](https://newsroom.spotify.com/2025-11-13/shuffle-update-fewer-repeats/) so that songs repeat less. Shuffl does something else: it does not look at your history and gives every song the same chance. It leaves the playlist in that order and Spotify plays it as is, with its own shuffle off.
 </details>
 
 <details><summary><b>What does Shuffl see in my account?</b></summary>

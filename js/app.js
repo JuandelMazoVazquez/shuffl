@@ -14,7 +14,7 @@ import * as auth from './auth.js';
 import { KEYS, OBSOLETE_KEYS, getItem, setItem, removeItem, setVolatile, migrateLegacyKeys } from './storage.js';
 import { DEMO_ME, demoAuth, wantsDemo, createDemoState, createDemoFetch, demoMixes } from './demo.js';
 import { t, setLang, getLang, LANGS } from './i18n.js';
-import { REPO_URL, APP_NAME, APP_VERSION } from './config.js';
+import { REPO_URL, APP_NAME, APP_VERSION, SPOTIFY_SHUFFLE_NEWS } from './config.js';
 import { idbGet, idbSet, idbClear, idbPrune, idbVolatile } from './idb.js';
 import {
   countRequest, requestStats, beginAction, endAction, actionSpent, logError, getErrors, clearErrors, buildReport,
@@ -2208,6 +2208,7 @@ function settingsPanel() {
       : h('button', { class: 'btn danger', type: 'button', id: 'logout', onclick: () => { auth.logout(); idbClear(); renderSetup(); } }, t('logout')),
     h('h2', {}, t('privacyTitle')), h('p', { class: 'muted' }, t('privacy')),
     h('h2', {}, t('aboutTitle')),
+    h('p', { id: 'about-story' }, t('aboutStory')),
     h('p', { class: 'muted', id: 'about-notice' }, t('notAffiliated')),
     h('p', {}, h('a', { href: REPO_URL, target: '_blank', rel: 'noopener' }, t('repoLink'))),
     status.el);
@@ -2520,6 +2521,7 @@ function proofPanel() {
 
   const panel = h('section', { class: 'panel', id: 'panel-proof', hidden: true },
     backBar(), h('h2', { class: 'tool-title' }, t('proofTitle')),
+    h('p', { id: 'proof-why' }, t('proofWhy'), ' ', h('a', { href: SPOTIFY_SHUFFLE_NEWS, target: '_blank', rel: 'noopener', id: 'proof-source' }, t('proofSource'))),
     h('p', { class: 'lead' }, t('proofLead', { n: fmt(PROOF_RUNS), songs: PROOF_SONGS })),
     charts, summary,
     h('button', { class: 'btn', type: 'button', id: 'proof-again', onclick: () => simulate() }, t('proofAgain')),
