@@ -141,8 +141,6 @@ export async function getAccessToken() {
 export function logout() {
   removeItem(KEYS.tokens);
   removeItem(KEYS.pkce);
-  removeItem(KEYS.metaCache);
-  removeItem(KEYS.libIndex);
   removeItem(KEYS.purgeOk);
   removeItem(KEYS.lastTarget);
 }

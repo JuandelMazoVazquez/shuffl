@@ -36,6 +36,17 @@ export function generatedName({ mixName, library, sources = [] }, labels) {
   return cut(String(base).trim() || 'Mix', MAX_NAME - SHUFFLE_SUFFIX.length) + SHUFFLE_SUFFIX;
 }
 
+/**
+ * Shuffle por tiempo (v1.3.2): con un acceso rápido, «Gym 45 min · Shuffle»; personalizado, «Rock · 45 min · Shuffle».
+ * Si el origen es muy largo se recorta él, nunca los minutos.
+ */
+export function timeName({ minutes, presetLabel = '', base = 'Mix' }) {
+  const mins = `${minutes} min`;
+  if (presetLabel) return `${cut(presetLabel, MAX_NAME - SHUFFLE_SUFFIX.length - mins.length - 1)} ${mins}${SHUFFLE_SUFFIX}`;
+  const tail = ` · ${mins}`;
+  return `${cut(String(base).trim() || 'Mix', MAX_NAME - SHUFFLE_SUFFIX.length - tail.length)}${tail}${SHUFFLE_SUFFIX}`;
+}
+
 /** Nombre de una instantánea: «📸 Top 4 semanas». */
 export const snapshotName = (label) => cut(`${SNAPSHOT_PREFIX}${label}`, MAX_NAME);
 

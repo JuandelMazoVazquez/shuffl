@@ -44,13 +44,14 @@ export const KEYS = {
   lastTarget: 'baraja.lastTarget',
   shake: 'baraja.shake',
   linkKey: 'baraja.linkKey',
-  metaCache: 'baraja.metaCache',
   recent: 'baraja.recent',
   discoverDays: 'baraja.discoverDays',
   purge: 'baraja.purge',
   purgeOk: 'baraja.purgeOk',
-  libIndex: 'baraja.libIndex',
+  reqDay: 'baraja.reqDay',
+  errors: 'baraja.errors',
+  artistsPerSearch: 'baraja.artistsPerSearch',
 };
 
-/** Claves de versiones anteriores que ya no se usan (v1.3.1: cada playlist de Shuffl es nueva). Se borran al arrancar. */
-export const OBSOLETE_KEYS = ['baraja.snapshots', 'baraja.targets', 'baraja.migrationNotice', 'baraja.autoClean', 'baraja.playlistId'];
+/** Claves de versiones anteriores que ya no se usan (v1.3.1: cada playlist de Shuffl es nueva; v1.3.2: las cachés pasan a IndexedDB). Se borran al arrancar. */
+export const OBSOLETE_KEYS = ['baraja.snapshots', 'baraja.targets', 'baraja.migrationNotice', 'baraja.autoClean', 'baraja.playlistId', 'baraja.metaCache', 'baraja.libIndex'];

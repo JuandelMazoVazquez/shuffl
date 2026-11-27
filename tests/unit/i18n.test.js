@@ -13,6 +13,12 @@ const used = new Set([...app.matchAll(/\bt\('([A-Za-z0-9_-]+)'/g)].map((m) => m[
 for (const m of app.matchAll(/'([a-z][A-Za-z0-9]+)'\]/g)) if (/^(tab|range_|snap)/.test(m[1])) used.add(m[1]);
 for (const m of app.matchAll(/phase\('([A-Za-z]+)'\)/g)) used.add(`phase_${m[1]}`);
 for (const k of ['newName', 'exploreName', 'newDesc', 'exploreDesc', 'forgottenDesc', 'topDesc', 'readingAlbums', 'discoverReading', 'readingLibrary', 'srcMineNew', 'srcMineExplore', 'seedNoArtists', 'genreNoArtists', 'newNoArtists']) used.add(k);
+// v1.3.2: claves que se montan con una variable (accesos rápidos, pasos de la prueba completa, acciones del contador).
+for (const p of ['commute', 'gym', 'run', 'trip', 'sleep']) used.add(`preset_${p}`);
+for (const s of ['login', 'read', 'scopes', 'track', 'create', 'overwrite', 'recognize', 'devices', 'play', 'delete']) used.add(`full_${s}`);
+for (const s of ['premium', 'restricted', 'forbidden', 'shuffle', 'other']) used.add(`fullPlay_${s}`);
+for (const a of ['shuffle', 'new', 'explore', 'play', 'reshuffle', 'remove', 'diag', 'fulltest']) used.add(`act_${a}`);
+for (const k of ['errSession', 'errScope', 'err403', 'errForbidden', 'errPremiumPlayer', 'err404', 'errRate', 'errServer', 'errNetwork', 'errQuota', 'errIncomplete', 'errBug']) used.add(k);
 
 for (const lang of ['es', 'en']) {
   test(`todas las claves de texto existen en ${lang}`, () => {
