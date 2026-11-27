@@ -26,7 +26,7 @@ export async function login(page) {
 }
 
 const PARENT_TAB = {
-  sort: 'more', dups: 'more', backup: 'more', snap: 'more', orphans: 'more', split: 'more', proof: 'more', pin: 'more', settings: 'more',
+  sort: 'more', dups: 'more', backup: 'more', snap: 'more', orphans: 'more', split: 'more', proof: 'more', pin: 'more', settings: 'more', diag: 'more',
   roulette: 'shuffle', new: 'discover', explore: 'discover', ago: 'discover', forgotten: 'discover', summary: 'discover',
 };
 /** Abre una pantalla secundaria desde su pestaña (Más, Descubrir o Shuffle), como lo haría una persona. */

@@ -121,7 +121,7 @@ test('asistente de alta: pasos guiados, copiar la Redirect URI y ayuda de errore
 
 test('diagnóstico de conexión: todo bien y 403 por usuario no añadido', async ({ page }) => {
   await login(page);
-  await openPanel(page, 'settings');
+  await openPanel(page, 'diag');
   await page.locator('#run-diag').click();
   await expect(page.locator('#diag-results li.ok')).toHaveCount(4);
   await expect(page.locator('#diag-results')).toContainText('Usuaria Prueba');

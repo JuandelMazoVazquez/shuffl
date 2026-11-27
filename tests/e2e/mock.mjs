@@ -45,9 +45,12 @@ export function makeTrack(i, o = {}) {
     id: `t${String(i).padStart(21, '0')}`, uri: `spotify:track:t${String(i).padStart(21, '0')}`, type: 'track', name: o.name ?? `Canción ${String(i).padStart(3, '0')}`,
     artists: [{ id: o.artistId ?? `artist${i % 7}`, name: o.artist ?? `Artista ${i % 7}` }], duration_ms: 120000 + i * 1000,
     explicit: o.explicit ?? i % 5 === 0, disc_number: 1, track_number: (i % 12) + 1, external_ids: o.isrc ? { isrc: o.isrc } : {},
-    album: { id: `al${i % 9}`, name: `Álbum ${i % 9}`, release_date: o.release ?? `${1990 + (i % 30)}-0${1 + (i % 9)}-01`, release_date_precision: 'day', images: [] },
+    album: { id: `al${i % 9}`, name: `Álbum ${i % 9}`, release_date: o.release ?? `${1990 + (i % 30)}-0${1 + (i % 9)}-01`, release_date_precision: 'day', images: albumImages(`al${i % 9}`) },
   };
 }
+
+/** Imágenes como las de Spotify: de mayor a menor (640, 300 y 64 px). */
+export const albumImages = (id) => [640, 300, 64].map((w) => ({ url: `https://i.scdn.co/image/${id}-${w}`, width: w, height: w }));
 
 const entry = (track, i) => ({ added_at: `2024-01-${String(1 + (i % 28)).padStart(2, '0')}T10:00:00Z`, item: track });
 
@@ -87,10 +90,10 @@ export function createState() {
   // v1.3: artistas top, lanzamientos (2 recientes y 1 viejo) y canciones completas de los álbumes de la mock
   const topArtists = { short_term: [{ id: 'art0', name: 'Seguido 0', images: [] }, { id: 'artX', name: 'Top X', images: [] }], medium_term: [{ id: 'art1', name: 'Seguido 1', images: [] }], long_term: [] };
   const day = (offset) => new Date(Date.now() - offset * 86400000).toISOString().slice(0, 10);
-  const release = (id, type, offset) => ({ id, name: `Lanzamiento ${id}`, album_type: type, release_date: day(offset), release_date_precision: 'day', images: [] });
+  const release = (id, type, offset) => ({ id, name: `Lanzamiento ${id}`, album_type: type, release_date: day(offset), release_date_precision: 'day', images: albumImages(id) });
   const releases = { art0: [release('rel_new', 'album', 3), release('rel_old', 'album', 400)], artX: [release('rel_single', 'single', 10)] };
   const albumTracks = {};
-  const albumOf = (id, from, n) => { albumTracks[id] = Array.from({ length: n }, (_, k) => reg({ ...makeTrack(from + k), album: { id, name: `Álbum ${id}`, images: [] }, disc_number: 1, track_number: k + 1 })); };
+  const albumOf = (id, from, n) => { albumTracks[id] = Array.from({ length: n }, (_, k) => reg({ ...makeTrack(from + k), album: { id, name: `Álbum ${id}`, images: albumImages(id) }, disc_number: 1, track_number: k + 1 })); };
   albumOf('rel_new', 4000, 4);
   albumOf('rel_old', 4100, 3);
   albumOf('rel_single', 4200, 1);
@@ -99,6 +102,7 @@ export function createState() {
   return {
     catalog, lists, liked, created: 0, writes: [], tokens: 0, authorizeParams: null, devices, playerCalls: [], images: [], itemRequests: [], metaRequests: [], top, recent, topRequests: [], albums, artists,
     topArtists, releases, albumTracks, savedUris: new Set([albumTracks.rel_new[0].uri]), containsCalls: [], unfollowCalls: [], artistAlbumCalls: [], albumTrackCalls: [], searchCalls: [], genreArtists: {},
+    apiCalls: [], failures: [], player: null,
   };
 }
 
@@ -151,6 +155,15 @@ export async function mockSpotify(page, state) {
     const path = url.pathname.replace('/v1', '');
     const method = req.method();
     const isJson = (req.headers()['content-type'] ?? '').includes('json');
+    state.apiCalls.push(`${method} ${path}`);
+    // Fallos a medida: { match: /regex sobre «MÉTODO /ruta»/, status, body, times } (times: cuántas veces; sin él, siempre).
+    // `skip`: deja pasar esas primeras peticiones antes de empezar a fallar.
+    const fail = state.failures.find((x) => x.match.test(`${method} ${path}`) && (x.times === undefined || x.times > 0) && !(x.skip > 0 && x.skip-- > 0));
+    if (fail) {
+      if (fail.times !== undefined) fail.times--;
+      if (fail.network) return route.abort('internetdisconnected');
+      return fail.body === undefined ? route.fulfill({ status: fail.status, headers: CORS }) : json(route, fail.body, fail.status);
+    }
     const body = req.postData() && isJson ? JSON.parse(req.postData()) : null;
 
     if (method === 'GET' && path === '/me/albums') return json(route, page_(state.albums, url));
@@ -191,8 +204,8 @@ export async function mockSpotify(page, state) {
     if (artistAlbums && method === 'GET') {
       state.artistAlbumCalls.push({ id: artistAlbums[1], ...Object.fromEntries(url.searchParams) });
       if (Number(url.searchParams.get('limit')) > 10) return json(route, { error: { status: 400, message: 'Invalid limit' } }, 400);
-      const group = url.searchParams.get('include_groups');
-      const items = (state.releases[artistAlbums[1]] ?? []).filter((a) => a.album_type === group).slice(0, 10);
+      const groups = (url.searchParams.get('include_groups') ?? '').split(',');
+      const items = (state.releases[artistAlbums[1]] ?? []).filter((a) => groups.includes(a.album_type)).slice(0, 10);
       return json(route, { items, total: items.length, limit: 10, offset: 0 });
     }
     const albumTracks = /^\/albums\/([^/]+)\/tracks$/.exec(path);
@@ -221,7 +234,15 @@ export async function mockSpotify(page, state) {
     if (method === 'PUT' && (path === '/me/player/shuffle' || path === '/me/player/play')) {
       state.playerCalls.push({ path, query: Object.fromEntries(url.searchParams), body });
       if (path === '/me/player/play' && state.playError) return json(route, state.playError.body, state.playError.status);
+      // Como Spotify a veces: acepta la orden (204) y no hace nada.
+      if (state.playIgnored) return route.fulfill({ status: 204, headers: CORS });
+      if (path === '/me/player/play') state.player = { is_playing: true, shuffle_state: state.player?.shuffle_state ?? true, smart_shuffle: false, context: { uri: body.context_uri }, device: { id: url.searchParams.get('device_id') } };
+      if (path === '/me/player/shuffle' && state.player && !state.shuffleStuck) state.player.shuffle_state = url.searchParams.get('state') === 'true';
       return route.fulfill({ status: 204, headers: CORS });
+    }
+    if (method === 'GET' && path === '/me/player') {
+      state.playerCalls.push({ path, query: {} });
+      return state.player ? json(route, state.player) : route.fulfill({ status: 204, headers: CORS });
     }
     if (method === 'GET' && path === '/me') return json(route, { id: 'me', display_name: 'Usuaria Prueba' });
     if (method === 'GET' && path === '/me/playlists') {
@@ -259,7 +280,7 @@ export async function mockSpotify(page, state) {
       const list = state.lists.get(meta[1]);
       if (!list) return json(route, { error: { status: 404, message: 'Not found' } }, 404);
       state.metaRequests.push(meta[1]);
-      return json(route, { id: list.id, name: list.name, owner: list.owner, collaborative: !!list.collaborative, images: [] });
+      return json(route, { id: list.id, name: list.name, description: list.description ?? '', owner: list.owner, collaborative: !!list.collaborative, images: [], snapshot_id: `snap-${list.tracks.length}-${list.writtenAt ?? ''}` });
     }
     const m = /^\/playlists\/([^/]+)\/items$/.exec(path);
     if (m) {

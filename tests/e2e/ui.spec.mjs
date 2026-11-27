@@ -113,7 +113,7 @@ test('el resultado muestra las canciones en cascada y cuenta hasta el total', as
   await page.locator('#panel-shuffle .btn.primary.big').click();
   await expect(page.locator('#result-meta:visible', { hasText: /^80 (canciones|songs) ·/ })).toBeVisible();
   const delays = await page.locator('#panel-shuffle .tracks .track').evaluateAll((lis) => lis.slice(0, 4).map((li) => getComputedStyle(li).animationDelay));
-  expect(delays).toEqual(['0s', '0.035s', '0.07s', '0.105s']);
+  expect(delays).toEqual(['0s', '0.03s', '0.06s', '0.09s']);
 });
 
 test('con movimiento reducido no hay animaciones y el contador sale ya completo', async ({ page }) => {

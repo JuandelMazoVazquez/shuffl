@@ -45,9 +45,10 @@ test('barajar sube una portada JPEG de 640x640 y menos de 256 KB, y pone la desc
 
   expect(create.description.replace(/ · shuffl:src=[a-f0-9]{10}.[a-f0-9]{6}$/, '')).toBe('Barajada con Shuffl (aleatorio uniforme; reprodúcela con el aleatorio de Spotify apagado). Origen: Chill');
 
+  // Volver a barajar reordena la misma playlist: su portada no cambia, así que no se vuelve a subir (una petición menos).
   await page.getByRole('button', { name: 'Volver a barajar' }).click();
   await idle(page);
-  expect(state.images).toHaveLength(2);
+  expect(state.images).toHaveLength(1);
 });
 
 test('si la portada falla la baraja sigue bien y solo hay un aviso discreto', async ({ page }) => {
