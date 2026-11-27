@@ -63,28 +63,19 @@ Cada función en detalle: [docs/FUNCIONES.md](docs/FUNCIONES.md). Tema oscuro y 
 
 **¿Solo quieres verla?** Abre la [demo](https://juandelmazovazquez.github.io/shuffl/?demo=1): datos inventados, sin cuenta y sin tocar Spotify.
 
-**Con tu Spotify.** Shuffl no tiene servidor, así que cada persona conecta su propia «app» de Spotify (un Client ID gratuito):
+**Con tu Spotify** son tres pasos, una sola vez y en este orden, para no tener que iniciar sesión dos veces:
 
-1. Entra en el [dashboard de Spotify for Developers](https://developer.spotify.com/dashboard) con tu cuenta y pulsa **Create app**.
-2. Pon cualquier nombre y descripción, marca **Web API** y, en **Redirect URIs**, pega exactamente esta dirección (con la barra final):
-   ```
-   https://juandelmazovazquez.github.io/shuffl/
-   ```
-3. Guarda, abre **Settings** y copia el **Client ID**.
-4. En **User Management**, añade el nombre y el email de la cuenta de Spotify de cada persona que vaya a usarla (como máximo 5).
-5. Abre [Shuffl](https://juandelmazovazquez.github.io/shuffl/), pega el Client ID y pulsa **Conectar con Spotify**.
+1. **Instala Shuffl en tu móvil.** iPhone: abre [la app](https://juandelmazovazquez.github.io/shuffl/) en Safari, pulsa Compartir y elige «Añadir a pantalla de inicio». Android: ábrela en Chrome, pulsa el menú ⋮ y elige «Instalar app». **No inicies sesión todavía en el navegador**: en iPhone, Safari y la app instalada guardan los datos por separado.
+2. **Desde la app instalada, crea tu app en Spotify for Developers.** Pulsa «Create app» y rellena el formulario: App name «Shuffl», cualquier App description, Website vacío, en Redirect URIs pega `https://juandelmazovazquez.github.io/shuffl/` (con la barra final) y pulsa «Add», marca «Web API», acepta las condiciones y pulsa «Save». El Client ID aparece en la página de tu app: no hace falta abrir Settings.
+3. **Pega el Client ID en la app instalada y conecta.**
 
-> **¿La configuraste antes de la v1.4.1?** Shuffl se ha mudado a `https://juandelmazovazquez.github.io/shuffl/`. La dirección anterior redirige aquí, pero Spotify solo acepta el inicio de sesión en una Redirect URI que conozca: en el dashboard, abre tu app → **Settings** → **Edit** → **Redirect URIs**, añade la dirección nueva (con la barra final), pulsa **Add** y **Save**. Puedes dejar la antigua. Si falta, la app te lo dice y te da la URI para copiar.
+<p align="center">
+  <a href="https://juandelmazovazquez.github.io/shuffl/guia/"><img src="https://img.shields.io/badge/%F0%9F%93%96%20Gu%C3%ADa%20de%20instalaci%C3%B3n%20paso%20a%20paso-c6ff3d?style=for-the-badge&labelColor=c6ff3d" alt="📖 Guía de instalación paso a paso" height="44"></a>
+</p>
 
-**Instalarla como app:**
+La guía explica cada campo del formulario de Spotify, con un botón para copiar la Redirect URI, y qué hacer si algo falla. Dentro de la app, el asistente de la pantalla de inicio sigue los mismos pasos y **Más → Diagnóstico** hace una prueba completa con tu cuenta.
 
-| Dispositivo | Cómo |
-|---|---|
-| iPhone y iPad | Abre la dirección en **Safari** → botón Compartir → **Añadir a pantalla de inicio**. |
-| Android | Abre la dirección en **Chrome** → menú ⋮ → **Instalar app** (o «Añadir a pantalla de inicio»). |
-| PC y Mac | Funciona en cualquier navegador moderno. En Chrome o Edge, el icono de instalar de la barra de direcciones la abre en su propia ventana. |
-
-Si algo falla al conectar, la pantalla de inicio tiene un apartado «Si algo falla» y, ya dentro, **Más → Diagnóstico** hace una prueba completa con tu cuenta.
+> **¿La configuraste antes de la v1.4.1?** Shuffl se ha mudado a `https://juandelmazovazquez.github.io/shuffl/`. La dirección anterior redirige aquí, pero Spotify solo acepta el inicio de sesión en una Redirect URI que conozca: en la página de tu app en Spotify for Developers, abre **Settings** → **Edit** → **Redirect URIs**, añade la dirección nueva (con la barra final), pulsa **Add** y **Save**. Puedes dejar la antigua. Si falta, la app te lo dice y te da la URI para copiar.
 
 ## Requisitos y limitaciones
 
@@ -140,7 +131,7 @@ Spotify limita cada app en Development Mode a 5 usuarios que el dueño añade a 
 
 <details><summary><b>¿Borra mis playlists?</b></summary>
 
-No. Shuffl crea una playlist nueva, por ejemplo «Rock · Shuffl», y tu playlist original queda igual. Para no llenar tu biblioteca, antes de crear otra quita la anterior que creó él, y solo esa: nunca una tuya, una renombrada ni una de otra persona. La primera vez te enseña la lista y te pregunta. Lo quitado se recupera durante 90 días en spotify.com → Cuenta → Recuperar playlists. Si eliges barajar la propia playlist, te lo confirma y puedes Deshacer.
+No. Shuffl crea una playlist nueva, por ejemplo «Rock · Shuffl», y tu playlist original queda igual. Para no llenar tu biblioteca, antes de crear otra quita la anterior que creó él del mismo tipo, y solo esa: un shuffle nuevo sustituye al shuffle anterior y un Descubre nuevo al Descubre anterior, pero tu shuffle y tu Descubre conviven (igual con Novedades, Olvidadas e Instantáneas). Nunca quita una tuya, una renombrada ni una de otra persona. La primera vez te enseña la lista y te pregunta. Lo quitado se recupera durante 90 días en spotify.com → Cuenta → Recuperar playlists. Si eliges «Barajar mi playlist original», solo cambia el orden de esa playlist, no borra nada, te lo confirma la primera vez y puedes Deshacer.
 </details>
 
 <details><summary><b>¿Es seguro?</b></summary>

@@ -61,30 +61,21 @@ Every feature in detail: [docs/FEATURES.md](docs/FEATURES.md). Dark and light th
 
 ## Get started in 5 minutes
 
-**Just want to look?** Open the [demo](https://juandelmazovazquez.github.io/shuffl/?demo=1): made-up data, no account, and Spotify is never touched.
+**Just want to look around?** Open the [demo](https://juandelmazovazquez.github.io/shuffl/?demo=1): made-up data, no account and no changes to Spotify.
 
-**With your Spotify.** Shuffl has no server, so each person connects their own Spotify "app" (a free Client ID):
+**With your Spotify** it takes three steps, only once and in this order, so you do not have to sign in twice:
 
-1. Go to the [Spotify for Developers dashboard](https://developer.spotify.com/dashboard), sign in and click **Create app**.
-2. Use any name and description, tick **Web API** and, under **Redirect URIs**, paste exactly this address (with the trailing slash):
-   ```
-   https://juandelmazovazquez.github.io/shuffl/
-   ```
-3. Save, open **Settings** and copy the **Client ID**.
-4. Under **User Management**, add the name and Spotify email of everyone who will use it (5 at most).
-5. Open [Shuffl](https://juandelmazovazquez.github.io/shuffl/), paste the Client ID and tap **Connect to Spotify**.
+1. **Install Shuffl on your phone.** iPhone: open [the app](https://juandelmazovazquez.github.io/shuffl/) in Safari, tap Share and choose “Add to Home Screen”. Android: open it in Chrome, tap the ⋮ menu and choose “Install app”. **Do not sign in in the browser yet**: on iPhone, Safari and the installed app keep their data separately.
+2. **From the installed app, create your app in Spotify for Developers.** Tap “Create app” and fill in the form: App name “Shuffl”, any App description, Website empty, in Redirect URIs paste `https://juandelmazovazquez.github.io/shuffl/` (with the trailing slash) and tap “Add”, tick “Web API”, accept the terms and tap “Save”. The Client ID is on your app’s page: you do not need to open Settings.
+3. **Paste the Client ID in the installed app and connect.**
 
-> **Set it up before v1.4.1?** Shuffl has moved to `https://juandelmazovazquez.github.io/shuffl/`. The previous address redirects here, but Spotify only accepts the login on a Redirect URI it knows: in the dashboard, open your app → **Settings** → **Edit** → **Redirect URIs**, add the new address (with the trailing slash), press **Add** and **Save**. You can keep the old one. If it is missing, the app tells you and gives you the URI to copy.
+<p align="center">
+  <a href="https://juandelmazovazquez.github.io/shuffl/guide/"><img src="https://img.shields.io/badge/%F0%9F%93%96%20Step--by--step%20setup%20guide-c6ff3d?style=for-the-badge&labelColor=c6ff3d" alt="📖 Step-by-step setup guide" height="44"></a>
+</p>
 
-**Install it as an app:**
+The guide explains each field of the Spotify form, with a button to copy the Redirect URI, and what to do if something fails. Inside the app, the setup assistant on the start screen follows the same steps and **More → Diagnostics** runs a full check with your account.
 
-| Device | How |
-|---|---|
-| iPhone and iPad | Open the address in **Safari** → Share button → **Add to Home Screen**. |
-| Android | Open the address in **Chrome** → ⋮ menu → **Install app** (or "Add to Home screen"). |
-| PC and Mac | Works in any modern browser. In Chrome or Edge, the install icon in the address bar opens it in its own window. |
-
-If connecting fails, the start screen has an "If something fails" section and, once inside, **More → Diagnostics** runs a full test with your account.
+> **Set it up before v1.4.1?** Shuffl has moved to `https://juandelmazovazquez.github.io/shuffl/`. The old address redirects here, but Spotify only accepts sign-in on a Redirect URI it knows: on your app’s page in Spotify for Developers, open **Settings** → **Edit** → **Redirect URIs**, add the new address (with the trailing slash), tap **Add** and **Save**. You can keep the old one. If it is missing, the app tells you and gives you the URI to copy.
 
 ## Requirements and limitations
 
@@ -140,7 +131,7 @@ Spotify limits each app in Development Mode to 5 users that the owner adds by ha
 
 <details><summary><b>Does it delete my playlists?</b></summary>
 
-No. Shuffl creates a new playlist, such as "Rock · Shuffl", and your original playlist stays as it was. To keep your library tidy, before creating another one it removes the previous one it created, and only that one: never one of yours, a renamed one or someone else's. The first time it shows you the list and asks. Removed playlists can be recovered for 90 days at spotify.com → Account → Recover playlists. If you choose to shuffle the playlist itself, it asks first and you can Undo.
+No. Shuffl creates a new playlist, such as "Rock · Shuffl", and your original playlist stays as it was. To keep your library tidy, before creating another one it removes the previous one of the same kind it created, and only that one: a new shuffle replaces the previous shuffle and a new Explore the previous Explore, but your shuffle and your Explore stay side by side (the same for New releases, Forgotten and Snapshots). It never removes one of yours, a renamed one or someone else's. The first time it shows you the list and asks. Removed playlists can be recovered for 90 days at spotify.com → Account → Recover playlists. If you choose “Shuffle my original playlist”, it only changes the order of that playlist, removes nothing, asks the first time and you can Undo.
 </details>
 
 <details><summary><b>Is it safe?</b></summary>
