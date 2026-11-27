@@ -39,6 +39,7 @@ npm run media        # regenera capturas, GIFs y vídeo de docs/media (necesita 
 - Los textos de la interfaz van en `js/i18n.js`, en español e inglés. Un test comprueba que no falta ninguna clave.
 - Si añades un archivo JS, inclúyelo en `SHELL` de `sw.js` (un test lo exige).
 - Sin comentarios que repiten el código y sin funcionalidad fuera de la tarea.
+- Los comentarios del código y los mensajes de commit van en español; en issues y pull requests vale el inglés.
 
 ## Proponer cambios
 
@@ -98,6 +99,7 @@ npm run media        # regenerates screenshots, GIFs and video in docs/media (ne
 - Only the Web API endpoints Spotify allows in Development Mode (list in [CLAUDE.md](CLAUDE.md)). Any new endpoint has to be checked first.
 - UI strings live in `js/i18n.js`, in Spanish and English. A test checks that no key is missing.
 - If you add a JS file, add it to `SHELL` in `sw.js` (a test requires it).
+- No comments that repeat the code and no features outside the task.
 - Code comments and commit messages are in Spanish; English is fine in issues and pull requests.
 
 ## Proposing changes

@@ -1,6 +1,6 @@
 # Código de conducta / Code of Conduct
 
-Shuffl adopta el [Contributor Covenant 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/) ([versión en español](https://www.contributor-covenant.org/es/version/2/1/code_of_conduct/)). En resumen: trata a todo el mundo con respeto, en issues, pull requests, Discussions y cualquier espacio del proyecto. Para informar de un problema, mira [Aplicación](#enforcement) más abajo.
+Shuffl adopta el [Contributor Covenant 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/) ([versión en español](https://www.contributor-covenant.org/es/version/2/1/code_of_conduct/)). Trata a todo el mundo con respeto en issues, pull requests, Discussions y cualquier espacio del proyecto. Para informar de un problema, mira [Aplicación](#enforcement) más abajo.
 
 The full text in English follows.
 

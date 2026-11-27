@@ -4,7 +4,7 @@
 // Partes sueltas: `npm run media -- screens gifs video images`.
 import { chromium } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, rmSync, statSync, copyFileSync } from 'node:fs';
+import { mkdirSync, rmSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createAppServer } from './serve.mjs';
 
@@ -52,7 +52,7 @@ const mb = (file) => (statSync(file).size / 1024 / 1024).toFixed(2);
  * Playwright graba vídeo en píxeles CSS, no del dispositivo. Para un vídeo nítido (`video: 2`) el viewport es el doble
  * y la página va con `zoom: 2`: la app sigue viendo 390 px de ancho, pero cada fotograma tiene 780.
  */
-async function newPage(browser, base, { lang, theme = 'dark', video = 0, delay = 70 }) {
+async function newPage(browser, { lang, theme = 'dark', video = 0, delay = 70 }) {
   const zoom = video || 1;
   const context = await browser.newContext({
     viewport: { width: VIEW.width * zoom, height: VIEW.height * zoom }, deviceScaleFactor: video ? 1 : 2, isMobile: true, hasTouch: true, colorScheme: theme,
@@ -104,7 +104,7 @@ const smoothScroll = (page, y) => page.evaluate((top) => window.scrollTo({ top, 
 async function screens(browser, base, lang, theme) {
   const dir = join(OUT, 'screens', `${lang}-${theme}`);
   mkdirSync(dir, { recursive: true });
-  const { context, page } = await newPage(browser, base, { lang, theme });
+  const { context, page } = await newPage(browser, { lang, theme });
   const shot = async (name, wait = 900) => {
     await page.waitForTimeout(wait);
     await settle(page);
@@ -157,6 +157,10 @@ async function screens(browser, base, lang, theme) {
   await openPanel(page, 'more', 'proof');
   await page.locator('#proof-fair .bar').first().waitFor();
   await shot('08-proof', 1200);
+
+  await page.locator('#tab-more').click();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await shot('09-more');
   await context.close();
 }
 
@@ -164,7 +168,7 @@ async function screens(browser, base, lang, theme) {
 
 /** Graba `scenario` y devuelve el webm y el segundo en el que la app ya estaba lista (para recortar la carga). */
 async function record(browser, base, lang, scenario, zoom = 1, delay = 220) {
-  const { context, page } = await newPage(browser, base, { lang, video: zoom, delay });
+  const { context, page } = await newPage(browser, { lang, video: zoom, delay });
   const t0 = Date.now();
   await page.goto(`${base}/?demo=1`);
   await ready(page);
@@ -357,10 +361,10 @@ const server = createAppServer();
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch();
-rmSync(TMP, { recursive: true, force: true });
-mkdirSync(TMP, { recursive: true });
-mkdirSync(OUT, { recursive: true });
 try {
+  rmSync(TMP, { recursive: true, force: true });
+  mkdirSync(TMP, { recursive: true });
+  mkdirSync(OUT, { recursive: true });
   if (want('screens')) {
     for (const lang of LANGS) for (const theme of THEMES) {
       await screens(browser, base, lang, theme);
@@ -386,11 +390,11 @@ try {
       const { file, start } = await record(browser, base, lang, SCENARIOS.tour, 2, 110);
       const out = join(OUT, `shuffl-${lang}.mp4`);
       toMp4(await videoFrames(browser, base, lang), file, start, out);
-      copyFileSync(file, join(TMP, `tour-${lang}.webm`));
       console.log(`${out} (${mb(out)} MB)`);
     }
   }
 } finally {
   await browser.close();
   server.close();
+  rmSync(TMP, { recursive: true, force: true });
 }

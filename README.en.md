@@ -49,7 +49,7 @@ Shuffl does not touch the player: it **rewrites the playlist's order** with Fish
     <td align="center"><img src="docs/media/screens/en-dark/01-home.png" alt="Home" width="180"><br><b>One tap</b><br>Shuffle again, saved mixes, Siri shortcuts and shake to shuffle.</td>
     <td align="center"><img src="docs/media/screens/en-light/02-pick.png" alt="Pick a playlist" width="180"><br><b>Play now</b><br>Starts it on your Spotify with shuffle off and checks it is playing.</td>
     <td align="center"><img src="docs/media/screens/en-dark/08-proof.png" alt="Is it really random?" width="180"><br><b>Is it random?</b><br>10,000 shuffles simulated on your phone, with a chart and a table.</td>
-    <td align="center"><img src="docs/media/screens/en-dark/03-shuffling.png" alt="Shuffling" width="180"><br><b>And more tools</b><br>Sort, duplicates, backup, split, snapshots and Undo.</td>
+    <td align="center"><img src="docs/media/screens/en-dark/09-more.png" alt="More tools" width="180"><br><b>And more tools</b><br>Sort, duplicates, backup, split, snapshots and Undo.</td>
   </tr>
 </table>
 

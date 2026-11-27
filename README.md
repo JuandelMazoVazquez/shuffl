@@ -49,7 +49,7 @@ Shuffl no toca el reproductor: **reescribe el orden de la playlist** con un Fish
     <td align="center"><img src="docs/media/screens/es-dark/01-home.png" alt="Inicio" width="180"><br><b>Un toque</b><br>Volver a barajar, mezclas guardadas, atajos de Siri y agitar el móvil.</td>
     <td align="center"><img src="docs/media/screens/es-light/02-pick.png" alt="Elegir playlist" width="180"><br><b>Reproducir ahora</b><br>La pone en tu Spotify con el aleatorio apagado y comprueba que suena.</td>
     <td align="center"><img src="docs/media/screens/es-dark/08-proof.png" alt="¿Es aleatorio de verdad?" width="180"><br><b>¿Es aleatorio?</b><br>10.000 barajas simuladas en tu móvil, con gráfico y tabla.</td>
-    <td align="center"><img src="docs/media/screens/es-dark/03-shuffling.png" alt="Barajando" width="180"><br><b>Y más herramientas</b><br>Ordenar, duplicados, copia de seguridad, dividir, instantáneas y Deshacer.</td>
+    <td align="center"><img src="docs/media/screens/es-dark/09-more.png" alt="Más herramientas" width="180"><br><b>Y más herramientas</b><br>Ordenar, duplicados, copia de seguridad, dividir, instantáneas y Deshacer.</td>
   </tr>
 </table>
 

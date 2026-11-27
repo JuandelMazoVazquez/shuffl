@@ -73,7 +73,7 @@ Shuffl no modifica Tus me gusta ni deja de seguir artistas: los dos permisos de 
 
 ## Borrar tus datos
 
-- Cerrar sesión en Ajustes borra los tokens. Mantiene Client ID, idioma, Deshacer, mezclas y la correspondencia de playlists «· Shuffle».
+- Cerrar sesión en Ajustes borra los tokens y la caché de IndexedDB. Mantiene Client ID, idioma, Deshacer y mezclas.
 - Para borrar todo, elimina los datos del sitio en tu navegador.
 - Para revocar el acceso, entra en [spotify.com/account/apps](https://www.spotify.com/account/apps/) y quita Shuffl.
 
