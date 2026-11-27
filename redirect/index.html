@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Shuffl se ha mudado</title>
+  <meta name="theme-color" content="#0b0b0b">
+  <link rel="canonical" href="https://juandelmazovazquez.github.io/shuffl/">
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #0b0b0b; color: #f5f5f5;
+      font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; padding: 16px; box-sizing: border-box; }
+    main { max-width: 28rem; background: #161616; border: 1px solid #2e2e2e; border-radius: 12px; padding: 24px; }
+    h1 { font: 900 1.6rem/1.15 "Arial Black", "Helvetica Neue", system-ui, sans-serif; margin: 0 0 .6rem; letter-spacing: -.02em; }
+    p { margin: .5rem 0; color: #a3a3a3; }
+    a.btn { display: inline-block; margin-top: .8rem; background: #c6ff3d; color: #0b0b0b; font-weight: 800; text-decoration: none;
+      padding: .7rem 1.1rem; border-radius: 999px; overflow-wrap: anywhere; }
+    a.btn:focus-visible { outline: 3px solid #f5f5f5; outline-offset: 2px; }
+    [hidden] { display: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Shuffl se ha mudado → nueva dirección</h1>
+    <p id="moving">Te llevamos a la dirección nueva. Si no pasa nada, pulsa el botón. / Shuffl has moved: tap the button if nothing happens.</p>
+    <div id="oauth" hidden>
+      <p>Spotify ha vuelto a la dirección antigua. Por seguridad, el inicio de sesión no se reenvía: vuelve a conectar desde la dirección nueva.</p>
+      <p>Si tienes tu propia app de Spotify, añade en su dashboard la Redirect URI <strong>https://juandelmazovazquez.github.io/shuffl/</strong>.</p>
+      <p>Spotify came back to the old address. For security, the login is not forwarded: connect again from the new address and add the Redirect URI above to your Spotify app.</p>
+    </div>
+    <a class="btn" id="go" href="https://juandelmazovazquez.github.io/shuffl/">juandelmazovazquez.github.io/shuffl</a>
+  </main>
+  <script>
+    // Redirección de la dirección antigua (repo new-spoti) a la nueva, con la misma ruta, query y hash.
+    // Un callback de OAuth (?code, ?error o ?state) no se reenvía: el código va ligado a la Redirect URI antigua.
+    (() => {
+      const NEW_BASE = 'https://juandelmazovazquez.github.io/shuffl/';
+      const OLD_BASE = '/new-spoti/';
+      const base = new URL(NEW_BASE);
+      const params = new URLSearchParams(location.search);
+      // El service worker de la app antigua ya no sirve: se quita para que no siga sirviendo su caché.
+      const cleanup = 'serviceWorker' in navigator
+        ? navigator.serviceWorker.getRegistrations()
+          .then((regs) => Promise.all(regs.filter((r) => new URL(r.scope).pathname.startsWith(OLD_BASE)).map((r) => r.unregister())))
+          .catch(() => {})
+        : Promise.resolve();
+      if (params.has('code') || params.has('error') || params.has('state')) {
+        // El código no se queda en la barra ni en el historial.
+        history.replaceState(null, '', location.pathname);
+        document.getElementById('moving').hidden = true;
+        document.getElementById('oauth').hidden = false;
+        return;
+      }
+      const rest = location.pathname.startsWith(OLD_BASE) ? location.pathname.slice(OLD_BASE.length) : '';
+      let target = new URL(rest + location.search + location.hash, base);
+      // Nunca fuera de la app nueva, aunque la ruta traiga «..» o «//».
+      if (target.origin !== base.origin || !target.pathname.startsWith(base.pathname)) target = base;
+      document.getElementById('go').href = target.href;
+      const wait = new Promise((resolve) => setTimeout(resolve, 800));
+      Promise.race([cleanup, wait]).then(() => location.replace(target.href));
+    })();
+  </script>
+</body>
+</html>
