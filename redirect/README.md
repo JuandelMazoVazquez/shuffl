@@ -8,5 +8,8 @@ Fuente del repo `JuandelMazoVazquez/new-spoti`, que solo existe para que la dire
   dirección nueva.
 - `sw.js`: sustituye al service worker de la app antigua y se da de baja.
 
+Comparte origen (`juandelmazovazquez.github.io`) con la app, así que su JavaScript podría leer la sesión guardada:
+ese repo no lleva scripts de terceros, dependencias ni Actions que generen HTML; solo estos tres archivos.
+
 Lo prueba `tests/e2e/redirect.spec.mjs`. Para publicar un cambio, copia estos archivos al repo `new-spoti`
 (con `index.html` también como `404.html`).

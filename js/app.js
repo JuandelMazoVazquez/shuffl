@@ -3465,10 +3465,12 @@ function bindGestures() {
 
 async function boot() {
   // La demo no escribe en el almacenamiento de verdad; el idioma y el tema los lee igual con el respaldo de `getItem`.
-  if (!wantsDemo(location.search)) migrateLegacyKeys();
+  if (!wantsDemo(location.search)) {
+    migrateLegacyKeys();
+    OBSOLETE_KEYS.forEach(removeItem);
+  }
   setLang();
   applyTheme();
-  OBSOLETE_KEYS.forEach(removeItem);
   bindGestures();
   // El enlace profundo se quita de la barra en cuanto se lee: recargar nunca vuelve a barajar ni a reproducir.
   const link = parseDeepLink(location.search);
@@ -3487,6 +3489,8 @@ async function boot() {
     S.me = await S.api.getMe();
     idbPrune(LONG_TTL_MS);
     mountApp();
+    // Con sesión, un intento de reconectar que Spotify rechazó por la Redirect URI se avisa igual.
+    if (isRedirectProblem(problem)) showToast(errorMessage(problem));
     await loadPlaylists();
     await probeLiked();
     // Inicio se pintó antes de tener las playlists: ahora ya puede poner la carátula de tu última baraja.

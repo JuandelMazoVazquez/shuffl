@@ -78,6 +78,22 @@ test('migración a medias (almacenamiento lleno): la sesión se sigue leyendo de
   assert.equal(store.has(old(KEYS.tokens)), false);
 });
 
+test('almacenamiento lleno con la migración a medias: escribir borra la antigua para hacer sitio y no se resucita', () => {
+  store.set(old(KEYS.tokens), JSON.stringify(session));
+  let full = true;
+  failSet = () => full;
+  const realRemove = globalThis.localStorage.removeItem;
+  globalThis.localStorage.removeItem = (k) => { full = false; realRemove(k); };
+  try {
+    const fresh = { ...session, refresh_token: 'rotado' };
+    assert.equal(setItem(KEYS.tokens, fresh), true);
+    assert.equal(store.has(old(KEYS.tokens)), false);
+    assert.deepEqual(getItem(KEYS.tokens), fresh);
+  } finally {
+    globalThis.localStorage.removeItem = realRemove;
+  }
+});
+
 test('cerrar sesión con una migración a medias borra también los tokens antiguos', () => {
   store.set(old(KEYS.tokens), JSON.stringify(session));
   removeItem(KEYS.tokens);

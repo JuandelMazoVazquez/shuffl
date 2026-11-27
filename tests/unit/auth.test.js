@@ -41,13 +41,27 @@ test('Redirect URI: «Invalid redirect URI» al pedir el token es un error propi
   assert.equal(getItem(KEYS.pkce), null);
 });
 
-test('Redirect URI: un inicio de sesión que no volvió de Spotify avisa una vez y limpia el intento', async () => {
+test('Redirect URI: un inicio de sesión reciente que no volvió avisa una vez, sin romper el que sigue en curso', async () => {
   const { handleCallback } = await import('../../js/auth.js');
   globalThis.location = { href: 'https://x.github.io/shuffl/', search: '' };
-  setItem(KEYS.pkce, { verifier: 'v', state: 's' });
+  setItem(KEYS.pkce, { verifier: 'v', state: 's', at: Date.now() });
   await assert.rejects(() => handleCallback(), { code: 'redirectStalled' });
-  assert.equal(getItem(KEYS.pkce), null);
   assert.equal(await handleCallback(), false, 'la segunda vez ya no avisa');
+  // Otra pestaña recargó mientras Spotify pedía un código: el callback de verdad tiene que poder terminar.
+  globalThis.location = { href: 'https://x.github.io/shuffl/?code=c&state=s', search: '?code=c&state=s' };
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ access_token: 'a', refresh_token: 'r', expires_in: 3600, scope: 'x' }) });
+  assert.equal(await handleCallback(), true);
+  assert.equal(getItem(KEYS.tokens).refresh_token, 'r');
+  assert.equal(getItem(KEYS.pkce), null);
+});
+
+test('Redirect URI: un intento antiguo, o de una versión sin fecha, no avisa', async () => {
+  const { handleCallback } = await import('../../js/auth.js');
+  globalThis.location = { href: 'https://x.github.io/shuffl/', search: '' };
+  for (const pkce of [{ verifier: 'v', state: 's', at: Date.now() - 16 * 60 * 1000 }, { verifier: 'v', state: 's' }]) {
+    setItem(KEYS.pkce, pkce);
+    assert.equal(await handleCallback(), false);
+  }
 });
 
 test('missingScopes: sesiones antiguas piden volver a conectar', () => {

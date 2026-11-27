@@ -47,11 +47,11 @@ test('si Spotify rechaza la Redirect URI y no vuelve, la app enseña la URI nuev
   await page.goBack();
   const help = page.locator('#redirect-help');
   await expect(help).toBeVisible();
-  await expect(help).toContainText('Invalid redirect URI');
+  await expect(help).toContainText('un error sobre la Redirect URI');
   await expect(help.locator('input')).toHaveValue(BASE);
   await expect(help.locator('ol li')).toHaveCount(4);
   await expect(page.locator('#connect')).toBeVisible();
-  expect(await page.evaluate(() => localStorage.getItem('shuffl.pkce'))).toBeNull();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('shuffl.pkce')).reported)).toBe(true);
   await page.reload();
   await expect(page.locator('#client-id')).toBeVisible();
   await expect(help).toHaveCount(0);

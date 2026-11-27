@@ -57,7 +57,7 @@ export async function startLogin() {
   const verifier = randomString(96);
   const state = randomString(24);
   const challenge = b64url(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))));
-  setItem(KEYS.pkce, { verifier, state });
+  setItem(KEYS.pkce, { verifier, state, at: Date.now() });
   const url = new URL(AUTHORIZE_URL);
   url.search = new URLSearchParams({
     client_id: clientId,
@@ -98,13 +98,17 @@ function storeTokens(data, previous) {
 /**
  * Procesa ?code&state (o ?error) al volver de Spotify. Devuelve true si había callback.
  * Sin callback pero con un inicio de sesión a medias, Spotify no volvió aquí: lo más probable es que rechazara la
- * Redirect URI (su página de error no redirige). Se lanza `redirectStalled` para enseñar cómo añadirla.
+ * Redirect URI (su página de error no redirige). Se lanza `redirectStalled` una sola vez, y solo si el intento es
+ * reciente, para enseñar cómo añadirla. El intento no se borra: si sigue en curso en otra pestaña (Spotify pidiendo
+ * un código por email), su callback tiene que poder terminar.
  */
+const STALLED_MAX_MS = 15 * 60 * 1000;
 export async function handleCallback() {
   const params = new URLSearchParams(location.search);
   if (!params.has('code') && !params.has('error')) {
-    if (!getItem(KEYS.pkce)) return false;
-    removeItem(KEYS.pkce);
+    const pending = getItem(KEYS.pkce);
+    if (!pending || pending.reported || !(Date.now() - pending.at < STALLED_MAX_MS)) return false;
+    setItem(KEYS.pkce, { ...pending, reported: true });
     throw new AuthError('redirectStalled');
   }
   const saved = getItem(KEYS.pkce);
