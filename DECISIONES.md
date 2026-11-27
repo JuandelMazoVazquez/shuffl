@@ -2,6 +2,133 @@
 
 Trabajo hecho sin supervisión el 2026-11-23. Todo lo reversible lo decidí yo; lo demás está en [docs/bandeja.md](docs/bandeja.md).
 
+## v1.3.2 (2026-11-27): cero errores, cuota bajo control, shuffle por tiempo y carátulas en todas partes
+
+### Cuota: peticiones por acción
+
+Lo mide `tests/e2e/quota.spec.mjs` con una cuenta simulada de tamaño realista: 16 playlists (una de 600 canciones), 1500 Me gusta, 50 artistas top por periodo, 120 seguidos y lanzamientos para 120 artistas. Cuenta todas las peticiones a `api.spotify.com`, reintentos incluidos.
+
+| Acción | Antes (v1.3.1) | Ahora (v1.3.2) |
+|---|---|---|
+| Arranque (login y biblioteca) | 3 | 3 |
+| Shuffle de una playlist de 600 (1.ª vez) | 22 | 21 |
+| Shuffle de la misma playlist otra vez | 24 | 11 |
+| Volver a barajar | 9 | 8 |
+| Reproducir ahora | 3 | 4 (con la comprobación) |
+| Novedades (1.ª vez) | **202** | 32 |
+| Buscar más | 2* | 13 |
+| Descubre (después de Novedades) | 18 | 23 |
+| Descubre (1.ª vez, sin caché) | — | 25 |
+| Instantánea | 7 | 6 |
+| Tu resumen | 2 | 2 |
+| Tu resumen → playlist | 7 | 6 |
+| Olvidadas (1.ª vez, 1500 Me gusta) | 51* | 37 (31 son leer Me gusta) |
+| Olvidadas (2.ª vez) | 21* | 7 |
+| Comprobar conexión | — | 6 |
+| Prueba completa (con reproducción) | — | 14 |
+
+\* Olvidadas antes: medido con esta versión antes del tope de 100 (la v1.3.1 leía igual Me gusta y escribía todas). En la v1.3.1 «Buscar más» salía barato porque la primera búsqueda ya había leído 25 artistas de golpe; ahora cada búsqueda lee como mucho unas 30 peticiones y «Buscar más» sigue con los siguientes artistas.
+
+- **De dónde salían las 202 de Novedades**: el índice de «lo que ya tienes» leía todas tus playlists y Tus me gusta enteras (unas 70), dos peticiones por artista (álbumes y singles) para 25 artistas (50) y una por cada álbum reciente.
+- **Qué se ha cambiado**:
+  - **Caché persistente en IndexedDB** (`js/idb.js`), con el id de la cuenta en la clave. Las canciones de cada playlist valen mientras no cambie su `snapshot_id` (como mucho 30 días). Tus me gusta se valida con una sola petición: el total y la más reciente. Los álbumes valen 30 días (no cambian) y los artistas, lanzamientos y búsquedas, 24 h. Lo de más de 30 días se borra al abrir la app y todo al cerrar sesión. La caché de localStorage de la v1.3.1 (`metaCache`, `libIndex`) se borra al arrancar.
+  - **Lista de playlists reciente antes de fiarse de la caché**: si tiene más de un minuto, se relee (una petición por cada 50 playlists). Si cambiaste una en Spotify y vuelves, su `snapshot_id` ya no coincide y se vuelve a leer.
+  - **Lo que escribe en su propio origen no usa la caché**: «la misma playlist», Ordenar, Duplicados y Dividir leen siempre de Spotify, porque de esa lectura sale el Deshacer.
+  - **Excluir lo que ya tienes**:
+    - Tus me gusta ya no se lee entera: se pregunta a `/me/library/contains` solo por las candidatas, en lotes de 40.
+    - Tus playlists salen de la caché; las que cambiaron se leen con un tope de 8 peticiones por búsqueda (las que no caben usan su copia anterior o se leen la próxima vez).
+  - **Una petición por artista**: `include_groups=album,single` con `limit=10`. Un artista con más de 10 singles recientes puede dejar fuera un álbum; se acepta por la mitad de peticiones.
+  - **Tope por búsqueda**: `READ_BUDGET = 30` peticiones de lectura por búsqueda; la escritura (quitar la anterior, crear, añadir y portada) suma unas 6.
+    - «Artistas por búsqueda» (8, 15 o 25; por defecto 15) en «Más opciones», guardado en el dispositivo.
+    - «Buscar más» sigue con los artistas donde se quedó y con lo leído en la caché.
+    - De los seguidos se leen como mucho 2 páginas (100 artistas, el máximo que se recorre). Descubre empieza por 8 álbumes de lo que escuchas, en vez de 25.
+  - **Sin lecturas de más tras escribir**:
+    - Después de crear una playlist de Shuffl ya no se relee toda la biblioteca: no aparece en los selectores y las quitadas se descuentan en memoria. Solo se relee al escribir en tu propia playlist.
+    - «Buscar más» y «Volver a barajar» comprueban que la playlist sigue siendo de Shuffl con 2 peticiones (sus datos y `/me/library/contains`) en vez de leer toda la biblioteca.
+    - «Volver a barajar» no vuelve a subir la portada, que no cambia.
+  - **Olvidadas**: como mucho 100 canciones al azar entre las olvidadas. Una playlist de 1500 eran 15 peticiones solo para escribir. «Volver a barajar» elige otras 100.
+  - **Reintentos**: un 429 sin cuota se reintenta 2 veces (antes 5) y nunca si `Retry-After` pasa de 30 s. Un 5xx se reintenta 2 veces (antes 3). Las órdenes al reproductor no se repiten en el cliente: «Reproducir ahora» comprueba el resultado y decide.
+- **QUOTA_EXCEEDED**:
+  - Nunca se reintenta.
+  - En Novedades y Descubre, si llega a mitad de búsqueda y hay al menos 10 canciones, se crea la playlist con ellas y una nota; si hay menos, se explica sin crear nada.
+  - Mensaje: «Spotify limita cuántas búsquedas puede hacer la app. Vuelve a intentarlo en un rato.», sin «Reintentar» (gastaría más).
+  - El shuffle de una playlist ya leída sigue funcionando sin leerla (hay un test).
+- **Contador** en Diagnóstico: peticiones de la sesión, del día (en localStorage) y de las últimas 12 acciones. Lo cuenta `SpotifyApi` con `onRequest` antes de cada `fetch`.
+- **Lo que no se puede bajar**:
+  - Leer por primera vez una playlist o Tus me gusta cuesta una petición por cada 50 canciones.
+  - Escribir cuesta una por cada 100.
+  - Esa primera lectura de una biblioteca grande (Olvidadas con 3000 Me gusta, un shuffle de una playlist de 2000) pasa de 40 una vez; después sale de la caché.
+
+### Errores: mensaje humano y una acción
+
+- **`errorInfo`** clasifica cada error: sesión caducada, falta un permiso, cuenta no añadida en el dashboard, prohibido, Premium, no encontrado, ritmo, Spotify caído (5xx), sin red, cuota, respuesta incompleta o fallo inesperado.
+  - Para cada tipo da un texto en ES/EN y sus acciones: «Reintentar» si es pasajero, «Volver a conectar» con sesión o permisos, y «Abrir en Spotify» al reproducir.
+  - Ningún texto lleva códigos («403») ni mensajes de Spotify.
+  - Un `UserError` que envuelve otro («No se pudo crear la playlist: …») hereda la acción de su causa.
+- **`task`** ofrece «Reintentar» (repetir la acción, como volver a pulsar) en los errores pasajeros.
+- **Red de seguridad**: un error que no recoge ninguna pantalla (promesa sin capturar, excepción) se registra y sale en un aviso con «Diagnóstico». Si la sesión falla al arrancar, se ve el motivo con «Reintentar» y, si toca, «Volver a conectar»; nunca una pantalla en blanco.
+- **Respuestas raras**: JSON roto, playlist creada sin id, Me gusta sin total y listas sin `items` dan «respuesta incompleta», no un fallo raro.
+- **Registro local** (`baraja.errors`, 50 como mucho):
+  - Guarda fecha, pantalla, tipo, código de estado, `reason` de Spotify, la ruta de la API sin ids ni consulta (`GET /playlists/:id/items`) y el mensaje de Spotify con los ids tapados.
+  - Nunca el texto que ve la persona, que puede llevar nombres de playlists.
+  - «Copiar informe» usa el portapapeles; si no hay permiso, enseña el texto para copiarlo a mano.
+- **Reproducir ahora** (`js/player.js`, lógica pura con tests):
+  1. Lee los dispositivos y descarta los `is_restricted`. Usa el activo, o el único; si hay varios, pregunta.
+  2. Sin ninguno: «Abre Spotify un momento y vuelve a pulsar», con «Volver a intentar» y «Abrir en Spotify».
+  3. Orden: `play` con `context_uri` y `offset 0` en ese dispositivo y después `shuffle=false`. Así el orden funciona aunque el dispositivo estuviera inactivo, porque `shuffle` antes de `play` da 404.
+  4. Espera 1,2 s y lee `GET /me/player`: suena esta playlist, sin aleatorio ni aleatorio inteligente y no en pausa. Si no, repite la orden una vez y lo explica.
+  - Casos: `NO_ACTIVE_DEVICE`, dormido (502/503), restringido, sin Premium, prohibido, aleatorio que no se apaga, orden aceptada pero no ejecutada (204 sin efecto) y sin poder comprobar («Enviada a…»). Sin Premium, restringido y prohibido no se reintentan.
+  - `GET /me/player` usa el scope `user-read-playback-state`, que ya se pedía; se añade a la lista de CLAUDE.md.
+- **Prueba completa** (Más → Diagnóstico, unas 14 peticiones):
+  1. Sesión.
+  2. Leer playlists.
+  3. Permisos.
+  4. Una canción (la última de Me gusta o la primera de una playlist tuya).
+  5. Crear la playlist de prueba de Shuffl con esa canción.
+  6. Sobrescribirla y comprobar el total.
+  7. Reconocerla como de Shuffl.
+  8. Dispositivos.
+  9. Reproducir y comprobar (opcional, marcado por defecto y avisando de que sonará una canción).
+  10. Quitarla.
+  - La playlist de prueba se quita aunque falle un paso intermedio.
+  - El informe lleva el resultado de cada paso sin nombres (ni el de la cuenta ni el del dispositivo).
+- **Diagnóstico** pasa de Ajustes a su propia pantalla en Más, con «Comprobar conexión» incluido.
+- **Tests e2e** para 401, 403 (dashboard, scope y prohibido), 404, 429 con y sin cuota, 5xx, red caída, respuestas con huecos, sin dispositivo, dormido, restringido, sin Premium, orden ignorada, aleatorio que no se apaga y error inesperado. El mock admite fallos a medida (`state.failures`: ruta, estado, cuerpo, `times` y `skip`) y el estado del reproductor.
+
+### Shuffle por tiempo, a la vista
+
+- Bajo las playlists, «¿Cuánto?»: **Toda la playlist / Por tiempo**. Por tiempo enseña 5 accesos rápidos (Trayecto 20, Gym 45, Correr 30, Viaje 90, Dormir 30) y «A medida», con un deslizador de 5 a 180 min de 5 en 5. El botón dice «Barajar 45 min».
+- Correr y Dormir duran lo mismo (30 min), así que se guarda la clave del acceso, no solo los minutos. Si una mezcla trae una clave que no existe o unos minutos que no son los del acceso, se trata como «a medida».
+- Nombres: «Gym 45 min · Shuffle» con un acceso rápido y «Rock · 45 min · Shuffle» a medida. Si el origen es largo se recorta él, nunca los minutos. Como llevan la etiqueta con el resumen del nombre, se reconocen como de Shuffl y, si se renombran, no se borran.
+- Las mezclas de antes con más de 180 min se cargan con el deslizador a 180.
+- El resultado dice «Listo · 45 min ± 2» y la duración real («22 canciones · 44 min»).
+- **Siri**: los atajos abren una mezcla guardada, que ahora recuerda el tiempo y el acceso rápido. No se añade un parámetro de tiempo a los enlaces `?origen=`, para no ampliar lo que acepta un enlace de fuera.
+
+### Carátulas en todas partes
+
+- Una fila común (`trackRow` + `coverSlot`) en resultados (Shuffle, Novedades, Descubre, Olvidadas, Instantáneas, Mi top, Ordenar, Me gusta sin playlist), en las listas de Tu resumen (artistas y canciones), en los grupos de Duplicados y en las partes de Dividir (con la carátula de su primera canción).
+- El hueco mide siempre 48×48 con ♪ de fondo y la imagen va encima, en diferido (`loading="lazy"`) y con `object-fit: contain`: nada salta, no se recorta ni se pone nada encima. Si la imagen falla, se quita y queda el hueco.
+- **Imagen**: la que ya trae la respuesta, sin peticiones extra. `pickThumb` elige la más pequeña que llega a 120 px (48 px en pantallas de 3x); si Spotify no da tamaños, la penúltima (la de 300).
+- **Por qué faltaban en Descubre**: los álbumes de «lo que escuchas» se pedían sin sus imágenes. Ahora llevan la miniatura de la canción escuchada, y los lanzamientos guardan todas sus imágenes con tamaño, no solo las dos últimas.
+- En la Copia de seguridad se listan playlists de un archivo, que no traen imagen, y se dejan como estaban.
+- La carátula de la tarjeta de Inicio pasa de `cover` a `contain` (no se recorta).
+- **Test** (`tests/e2e/covers.spec.mjs`): recorre todas esas pantallas y falla si una fila no tiene su carátula https de 48×48 entera.
+
+### Más interactiva
+
+- **Flujo elegido**: guardar con un toque, como antes, y editar después. Una vista previa antes de enviar añadiría un paso a cada shuffle y a Siri.
+  - **Quitar**: en el resultado, deslizar una canción a la izquierda (o tocar su ×, accesible con teclado y lector) la quita. Los cambios se guardan de una vez 1,2 s después del último, tras comprobar que la playlist sigue siendo de Shuffl.
+  - **Rebarajar**: el botón «Volver a barajar» (con el icono de la app) o tirar hacia abajo rebarajan la misma playlist. Las quitadas no vuelven.
+  - Solo en playlists de Shuffl, nunca en la tuya («la misma playlist»).
+  - «Buscar más» guarda antes lo pendiente.
+  - Tirar hacia abajo fuera de un resultado sigue refrescando tus playlists.
+- **Animaciones**:
+  - Las carátulas se reparten como naipes al aparecer (solo `transform` y `opacity`, 45 ms de desfase entre filas).
+  - El fondo toma el color dominante de la portada del origen o, en Descubrir, de la primera carátula.
+  - Los botones responden al toque con una pequeña escala.
+  - Con «reducir movimiento» no hay animaciones (regla global de la v1.2).
+- **Estados vacíos** con una ilustración en SVG (tres naipes con una nota) en Descubrir, Olvidadas, Tu resumen y Me gusta sin playlist.
+
 ## v1.3.1 (2026-11-27): correcciones tras probar con Spotify real en el iPhone
 
 - **Por qué no se borraba nada**:
