@@ -776,6 +776,18 @@ Object.assign(en, {
   forgottenSample: '{n} picked at random from the {m} you have forgotten. “Shuffle again” picks others.',
 });
 
+// v1.4.0: modo demo.
+Object.assign(es, {
+  tryDemo: 'Probar la demo', tryDemoNote: 'Sin cuenta ni Client ID: datos de ejemplo inventados.',
+  demoBar: 'Modo demo · los cambios no se guardan en Spotify', demoConnect: 'Conectar mi Spotify',
+  demoNoSpotify: 'En la demo las playlists son inventadas: no existen en Spotify.',
+});
+Object.assign(en, {
+  tryDemo: 'Try the demo', tryDemoNote: 'No account or Client ID: made-up sample data.',
+  demoBar: 'Demo mode · changes are not saved to Spotify', demoConnect: 'Connect my Spotify',
+  demoNoSpotify: 'In the demo the playlists are made up: they do not exist on Spotify.',
+});
+
 const DICT = { es, en };
 let lang = 'es';
 

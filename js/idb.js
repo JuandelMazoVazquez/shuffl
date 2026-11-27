@@ -6,6 +6,11 @@ const mem = new Map();
 const FAILED = Symbol('failed');
 let dbPromise = null;
 
+/** Modo demo: solo memoria, sin abrir (ni ensuciar) la caché de tu cuenta. Antes de cualquier lectura. */
+export function idbVolatile() {
+  dbPromise = Promise.resolve(null);
+}
+
 function open() {
   if (dbPromise) return dbPromise;
   dbPromise = new Promise((resolve) => {

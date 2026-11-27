@@ -198,7 +198,7 @@ test.describe('Diagnóstico', () => {
     await page.locator('#copy-report').click();
     await expect(page.locator('#copy-msg')).toContainText('Informe copiado');
     const report = await page.evaluate(() => navigator.clipboard.readText());
-    expect(report).toMatch(/^Shuffl 1\.3\.2 · es · navegador/);
+    expect(report).toMatch(/^Shuffl \d+\.\d+\.\d+ · es · navegador/);
     expect(report).toContain('OK  play · ok');
     expect(report).not.toMatch(/Usuaria Prueba|iPhone de prueba|access-|refresh-1|Rock/);
   });
