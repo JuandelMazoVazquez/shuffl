@@ -4,6 +4,16 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). E
 
 Shuffl se llamó Baraja hasta la v1.2.0, y hasta la v1.4.0 el repositorio y la dirección eran `new-spoti`. Las entradas anteriores se dejan como se escribieron.
 
+## [1.4.2] - 2026-11-27
+
+Shuffl explica por qué existe con una historia real, sin jerga.
+
+### Cambiado
+
+- **«El problema» del README** pasa a ser una historia corta: el aleatorio de Spotify me ponía siempre las mismas canciones, a veces casi en bucle, y en sus foros mucha gente cuenta lo mismo desde hace años. Enlaza tres hilos de la Spotify Community y el anuncio de Spotify del 13 de noviembre de 2025, según el cual su aleatorio por defecto (Fewer Repeats) tiene en cuenta lo que has escuchado hace poco.
+- **La misma idea en la app**: la bienvenida, «Acerca de» (en Ajustes) y «¿Es aleatorio de verdad?», que ahora enlaza el anuncio de Spotify.
+- Los detalles técnicos (Fisher-Yates, `crypto.getRandomValues`) pasan a «Cómo funciona por dentro». La cabecera y la social preview dicen «un aleatorio de verdad» en vez de «Fisher-Yates uniforme».
+
 ## [1.4.1] - 2026-11-27
 
 Todo se llama Shuffl y usa la misma paleta: el repo, la dirección, la app, las playlists que crea y los medios.

@@ -2,6 +2,13 @@
 
 Trabajo hecho sin supervisión el 2026-11-23. Todo lo reversible lo decidí yo; lo demás está en [docs/bandeja.md](docs/bandeja.md).
 
+## v1.4.2 (2026-11-27): el problema contado como una historia
+
+- **Solo lo que se puede respaldar**: la única afirmación técnica es la de Spotify en su anuncio del 13 de noviembre de 2025 (su aleatorio por defecto «takes your recent listening into account»), enlazada. No se dice que Spotify lo haga a propósito ni que su aleatorio «no sea uniforme»; desaparecen «favorece a propósito» y «cambian lo que suena a propósito», que no estaban respaldados.
+- **Hilos de la Community**: el foro migró a `/forum/en/discussion/<id>/…` y las direcciones `/t5/…` redirigen o dan 404. Se enlazan las nuevas, comprobadas con curl (200 y título): «Option to have a true shuffle» (2020, respalda «desde hace años»), «Shuffle mode playing the same songs all the time» (2021) y «Add a true random shuffle option» (2025). «Create a true random shuffle option» ya no existe tras la migración (404): se usa en su lugar «Add a true random shuffle option», de idea equivalente.
+- **En la app, sin enlaces a los foros**: la bienvenida y «Acerca de» cuentan la historia; solo «¿Es aleatorio de verdad?» enlaza el anuncio de Spotify, que es la fuente de la frase técnica. La pregunta frecuente «¿Por qué no basta…?» pasa a «¿En qué se diferencia…?», que no compite con Spotify.
+- **v1.4.2** y no una edición de la v1.4.1: cambian textos de la app desplegada.
+
 ## v1.4.1 (2026-11-27): todo se llama Shuffl y usa la misma paleta
 
 ### Nombre

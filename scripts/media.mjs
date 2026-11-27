@@ -23,13 +23,13 @@ const TEXT = {
   es: {
     playlist: 'Domingo lento',
     slogan: 'El shuffle de Spotify, por fin aleatorio de verdad',
-    sub: 'Ordena al azar tus playlists con un Fisher-Yates uniforme. Gratis, libre y sin servidor.',
+    sub: 'Un aleatorio de verdad: todas las canciones tienen las mismas posibilidades. Gratis, libre y sin servidor.',
     cta: 'Pruébala sin cuenta',
   },
   en: {
     playlist: 'Slow Sunday',
     slogan: 'Spotify shuffle, finally truly random',
-    sub: 'Shuffle your playlists with a uniform Fisher-Yates. Free, open source, no server.',
+    sub: 'A truly random shuffle: every song gets the same chance. Free, open source, no server.',
     cta: 'Try it without an account',
   },
 };

@@ -7,7 +7,7 @@
 <h1 align="center">Shuffl</h1>
 
 <p align="center"><b>El shuffle de Spotify, por fin aleatorio de verdad.</b><br>
-Una web app libre y gratuita que baraja tus playlists con un Fisher-Yates uniforme. Sin servidor, sin cuentas nuevas y sin analítica.</p>
+Una web app libre y gratuita que ordena tus playlists al azar, con las mismas posibilidades para cada canción. Sin servidor, sin cuentas nuevas y sin analítica.</p>
 
 <p align="center">
   <a href="https://github.com/JuandelMazoVazquez/shuffl/actions/workflows/ci.yml"><img src="https://github.com/JuandelMazoVazquez/shuffl/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -28,9 +28,9 @@ Una web app libre y gratuita que baraja tus playlists con un Fisher-Yates unifor
 
 ## El problema
 
-¿Tienes una playlist de 1.500 canciones y siempre suenan las mismas 30? No eres la única persona. El aleatorio de Spotify no es una baraja que puedas comprobar. «Fewer Repeats» favorece a propósito lo que has escuchado menos y Smart Shuffle mete recomendaciones entre tus canciones.
+Usando Spotify notaba que el aleatorio me ponía siempre las mismas canciones. A veces hasta entraba en una especie de bucle: un grupo pequeño se repetía una y otra vez, aunque mis playlists tienen muchas más. Busqué y vi que no era el único: en los foros de Spotify hay gente contando lo mismo desde hace años ([1](https://community.spotify.com/forum/en/discussion/4880594/all-platforms-option-to-have-a-true-shuffle), [2](https://community.spotify.com/forum/en/discussion/5280042/shuffle-mode-playing-the-same-songs-all-the-time), [3](https://community.spotify.com/forum/en/discussion/7037040/add-a-true-random-shuffle-option)).
 
-Shuffl no toca el reproductor: **reescribe el orden de la playlist** con un Fisher-Yates y `crypto.getRandomValues` (sin sesgo de módulo), y Spotify la reproduce **en orden**. Todas las canciones tienen la misma probabilidad de caer en cualquier posición, y la app te deja comprobarlo:
+Así nació Shuffl: **un aleatorio de verdad, en el que todas las canciones tienen las mismas posibilidades**. Según la propia Spotify, su aleatorio por defecto (Fewer Repeats) [tiene en cuenta lo que has escuchado hace poco](https://newsroom.spotify.com/2025-11-13/shuffle-update-fewer-repeats/); Shuffl no mira tu historial: deja tu playlist en un orden al azar y Spotify la reproduce tal cual. Y lo puedes comprobar en la propia app:
 
 <p align="center">
   <img src="docs/media/proof-es.gif" alt="¿Es aleatorio de verdad?: 10.000 barajas simuladas, Shuffl plano frente a un barajado sesgado" width="300">
@@ -103,6 +103,8 @@ Todo ocurre en tu dispositivo. Shuffl es una página estática: no tiene servido
 
 ## Cómo funciona por dentro
 
+Shuffl no toca el reproductor: reescribe el orden de la playlist con el algoritmo de Fisher-Yates y números de `crypto.getRandomValues` (sin sesgo de módulo), así que cualquier orden es igual de probable, y Spotify la reproduce en orden.
+
 ```mermaid
 flowchart LR
   U([Tú]) --> A[Shuffl<br/>PWA en tu navegador]
@@ -151,9 +153,9 @@ El código es abierto y se puede revisar entero. No hay servidor que guarde nada
 La cuenta que crea el Client ID necesita Premium: es una regla de Spotify para las apps en Development Mode. «Reproducir ahora» también lo necesita. Si solo quieres ver cómo es, la demo no necesita nada.
 </details>
 
-<details><summary><b>¿Por qué no basta con el aleatorio de Spotify?</b></summary>
+<details><summary><b>¿En qué se diferencia del aleatorio de Spotify?</b></summary>
 
-Porque no es una baraja uniforme que puedas comprobar: los modos «Fewer Repeats» y Smart Shuffle cambian lo que suena a propósito. Shuffl fija un orden uniforme en la playlist y Spotify la reproduce tal cual, con su aleatorio apagado.
+Depende de lo que busques. Según Spotify, su aleatorio por defecto [tiene en cuenta lo que has escuchado hace poco](https://newsroom.spotify.com/2025-11-13/shuffle-update-fewer-repeats/) para que se repita menos. Shuffl hace otra cosa: no mira tu historial y da a todas las canciones las mismas posibilidades. Deja la playlist en ese orden y Spotify la reproduce tal cual, con su aleatorio apagado.
 </details>
 
 <details><summary><b>¿Qué ve Shuffl de mi cuenta?</b></summary>
