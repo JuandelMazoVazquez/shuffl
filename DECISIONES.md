@@ -20,7 +20,7 @@ Trabajo hecho sin supervisión el 2026-11-23. Todo lo reversible lo decidí yo; 
 
 - **Un script** (`scripts/media.mjs`) con Playwright y el modo demo, servidor propio en un puerto libre. Así ningún medio lleva datos reales y se regeneran tras cada cambio de interfaz.
 - **Capturas** a 390×844 con escala x2 (780×1688), en oscuro y claro y en español e inglés: 32 PNG. Escogí x2 y no x3 por peso (unos 150 KB cada una frente a más del doble).
-- **GIFs** grabados a 390×844 y pasados a 360 px, 12 fps y paleta de 96 colores con `palettegen`/`paletteuse` (dither bayer): entre 1,5 y 2,2 MB, por debajo de los 5 MB pedidos. Si uno pasara de 5 MB, el script repite con menos fps y ancho.
+- **GIFs** grabados a 390×844 y pasados a 360 px, 12 fps y paleta de 96 colores con `palettegen`/`paletteuse` (dither bayer): entre 1,4 y 2,4 MB, por debajo de los 5 MB pedidos. Si uno pasara de 5 MB, el script repite con menos fps y ancho.
 - **Vídeo vertical 1080×1920** de unos 16-17 s (H.264, `faststart`, sin audio): el móvil dentro de un marco, con el nombre y el eslogan arriba y la dirección abajo. Playwright graba en píxeles CSS, así que para que sea nítido se graba con el viewport al doble y `zoom: 2` en la página (la app sigue viendo 390 px). Los toques se ven como un círculo lima.
 - **ffmpeg** no es una dependencia del repo: el script lo busca en el PATH o en `FFMPEG` y, si no está, genera solo las imágenes. Lo instalé en el equipo con winget (`Gyan.FFmpeg`). Descartado `ffmpeg-static` como devDependency: haría bajar unos 70 MB en cada `npm ci` del CI.
 - **Social preview y cabecera** en los dos idiomas, renderizadas desde HTML con las capturas dentro de un móvil dibujado con CSS.
