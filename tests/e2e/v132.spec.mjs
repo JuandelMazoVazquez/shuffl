@@ -327,6 +327,25 @@ test.describe('revisión de seguridad, ronda 1', () => {
     expect(list.tracks).toHaveLength(79);
   });
 
+  test('ronda 2: quitar otra mientras se guarda no deja la lista y Spotify distintas', async ({ page }) => {
+    await login(page);
+    await shuffleOnce(page, 'Chill');
+    const [list] = byName('Chill · Shuffle');
+    await page.route('https://api.spotify.com/v1/playlists/new*/items', async (route) => {
+      if (route.request().method() === 'PUT') await new Promise((r) => setTimeout(r, 900));
+      await route.fallback();
+    });
+    const rows = page.locator('#panel-shuffle .tracks .track');
+    await rows.nth(0).locator('.track-remove').click();
+    await expect(page.locator('body')).toHaveClass(/busy/, { timeout: 3000 });
+    await rows.nth(1).locator('.track-remove').click();
+    await idle(page);
+    await page.waitForTimeout(1600);
+    await idle(page);
+    const shown = Number((await resultMeta(page).textContent()).match(/^(\d+) canciones/)[1]);
+    expect(list.tracks).toHaveLength(shown);
+  });
+
   test('Olvidadas: una canción quitada tras rebarajar tampoco vuelve', async ({ page }) => {
     await login(page);
     await openPanel(page, 'forgotten');

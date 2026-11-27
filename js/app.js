@@ -912,8 +912,8 @@ function makeRemovable(li, tr, onRemove) {
     if (li.classList.contains('gone')) return;
     if (S.busy) { li.style.transform = ''; return; }
     li.classList.add('gone');
-    const done = () => { li.remove(); onRemove(tr); };
-    if (prefersReducedMotion()) done(); else setTimeout(done, 220);
+    onRemove(tr);
+    if (prefersReducedMotion()) li.remove(); else setTimeout(() => li.remove(), 220);
   };
   li.addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; dx = 0; li.style.transition = 'none'; }, { passive: true });
   li.addEventListener('touchmove', (e) => {
@@ -957,10 +957,12 @@ function renderResult(container, status, o) {
   container.cancelPending?.();
   let saveTimer = null;
   let pending = false;
+  let rev = 0;
   /** Guarda lo quitado. «Pendiente» solo se limpia cuando Spotify lo ha guardado entero: si falla, «Reintentar» lo repite. */
   const writeRemovals = async () => {
     clearTimeout(saveTimer);
     if (!pending) return;
+    const v = ++rev;
     const uris = tracks.map((x) => x.uri);
     if (!uris.length) throw new UserError(t('errEmpty'), 'errEmpty');
     status.phase('saving');
@@ -968,17 +970,23 @@ function renderResult(container, status, o) {
       await assertStillAppPlaylist(o.playlistId);
       await overwritePlaylist(o.playlistId, uris, status);
     });
-    pending = false;
+    if (rev === v) pending = false;
   };
   const saveRemovals = () => {
     if (S.busy) { saveTimer = setTimeout(saveRemovals, 800); return; }
     task(status, async () => { await writeRemovals(); status.say(t('removedSaved')); }, 'remove');
+  };
+  const back = () => {
+    if (!pending) { o.onBack?.(); return; }
+    clearTimeout(saveTimer);
+    task(status, writeRemovals, 'remove').then(() => { if (!pending) o.onBack?.(); });
   };
   const onRemove = (tr) => {
     tracks = tracks.filter((x) => x !== tr);
     o.onTracks?.(tracks, tr);
     syncMeta();
     pending = true;
+    rev++;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveRemovals, 1200);
   };
@@ -1007,7 +1015,7 @@ function renderResult(container, status, o) {
       h('button', { class: 'btn', type: 'button', id: 'share-link', onclick: () => shareLink(o.playlistId, info) }, t('share')),
       ...(o.extra ?? []),
       undoBtn,
-      h('button', { class: 'btn', type: 'button', onclick: () => { if (pending) { clearTimeout(saveTimer); saveRemovals(); } o.onBack?.(); } }, t('back'))),
+      h('button', { class: 'btn', type: 'button', onclick: () => back() }, t('back'))),
   );
   container.playNow = () => playNow(o.playlistId, info, status);
   // Tirar hacia abajo en el resultado rebaraja (si la pantalla lo permite); fuera del resultado, refresca las playlists.
@@ -1854,9 +1862,9 @@ function orphansPanel() {
 
   function scan() {
     task(status, async () => {
+      await ensureFreshLibrary();
       const liked = S.playlists.find((p) => p.isLiked);
       const mine = S.playlists.filter((p) => !p.isLiked && p.readable);
-      await ensureFreshLibrary();
       const likedRead = await readSource(liked, (d, tot) => status.progress('reading', d, tot), { useCache: true });
       const inPlaylists = new Set();
       let done = 0;
@@ -2299,16 +2307,19 @@ function diagPanel() {
       });
     }
     let device = null;
+    let cancelled = false;
+    const willPlay = () => playBox.checked && probeId && uri;
     await step('devices', async () => {
       const devices = await S.api.getDevices();
       const pick = pickDevice(devices);
-      device = pick.device ?? (pick.choose ? await chooseDevice(pick.choose) : null);
+      device = pick.device ?? (pick.choose && willPlay() ? await chooseDevice(pick.choose) : null);
+      cancelled = !!pick.choose && willPlay() && !device;
       const n = devices.length;
       if (pick.problem === 'restricted') throw new UserError(t('playRestricted'), 'restricted');
       return { text: n ? t('fullDevices', { n: fmt(n), name: device?.name ?? '' }) : t('fullNoDevice'), detail: `${n} ${device?.type ?? '-'}${device?.is_active ? ' activo' : ''}` };
     });
     await step('play', async () => {
-      if (!playBox.checked || !probeId || !uri) return { skip: true, text: t('fullSkipped') };
+      if (!willPlay() || cancelled) return { skip: true, text: t('fullSkipped') };
       if (!device) return { skip: true, text: t('playNoDevice') };
       let outcome = await startAndVerify(probeId, device);
       if (PLAY_RETRY.has(outcome)) outcome = await startAndVerify(probeId, device);
